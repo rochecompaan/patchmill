@@ -1,42 +1,40 @@
 ---
 title: Interactive skills
-description:
-  Use Patchmill's human-controlled skills without confusing them with Run-once.
+description: Human-controlled planning, labels, and cleanup.
 ---
 
-`patchmill-plan`, `patchmill-upload`, `patchmill-label`, and `patchmill-cleanup`
-are human-invoked skills. They are not `patchmill.config.json` workflow entry
-points, and `patchmill init` or `patchmill skills update` does not install them
-as global agent skills.
+`patchmill-plan`, `patchmill-label`, and `patchmill-cleanup` are
+human-controlled skills. `init` installs them in `.patchmill/skills`, not as
+global agent skills. They are not additional CLI commands or configuration entry
+points. Load them through your coding agent's skill mechanism. For Pi, a loaded
+skill can be invoked as `/skill:patchmill-plan 123`.
 
-## Human-controlled planning
+## Local planning
 
-Use `patchmill-plan` when a human intentionally wants local planning without
-automated implementation. It may use an interactive review ceremony because a
-human invoked it. It does not represent a Run-once planning review, create or
-merge a planning pull request, or supply an approval label to fresh state.
+`patchmill-plan` resolves the issue branch and worktree, then prepares or
+revises local specs and plans. It does not implement, publish, change labels, or
+clean up. If required spec approval is absent, it revises the spec and stops
+before the plan. Local self-review does not grant approval.
 
-Expose the packaged skill through the active coding agent's global skill
-mechanism. For Pi, a linked directory under `~/.pi/agent/skills/` can be invoked
-as:
+For kernel planning and publication, run
+`patchmill run-once --issue N --plan-only` as a separate operator action. It
+reuses the same issue branch and worktree.
 
-```text
-/skill:patchmill-plan 123
-```
+## Labels
 
-The human can review and revise the local artifact as long as needed. For fresh
-automated work, use ordinary `patchmill run-once --issue N` instead; Run-once
-owns phase workspaces, push, pull-request creation, review stops, merge
-reconciliation, labels, and cleanup.
+`patchmill-label` inspects the current host and issue labels and applies only
+human-authorized changes. It preserves unrelated labels. If a requested label is
+missing, it asks before creating it. The kernel does not expose this skill as an
+issue-mutation tool to unattended agents.
 
-## Legacy/manual tooling
+## Cleanup
 
-`patchmill-upload` and `patchmill-label` remain useful for manual workflows and
-unfinished legacy Issue runs. Their published comments and approval labels do
-not authorize a fresh planning phase. Do not hand them off after a fresh
-Run-once planning phase; review or merge the exact planning pull request and
-rerun Run-once instead.
+`patchmill-cleanup` inspects dirty files, unique commits, and merge state before
+requesting explicit deletion confirmation. It never removes remote branches. It
+must hold the same issue OS lock throughout cleanup and prevent competing runs.
+If it cannot establish ownership safely, it stops and asks.
 
-`patchmill-cleanup` is always human-authorized. It inspects the selected issue
-worktree and branch, including possible lost work, and requires confirmation
-before destructive cleanup.
+Never delete or replace the permanent issue lock or its parent directory. Empty
+or stale diagnostic JSON does not authorize cleanup. A successful
+`patchmill release --issue N` only resets labels under the lock. It does not
+hold that lock for later cleanup.

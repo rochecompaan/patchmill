@@ -1,67 +1,39 @@
 ---
 title: Providers
-description: Configure issue-host and runtime providers used by Patchmill.
+description: Configure GitHub or Forgejo host access and Pi authentication.
 ---
 
-Patchmill connects repository work to host providers and Pi runtime providers.
+Patchmill uses `gh` for GitHub and `tea` for Forgejo or Gitea. Host
+authentication and Pi model-provider authentication are separate. Configure the
+host CLI before initialization.
 
-## Supported issue-host workflow
+## GitHub
 
-Patchmill issue workflows need provider access for reading issues, applying
-labels, posting comments, and creating or updating pull requests.
+Make sure that `gh auth status` reports a usable login. In the repository, run
+`patchmill init --provider github-gh`. GitHub uses the active `gh`
+authentication context. Init can seed `host.login` with the detected username
+for comment trust. That value does not select a GitHub account.
 
-Supported host paths include:
+## Forgejo and Gitea
 
-- GitHub through the `gh` CLI.
-- Forgejo or Gitea through the `tea` CLI.
+Use `tea logins list` to inspect profiles. Run
+`patchmill init --provider forgejo-tea` to use Tea's default profile. An empty
+`host.login` means the default profile. To select another profile, use
+`patchmill init --provider forgejo-tea --login PROFILE` with its explicit alias.
+The detected username is not a profile alias. There is no Patchmill login
+environment override.
 
-## GitHub setup
+For draft pull requests, the planning skill uses a `WIP:` title with Tea. The
+implementation skill removes that prefix when work is ready. Patchmill also
+recognizes native draft state and `Draft:` title prefixes.
 
-For GitHub repositories, authenticate `gh` before running Patchmill commands:
+## Pi authentication
 
-```sh
-gh auth status
-```
+`patchmill auth` opens interactive Pi with `PI_CODING_AGENT_DIR` set to the
+configured agent directory. Use Pi's `/login` and `/model` flows there.
+Patchmill keeps no second authentication or model record.
 
-Then configure Patchmill with the provider and repository details used by your
-project. The `github-gh` provider uses your active `gh` authentication context
-and does not support named logins.
-
-## Forgejo and Gitea setup
-
-For Forgejo or Gitea repositories, configure a named `tea` login before running
-Patchmill commands:
-
-```sh
-tea login list
-```
-
-Use the configured login name when creating disposable demo repositories or
-configuring host access. Named-login overrides, including
-`PATCHMILL_HOST_LOGIN`, only apply to providers with named-login support such as
-`forgejo-tea`; `github-gh` ignores them.
-
-## Runtime Pi authentication
-
-`patchmill auth` configures or repairs repo-local Pi provider authentication
-under `.patchmill/pi-agent`. Run it after provider credentials, model
-selections, or local runtime settings change.
-
-Issue-host authentication remains separate: use `gh auth login` for GitHub and
-`tea` login configuration for Forgejo/Gitea access. `patchmill auth` only
-manages Patchmill's repo-local Pi provider state.
-
-When the orchestrator, `scout`, `worker`, or `reviewer` use different providers,
-authenticate each provider in this isolated runtime. See
-[Pi and subagents](/guides/pi-and-subagents/) for the role-specific settings.
-
-## Validate provider access
-
-Run the doctor command after provider changes:
-
-```sh
-patchmill doctor
-```
-
-The doctor command is read-only and reports host access, labels, configured
-skills, runtime access, and local path status.
+See [Pi and subagents](/guides/pi-and-subagents/) for local runtime settings.
+After setup, run `patchmill labels setup` and `patchmill doctor`. Doctor
+includes a real model smoke prompt and writes local logs. It does not repair
+host or repository configuration.

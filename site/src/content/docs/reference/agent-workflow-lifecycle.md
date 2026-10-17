@@ -1,104 +1,53 @@
 ---
 title: Agent workflow lifecycle
-description:
-  Understand triage, strict planning state, and planning pull-request recovery.
+description: How triage, planning, and implementation share one issue branch.
 ---
 
-Patchmill has two workflows:
+Triage classifies issues. Run-once advances a selected issue. The kernel owns
+issue labels and run comments. The agent owns git, artifacts, and the pull
+request. Skills guide judgment within those boundaries.
 
-- **Triage** classifies open issues as `agent-ready`, `needs-info`, unsuitable,
-  or blocked.
-- **Run-once** processes one ready issue through durable planning state and an
-  implementation pull request.
+## From ready issue to spec review
 
-## Triage lifecycle
+1. The kernel selects an issue and acquires its permanent local OS lock.
+2. The kernel swaps the ready label for `in-progress` and rereads the issue.
+3. The kernel fetches `origin`, reuses or creates the issue worktree, and
+   derives the phase.
+4. The planning agent writes the spec, commits, pushes, and opens or updates a
+   draft pull request.
+5. The kernel checks the remote branch and spec. With required approval absent,
+   it stops at `spec-review`.
 
-`patchmill triage --dry-run` previews classification without mutation.
-`patchmill triage` hydrates open issues, invokes the configured triage skill,
-observes labels/comments/state, and records a triage log. A blocked issue
-returns to `agent-ready` only when its recorded same-repository blockers close.
+## Human review
 
-## Run-once lifecycle
+A human reviews the spec and adds `spec-approved` and `agent-ready` to resume.
+To request changes, the human leaves approval off, adds review comments and
+`agent-ready`, then reruns. One planning session revises the existing spec and
+stops at `spec-review` again. It does not grant approval or implement. A merged
+pull request takes precedence over this revision rule.
 
-For a fresh eligible issue, the public facade selects `planning-pr-v1`. It also
-uses that pipeline for valid active planning state. Only unfinished legacy Run
-recovery state uses the legacy pipeline; conflicting, malformed, or unsupported
-state blocks without fallback.
+## From approval to ready pull request
 
-1. Patchmill acquires the exact Issue-run ownership lock and initializes strict
-   state with an immutable planning review-gate snapshot.
-2. The phase coordinator fetches the saved target base, checks artifact and
-   workspace ownership, and prepares one phase workspace when necessary.
-3. A required spec or plan gate produces one non-closing planning pull request.
-   Its exact verified merge unlocks the next phase.
-4. The implementation phase produces an independently validated, open,
-   issue-closing pull request. Both planning and legacy workflows require PRs.
-5. Publication returns `pr-created` and leaves the Issue run in progress.
-6. After the saved PR merges, explicit resume verifies its merge commit against
-   the fetched target base. Remaining cleanup and done-label checkpoints then
-   complete the Issue run without new agent work.
+After approval, planning writes the missing plan on the same branch.
+Implementation reads the spec and plan, prepares the environment, implements,
+validates, commits, pushes, and marks the same pull request ready. The plan
+receives review with that pull request.
 
-Ignored content never blocks verification, recovery, or cleanup. Patchmill uses
-ordinary Git status. Staged changes, tracked changes, and non-ignored untracked
-files remain blockers. Force-added ignored files remain subject to status and
-artifact-diff guards. Read-only verification preserves HEAD, the index,
-artifacts, and ignored bytes.
+The kernel checks that an open, non-draft pull request has the issue branch as
+head and closes the issue in its body. It then sets `agent-done`. Merge is a
+later human or host action, not a completion prerequisite. A later rerun on an
+open ready pull request addresses its review comments.
 
-In-place recovery preserves ignored files. Legacy refresh and reset move old
-checkouts to retained quarantine paths. Patchmill never removes these paths.
-Run-once refresh results and reset results name them in `quarantinePaths`.
-Recovery progress and final output report the actual retained paths.
+## Failure and resumption
 
-When ordinary Git status is clean and the existing safeguards pass, Patchmill
-removes the phase worktree with normal `git worktree remove` without `--force`.
-This operation permanently deletes all ignored content. Staged, tracked, and
-non-ignored untracked changes block cleanup. Git can refuse removal if an
-ordinary change appears after the last status check. Patchmill does not retry
-with force.
+A missing result, unverified claim, timeout, `needs-input`, or `failed` stops
+with `needs-info`. The kernel posts the summary and warnings. A human answers
+questions and adds `agent-ready` before retrying. After a hard crash,
+`patchmill release --issue N` locks the issue before resetting a stale
+`in-progress` label.
 
-Older saved `cleanup-pending` records remain readable. They resume normal
-cleanup without a cleanup-specific ready label or new needs-info publication.
-Existing needs-info state still requires the normal ready acknowledgement. A
-retry rechecks saved workspace and publication evidence. It advances legacy
-pending cleanup through `worktree-removed` and `removed`. The retry does not
-replay a completed cleanup hook or earlier finish effect. Implementation
-completion still requires verified merge and the done-label transition.
-
-A retry can recover one unrecorded committed artifact before saved-HEAD resume.
-Recovery proves workspace ownership, ordinary cleanliness, ancestry, and one
-unambiguous artifact-only delta. Committed-tree discovery retains the original
-path and commit, including custom artifact directories. Recovery preserves prior
-evidence, the todo root, and todos. Failed proof or checkpoint stops before
-later agents or publication. The normal review gates still apply.
-
-`review-pending` and supported `stopped` results are exit-zero nonfailure
-results. Patchmill no longer returns the public `cleanup-pending` result.
-Same-issue contention reports `issue already in progress.` without repair
-advice.
-
-Independent `--issue N` processes can overlap in one clone. Automatic selection
-remains serial and excludes other active attempts. A process exit does not
-complete the Issue run. Normal recovery is an ordinary rerun:
-
-```sh
-patchmill run-once --issue N
-```
-
-See [Run-once recovery](/using-patchmill/run-once/#recovery-and-operator-safety)
-for exact operator actions. Legacy `run lease repair` and `run reset` do not
-authorize deleting planning locks, state, branches, or phase workspaces. Reset
-retains its legacy-only scope and refuses planning state.
-
-## Logging and output
-
-Run-once writes progress to stderr and a final JSON result to stdout. It appends
-structured events to the configured JSONL run log. Durable planning state, host
-records, remote refs, and workspace evidence are observed before a retry repeats
-any effect.
-
-## Legacy compatibility
-
-Unfinished legacy runs retain their comment, label, workspace, and recovery
-behavior. Legacy artifact setters, approval-label authorization, and plan-only
-controls are not the fresh-workflow lifecycle and are documented only for that
-compatibility boundary.
+Every attempt derives its phase from git and the host. Logs, sessions, and
+`result.json` are outputs only. There is no saved workflow checkpoint or
+earlier-version reader. The kernel never removes the issue worktree or the
+permanent lock inode, the filesystem object behind the lock path. Read
+[Run-once](/using-patchmill/run-once/) for the full derivation table.

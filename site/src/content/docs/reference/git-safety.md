@@ -1,93 +1,55 @@
 ---
 title: Git safety
-description:
-  Reference the branch-base guardrails Patchmill applies before run-once starts.
+description: Issue worktrees, permanent locks, and host branch protection.
 ---
 
-`patchmill run-once` creates issue branches from `git.baseRef`. The default is
-`"HEAD"`, which is convenient after a normal clone but can be unsafe just after
-initializing Patchmill: if you commit generated configuration locally and do not
-push or merge that commit to the pull-request target branch, every issue branch
-created from local `HEAD` would include that setup commit.
+Patchmill fetches `origin` before deriving the phase. It uses one branch and
+worktree per issue. A matching remote branch is reused. With no branch, the
+worktree starts from the base branch. Several matching issue branches stop the
+attempt with `needs-info` rather than selecting one.
 
-Before claiming an issue, commenting, writing run state, creating a worktree, or
-running Pi, `run-once` checks that `git.baseRef` is contained in the configured
-pull-request target base.
+`git.baseBranch: null` uses the remote default branch. Set a string to choose
+another target branch. Branch names use `agent/issue-N-<slug>`, with at most 48
+slug characters. Worktree names replace branch slashes with hyphens. The kernel
+never deletes an issue worktree.
 
-## Target base detection
+## Ownership
 
-The target base is derived from:
+An OS-managed advisory lock prevents cooperating processes in one clone from
+owning the same issue. This assumes a local filesystem with working advisory
+locks. The kernel retains the handle through agent work and label cleanup.
+Across clones, the ready-to-in-progress label swap has a narrow accepted race.
+Do not treat it as a distributed lock.
 
-```text
-refs/remotes/<git.remote>/<git.baseBranch>
-```
+The permanent `<runsDir>/issue-N/lock` file must keep its inode, the filesystem
+object behind its path. Never remove or replace the file or its parent
+directory. This rule applies after release and crash recovery too. The PID and
+start time are diagnostic only. Neither their presence nor absence proves
+ownership. The OS releases the lock when the handle closes or owner exits.
 
-When `git.baseBranch` is omitted, `run-once` tries to detect the target branch
-from local git metadata in this order:
+After a hard crash, `patchmill release --issue N` acquires the same lock before
+resetting `in-progress` to `agent-ready`. Contention refuses the operation
+without changing host labels. Label reset is not a lasting cleanup lock.
 
-1. `refs/remotes/<git.remote>/HEAD`
-2. the current branch upstream when it tracks `<git.remote>`
-3. `main`
+## Publication and branch protection
 
-With default settings, the fallback target base is `refs/remotes/origin/main`.
+The skills tell agents to commit and push the issue branch, never push the base
+branch, and never force-push. Shell access cannot enforce those instructions.
+Direct landing is a host control, not a Patchmill feature. Use branch protection
+on the host to prevent direct base-branch pushes.
 
-Set `git.baseBranch` when the repository's pull-request target branch should be
-explicit or when local git metadata cannot identify the remote default branch.
-Explicit `git.baseBranch` values are authoritative and are not overwritten by
-detection.
+Implementation success requires an open, non-draft pull request with the issue
+branch as head and a body that closes the issue. The kernel then sets
+`agent-done`. It does not wait for merge. Uncommitted changes or unpushed
+commits produce warnings rather than invalidating a real ready pull request.
 
-## Containment check failures
+## Operator safety
 
-If `git.baseRef` has commits that are not in the target base, `run-once` exits
-non-zero and lists the commits that would leak into the issue pull request.
-There is no CLI or config override for this guardrail.
+For independent concurrent issues, allocate separate ports, databases, and
+external services. Do not change shared configuration or Git state during active
+attempts. Keep logs and sessions local because they can contain secrets.
 
-Fix the repository state by doing one of the following:
-
-- push or merge the local setup commits into `<git.remote>/<git.baseBranch>`;
-- run `git fetch <git.remote>` if the remote-tracking ref is stale;
-- set `git.baseBranch` to the repository's pull-request target branch if
-  detection chose the wrong branch;
-- set `git.baseRef` to an upstream ref that is already contained in the target
-  base, such as `refs/remotes/origin/main` or `refs/remotes/origin/master`.
-
-`patchmill run-once --dry-run` performs the same check because it previews
-whether a real `run-once` can safely start.
-
-## Shared mutations during explicit concurrency
-
-Independent explicit issues can use one local clone concurrently. Short,
-token-owned Git transactions protect shared fetches, worktree registration,
-recovery refs, and branch deletion. Agent work, validation, and review do not
-hold this guard.
-
-Transactions wait at most 10 seconds by default. A busy transaction stops before
-its action starts and returns `repository-busy`. Each owned Git command has a
-60-second default timeout and bounded shutdown. An interrupted command can leave
-partial mutations. Unknown shutdown evidence remains blocked.
-
-Fetch operations pin the fetched OID before another transaction can replace
-shared fetch data. Branch deletion requires the observed OID. Patchmill does not
-force-update a changed branch, prune unrelated worktrees, or reset the shared
-clone worktree.
-
-## PR-only publication and merge proof
-
-Implementation agents publish only their owned issue branch and a pull request.
-They cannot update or push the target branch directly. `git.allowDirectLand`
-defaults to `false`, and an explicit `true` value is rejected.
-
-An open PR leaves the Issue run in progress. Completion requires the saved PR's
-verified identity and merge commit, plus the remaining finish checkpoints.
-Patchmill verifies the merge commit against a pinned target-base fetch. A
-missing issue branch does not prove completion.
-
-For a fork PR, the publishing remote can differ from the target repository.
-Configure a fetch remote for the target before starting Run attempts. Patchmill
-accepts exactly one preconfigured fetch endpoint with the saved target's
-repository identity. Missing or ambiguous matches block. Patchmill does not
-synthesize URLs or change Git configuration.
-
-During active Run attempts, do not change Git configuration or mutate shared Git
-state manually. Stop affected processes before an upgrade or namespace
-migration. Do not remove another process's locks or force-clean its workspace.
+Use the human-controlled `patchmill-cleanup` skill for worktree removal. Require
+explicit loss confirmation and ownership of the same OS lock throughout cleanup.
+Never use file deletion or diagnostic PID checks as lock recovery. See
+[Run-once](/using-patchmill/run-once/) for supported resume actions.

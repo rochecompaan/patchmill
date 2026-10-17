@@ -1,54 +1,38 @@
 ---
 title: Workflow labels
-description: Reference triage labels and legacy compatibility label fields.
+description: The spec gate and issue lifecycle labels.
 ---
 
-Patchmill uses triage labels to classify whether an issue is ready for
-automation. Configure `triage.stateMap` to map repository labels to
-`agent-ready`, `needs-info`, `agent-unsuitable`, or `blocked`. The configured
-ready label must map to `agent-ready`.
+Labels show the issue's current state. The names below are defaults from
+`patchmill.config.json`. `patchmill labels setup` creates missing labels and
+leaves existing labels unchanged.
 
-## Planning review-gate settings
+| Label           | Meaning                                               | Set by                    | Removed by           |
+| --------------- | ----------------------------------------------------- | ------------------------- | -------------------- |
+| `agent-ready`   | Eligible for a Run attempt.                           | Human or triage           | Kernel on claim      |
+| `in-progress`   | A Run attempt holds this issue.                       | Kernel on claim           | Kernel on release    |
+| `spec-review`   | The spec is pushed. A human must review it.           | Kernel after verification | Kernel on next claim |
+| `spec-approved` | A human approved the spec.                            | Human                     | Human                |
+| `needs-info`    | The agent asked questions, or the Run attempt failed. | Kernel                    | Kernel on next claim |
+| `agent-done`    | A ready pull request that closes the issue exists.    | Kernel after verification | Human                |
 
-`workflow.specApproval.required` and `workflow.planApproval.required` are
-planning review-gate settings for a fresh Issue run. At initialization,
-`planning-pr-v1` snapshots their required values. A required gate means the
-assigned spec or plan phase is reviewed in a planning pull request and advances
-only after that exact pull request is merged and verified.
+## Review and resume
 
-```json
-{
-  "workflow": {
-    "specApproval": {
-      "required": true,
-      "reviewLabel": "spec-review",
-      "approvedLabel": "spec-approved"
-    },
-    "planApproval": {
-      "required": true,
-      "reviewLabel": "plan-review",
-      "approvedLabel": "plan-approved"
-    }
-  }
-}
-```
+At a spec stop, review the pushed spec. Add `spec-approved` and `agent-ready` to
+approve and resume. To request changes, leave approval off, add review comments
+and `agent-ready`, then rerun. The next attempt revises the existing unapproved
+spec in one planning session and stops for review again.
 
-The property names remain stable. `reviewLabel` and `approvedLabel` are
-compatibility data for unfinished legacy runs; adding an approval label does not
-authorize a fresh phase. See the four pull-request sequences in
-[Run-once](/using-patchmill/run-once/#gate-matrix).
+The plan receives review with the same pull request as the code. The kernel
+never treats a pull request merge as spec approval. `agent-done` means that a
+ready pull request closes the issue, not that it merged.
 
-## Blocked triage state
+## Triage outcomes
 
-`blocked` means an otherwise suitable issue waits for specific same-repository
-issues. Triage records the blocker numbers and rechecks them later. When all are
-closed, Patchmill removes `blocked`, restores the ready label, and posts an
-unblock comment.
+Triage returns one configured value from `ready`, `unsuitable`, `blocked`, and
+`needsInfo`. Their defaults are `agent-ready`, `agent-unsuitable`, `blocked`,
+and `needs-info`. `wontfix` is accepted only if configured as one of those four
+values. There is no automatic blocker-resolution pass.
 
-## Legacy approval-label flow
-
-For unfinished legacy Issue runs only, review and approved labels retain their
-previous control meaning. Legacy runs may select ready, spec-approved, or
-plan-approved states and consume deterministic artifact comments. Do not use
-this flow to advance fresh planning state; review, merge, and rerun the exact
-planning pull request instead.
+The kernel changes issue labels and posts run comments. Planning and
+implementation agents own git and the pull request, not issue mutations.

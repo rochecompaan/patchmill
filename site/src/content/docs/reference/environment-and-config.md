@@ -1,80 +1,58 @@
 ---
 title: Environment and configuration reference
-description:
-  Public reference for common Patchmill environment and configuration entry
-  points.
+description: Repository files, Pi environment, and local run output.
 ---
 
-Patchmill combines CLI commands, repository configuration, host-provider
-authentication, and Pi runtime state.
+`patchmill.config.json` controls the host, labels, paths, base branch, three
+skill entry points, Pi agent directory and timeout, and optional spec gate.
+Unknown keys fail by name. See the
+[complete defaults](/reference/configuration-example/).
 
 ## Files and directories
 
-| Path                      | Purpose                                       |
-| ------------------------- | --------------------------------------------- |
-| `patchmill.config.json`   | Repository-level Patchmill configuration.     |
-| `.patchmill/skills/`      | Project-local managed or custom skills.       |
-| `.patchmill/pi-agent/`    | Patchmill-owned repo-local Pi provider state. |
-| `.patchmill/runs/`        | Local run-state records.                      |
-| `.patchmill/triage-runs/` | Local triage-run records.                     |
+| Default path                        | Purpose                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| `patchmill.config.json`             | Shared repository configuration.                                          |
+| `.patchmill/skills/`                | Installed skills and `patchmill-skill-pack.json` with sources and hashes. |
+| `.patchmill/pi-agent/`              | Local Pi credentials, settings, and reviewer definition.                  |
+| `.worktrees/`                       | One worktree per issue branch.                                            |
+| `docs/specs/` and `docs/plans/`     | Specs and plans committed on the issue branch.                            |
+| `.patchmill/runs/issue-N/lock`      | Permanent local OS lock with diagnostic JSON.                             |
+| `.patchmill/runs/issue-N/<run-id>/` | Prompt, session logs, sessions, and write-only result.                    |
+| `.patchmill/runs/triage/<run-id>/`  | Triage prompt, log, and sessions.                                         |
 
-## Common commands
+`init` adds local Git excludes for worktrees, runs, and the agent directory.
+Commit shared configuration and skills, not credentials or local run output.
+Never remove or replace the permanent lock file or its parent directory.
 
-| Command                      | Purpose                                                                |
-| ---------------------------- | ---------------------------------------------------------------------- |
-| `patchmill init`             | Create or repair local Patchmill configuration and recommended skills. |
-| `patchmill auth`             | Configure or repair repo-local Pi runtime authentication.              |
-| `patchmill doctor`           | Run read-only checks for repository readiness.                         |
-| `patchmill triage --dry-run` | Preview issue triage without mutating issues.                          |
-| `patchmill triage`           | Run issue triage with configured provider behavior.                    |
-| `patchmill run-once`         | Advance one ready issue through the configured production line.        |
-| `patchmill skills update`    | Update Patchmill-managed project-local skills.                         |
+## Pi environment
 
-## Environment variables
+Patchmill sets `PI_CODING_AGENT_DIR` to the configured agent directory for Pi
+processes. Other provider environment comes from the shell and host CLIs.
+Patchmill has no host-login environment override. GitHub uses active `gh`
+authentication. Forgejo uses Tea's default profile when `host.login` is empty,
+or the explicit profile alias when set.
 
-Patchmill inherits provider and runtime environment from the shell and the
-configured CLIs. Use `patchmill auth` for Patchmill-owned Pi runtime setup and
-provider-specific CLI commands such as `gh auth status` or `tea login list` for
-host access checks.
+`patchmill auth` opens interactive Pi. Pi owns `/login`, `/model`, and runtime
+settings. Patchmill does not keep a second authentication or model record.
+Run-once loads `pi-subagents` through runtime `-e` arguments. Triage supplies no
+explicit extension paths. This does not guarantee global extension isolation.
 
-| Variable               | Purpose                                                                                                            |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `PATCHMILL_HOST_LOGIN` | Host account/login override for providers with named-login support, such as `forgejo-tea`; ignored by `github-gh`. |
+## Operator commands
 
-## Issue state configuration
+| Command                                                    | Behaviour                                                                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                                |
+| `patchmill auth`                                           | Run Pi interactively with the agent directory set. Login and model choice use Pi's `/login` and `/model`. Patchmill records nothing. |
+| `patchmill doctor`                                         | Read-only checks: host CLI logged in, labels exist, worktree directory ignored, skills present, Pi answers a smoke prompt.           |
+| `patchmill labels setup`                                   | Create missing labels.                                                                                                               |
+| `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                |
+| `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                               |
+| `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                              |
+| `patchmill version`                                        | Print the version.                                                                                                                   |
+| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                   |
 
-`issueState.provider` selects where Patchmill stores its own workflow state. The
-default is `labels`. Set it to `comments` for repositories where you can comment
-on issues but should not change labels:
-
-```json
-{
-  "issueState": {
-    "provider": "comments",
-    "trustedAuthors": ["your-login"]
-  }
-}
-```
-
-When `trustedAuthors` is omitted, Patchmill trusts the authenticated host user.
-`patchmill doctor` validates trusted-author resolution and verifies comment
-permission on the first state write.
-
-## Git configuration notes
-
-`git.baseBranch` controls the pull-request target branch used by `run-once`. If
-it is omitted, Patchmill checks `refs/remotes/<git.remote>/HEAD`, then the
-current branch upstream when it tracks the same remote, and finally falls back
-to `main`.
-
-Set `git.baseBranch` explicitly when local git metadata cannot identify the PR
-target or when repository policy requires a fixed branch. Explicit values are
-authoritative.
-
-## Verification command
-
-Run this after changing configuration, credentials, skills, or local paths:
-
-```sh
-patchmill doctor
-```
+`doctor` is read-only with respect to repository and host configuration, but it
+writes local smoke logs and makes a model call. Triage dry run also makes model
+calls and writes local output. Run-once dry run does not claim or run Pi. Logs
+and sessions can contain sensitive content. Keep them local.
