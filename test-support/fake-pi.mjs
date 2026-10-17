@@ -65,7 +65,14 @@ if (step.pullRequest) {
   }
   writeFileSync(stateFile, JSON.stringify(state));
 }
+if (step.issuePatch) {
+  const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
+  const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  Object.assign(state.issues[0], step.issuePatch);
+  writeFileSync(stateFile, JSON.stringify(state));
+}
 if (step.stdout !== undefined) console.log(step.stdout);
+if (step.stderr !== undefined) console.error(step.stderr);
 for (const name of step.printEnv ?? []) console.log(process.env[name] ?? "");
 if (step.sleepMs)
   await new Promise((resolve) => setTimeout(resolve, step.sleepMs));

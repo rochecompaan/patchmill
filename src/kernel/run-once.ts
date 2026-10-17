@@ -18,6 +18,7 @@ import { supervisePi } from "./pi-supervisor.ts";
 import { parseAgentResult, lastJsonBlock } from "./result.ts";
 import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
+import { KERNEL_COMMENT, specReviewComment } from "./comments.ts";
 import { newRunId } from "./names.ts";
 
 export type RunOnceOptions = {
@@ -80,11 +81,17 @@ export async function runOneIssue(
   options: RunOnceOptions,
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
-  const selected = selectIssue(
-    await host.listOpenIssues(),
-    config.labels,
-    options.issue,
-  );
+  let issues: Issue[];
+  try {
+    issues =
+      options.issue === undefined
+        ? await host.listOpenIssues()
+        : [await host.viewIssue(options.issue)];
+  } catch (error) {
+    if (options.issue === undefined) throw error;
+    return { status: "refused", issue: options.issue, reason: String(error) };
+  }
+  const selected = selectIssue(issues, config.labels, options.issue);
   if (!selected)
     return options.issue === undefined
       ? { status: "no-work" }
@@ -141,7 +148,7 @@ export async function runOneIssue(
     try {
       const claim = claimSwap(config.labels);
       await host.setLabels(issueNumber, claim.add, claim.remove);
-      const issue = await host.viewIssue(issueNumber);
+      let issue = await host.viewIssue(issueNumber);
       if (
         issue.state !== "open" ||
         !issue.labels.includes(config.labels.inProgress)
@@ -151,6 +158,7 @@ export async function runOneIssue(
       }
       await fs.mkdir(runDir, { recursive: true });
       for (let index = 0; index < 3; index++) {
+        issue = await host.viewIssue(issueNumber);
         const before = await collect(issue);
         if (before.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${before.branches.join(", ")}`;
@@ -166,7 +174,7 @@ export async function runOneIssue(
           summary =
             label === "done"
               ? "The pull request is merged."
-              : "The spec is ready for review. Approval is required.";
+              : specReviewComment(facts);
           break;
         }
         const phase = decision.phase;
@@ -184,7 +192,7 @@ export async function runOneIssue(
           skill,
           gateRequired: gate,
           timeoutMinutes: config.pi.timeoutMinutes,
-          trusted: trustedAuthors(config),
+          trusted: trustedAuthors(config, (await host.checkCli()).login),
         });
         const revision =
           index === 0 && ready && derivePhase(facts, gate).kind === "stop";
@@ -205,6 +213,7 @@ export async function runOneIssue(
           skillPath: skill.path,
           promptPath,
           logPath,
+          aggregateLogPath: join(runDir, "pi.log"),
           extensionPaths: deps.extensionPaths,
           timeoutMs: config.pi.timeoutMinutes * 60_000,
           ...(options.signal ? { signal: options.signal } : {}),
@@ -217,6 +226,7 @@ export async function runOneIssue(
           timedOut: session.timedOut,
           status: result.ok ? result.result.status : "invalid",
         });
+        issue = await host.viewIssue(issueNumber);
         const after = await collect(issue);
         if (after.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${after.branches.join(", ")}`;
@@ -224,11 +234,13 @@ export async function runOneIssue(
         }
         const verified = verifyOutcome({
           issue: issueNumber,
+          repository: await host.repository(),
           phase,
           result,
           session,
           facts: after.facts,
           gateRequired: gate,
+          revision,
           logPath,
           uncommitted: await git.hasUncommittedChanges(facts.worktree),
           unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
@@ -243,7 +255,7 @@ export async function runOneIssue(
         }
         if (options.planOnly && phase === "planning") {
           label = gate ? "specReview" : "needsInfo";
-          summary = "planning complete";
+          summary = gate ? specReviewComment(after.facts) : "planning complete";
           break;
         }
         const next = derivePhase(after.facts, gate);
@@ -264,7 +276,7 @@ export async function runOneIssue(
           await host.setLabels(issueNumber, release.add, release.remove);
           await host.commentIssue(
             issueNumber,
-            [line, summary, cost, ...warnings].join("\n\n"),
+            [KERNEL_COMMENT, line, summary, cost, ...warnings].join("\n\n"),
           );
         } catch (error) {
           label = "needsInfo";

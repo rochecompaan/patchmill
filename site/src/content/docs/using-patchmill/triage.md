@@ -19,10 +19,13 @@ flags are `--issue N` and `--dry-run`.
 ## Candidates
 
 Without `--issue`, Patchmill selects open issues with no configured workflow
-label. An issue with `needs-info` is also eligible when its latest comment comes
-from a trusted author. Trust comes from `host.login` and `host.trustedAuthors`.
-Explicit `--issue N` requests classification of that issue without the normal
-candidate filter.
+label. An issue with only `needs-info` among those labels is also eligible when
+its latest comment is a genuine reply from a trusted author. Kernel comments do
+not count as replies. Trust comes from the authenticated username and
+`host.trustedAuthors`. GitHub also trusts its configured `host.login`, but a Tea
+profile alias does not grant trust. Patchmill rechecks eligibility before each
+automatic session. Explicit `--issue N` requests classification of that issue
+without the normal candidate filter.
 
 The kernel does not automatically recheck blocked issues when dependencies
 close. Use explicit triage after the dependency changes.

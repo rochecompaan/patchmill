@@ -12,6 +12,8 @@ import { piArgs, supervisePi, type PiSessionOptions } from "./pi-supervisor.ts";
 async function setup(t: TestContext): Promise<PiSessionOptions> {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-pi-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  t.mock.method(process.stdout, "write", () => true);
+  t.mock.method(process.stderr, "write", () => true);
   return {
     command: {
       command: process.execPath,
@@ -391,3 +393,40 @@ for (const fault of ["write", "close"]) {
     assert.equal(handle?.fd, -1);
   });
 }
+
+test("production invocation tees stdout and stderr to console without a callback", async (t) => {
+  const options = await setup(t);
+  const stdout: string[] = [],
+    stderr: string[] = [];
+  t.mock.method(process.stdout, "write", (chunk: string) => {
+    stdout.push(String(chunk));
+    return true;
+  });
+  t.mock.method(process.stderr, "write", (chunk: string) => {
+    stderr.push(String(chunk));
+    return true;
+  });
+  const result = await supervisePi(options);
+  assert.equal(result.stdout, "ok");
+  assert.equal(stdout.join(""), "ok");
+  assert.equal(stderr.join(""), "warning");
+  const log = await fs.readFile(options.logPath, "utf8");
+  assert.ok(log.includes("ok") && log.includes("warning"));
+});
+
+// Failing the second open must still close the first (phase-log) descriptor.
+test("aggregate log open failure closes the phase log and never launches Pi", async (t) => {
+  const options = await setup(t);
+  const open = fs.open;
+  let phaseLog: Awaited<ReturnType<typeof fs.open>> | undefined;
+  t.mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
+    phaseLog = await open(...args);
+    return phaseLog;
+  });
+  await assert.rejects(
+    supervisePi({ ...options, aggregateLogPath: options.cwd }),
+    { code: "EISDIR" },
+  );
+  assert.equal(phaseLog?.fd, -1);
+  assert.equal(await fs.readFile(options.logPath, "utf8"), "");
+});

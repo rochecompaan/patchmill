@@ -29,6 +29,10 @@ test("fresh planning pushes a spec and draft PR, then releases with one cost com
   assert.equal(issue.comments.length, 1);
   assert.match(issue.comments[0]!.body, /Login work complete/);
   assert.match(issue.comments[0]!.body, /Cost:.*0.05/);
+  assert.ok(issue.comments[0]!.body.includes(spec));
+  assert.ok(
+    issue.comments[0]!.body.includes("https://example.invalid/pulls/1"),
+  );
   assert.equal(c.host.state().pullRequests[0]!.draft, true);
   assert.equal(await c.git(["show", `origin/${branch}:${spec}`]), "design");
   const record = await c.records();
@@ -53,9 +57,13 @@ test("approved spec runs planning then implementation to a verified ready PR", a
       writeFiles: { [plan]: "plan" },
       commit: "Plan",
       push: true,
+      stdout: "planning output",
+      stderr: "planning warning",
       result: done,
     },
     {
+      stdout: "implementation output",
+      stderr: "implementation warning",
       writeFiles: { "login.ts": "code" },
       commit: "Code",
       push: true,
@@ -72,6 +80,20 @@ test("approved spec runs planning then implementation to a verified ready PR", a
   ]);
   assert.equal(c.host.state().issues[0]!.comments.length, 1);
   assert.equal((await c.records()).result.sessions.length, 2);
+  const dir = (await c.records()).dir;
+  const aggregate = await fs.readFile(`${dir}/pi.log`, "utf8");
+  for (const text of [
+    "planning output",
+    "planning warning",
+    "implementation output",
+    "implementation warning",
+  ])
+    assert.ok(aggregate.includes(text));
+  assert.equal(
+    await fs.readFile(`${dir}/pi.log`, "utf8"),
+    (await fs.readFile(`${dir}/session-1.log`, "utf8")) +
+      (await fs.readFile(`${dir}/session-2.log`, "utf8")),
+  );
   assert.equal(await c.git(["show", `origin/${branch}:login.ts`]), "code");
 });
 
@@ -104,7 +126,20 @@ test("explicit issue without ready stops at the normal spec gate without Pi", as
   await c.mutate((s) => {
     s.issues[0]!.labels = [];
   });
+  await c.mutate((s) =>
+    s.pullRequests.push({
+      number: 1,
+      url: "https://example.invalid/pulls/1",
+      state: "open",
+      draft: true,
+      body: "",
+      headBranch: branch,
+    }),
+  );
   assert.equal((await c.run({ issue: 9 })).status, "stopped");
+  const comment = c.host.state().issues[0]!.comments[0]!.body;
+  assert.ok(comment.includes(spec));
+  assert.ok(comment.includes("https://example.invalid/pulls/1"));
   assert.deepEqual(c.host.state().issues[0]!.labels, ["spec-review"]);
   await assert.rejects(fs.stat(`${c.script}.counter`), { code: "ENOENT" });
 });
@@ -224,3 +259,194 @@ for (const state of ["closed", "in-progress"] as const) {
     await assert.rejects(fs.stat(c.lockPath), { code: "ENOENT" });
   });
 }
+
+for (const hasPlan of [false, true]) {
+  test(`shared artifact directory requires a distinct plan: plan=${hasPlan}`, async (t) => {
+    const c = await setupRun(t);
+    c.config.paths.specsDir = "docs";
+    c.config.paths.plansDir = "docs";
+    await c.seed({
+      "docs/2026-10-15-issue-9-add-login-design.md": "spec",
+      ...(hasPlan ? { "docs/2026-10-15-issue-9-add-login.md": "plan" } : {}),
+    });
+    await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
+    const outcome = await c.run({ dryRun: true });
+    assert.equal(outcome.status, "dry-run");
+    if (outcome.status === "dry-run")
+      assert.deepEqual(outcome.derived, {
+        kind: "phase",
+        phase: hasPlan ? "implementation" : "planning",
+      });
+  });
+}
+
+for (const login of ["work", ""]) {
+  test(`run envelope trusts authenticated Tea author with selector ${JSON.stringify(login)}`, async (t) => {
+    const c = await setupRun(t, [
+      { result: { status: "needs-input", summary: "Question" } },
+    ]);
+    c.config.host = {
+      provider: "forgejo-tea",
+      login,
+      trustedAuthors: ["reviewer"],
+    };
+    c.host.checkCli = async () => ({
+      ok: true,
+      message: "authenticated",
+      login: "alice",
+    });
+    await c.mutate((s) => {
+      s.issues[0]!.comments = ["alice", "work", "reviewer"].map((author) => ({
+        author,
+        body: "Reply",
+        createdAt: "2026-10-16",
+      }));
+    });
+    await c.run();
+    const prompt = await (await c.records()).prompt();
+    assert.match(prompt, /alice \(trusted,/);
+    assert.match(prompt, /work \(untrusted,/);
+    assert.match(prompt, /reviewer \(trusted,/);
+  });
+}
+
+test("explicit issue is viewed independently of automatic enumeration", async (t) => {
+  const c = await setupRun(t);
+  c.host.listOpenIssues = async () => [];
+  assert.equal((await c.run({ issue: 9, dryRun: true })).status, "dry-run");
+  assert.equal(
+    c.host.state().calls.some((call) => /setLabels|commentIssue/.test(call)),
+    false,
+  );
+});
+
+test("approval revoked during planning prevents an implementation session", async (t) => {
+  const c = await setupRun(t, [
+    {
+      writeFiles: { [plan]: "plan" },
+      commit: "Plan",
+      push: true,
+      issuePatch: { labels: ["in-progress"] },
+      result: done,
+    },
+  ]);
+  await c.seed({ [spec]: "spec" });
+  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
+  await c.run();
+  assert.equal((await c.records()).result.sessions.length, 1);
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["spec-review"]);
+});
+
+test("comments added during planning reach the implementation envelope", async (t) => {
+  const c = await setupRun(t, [
+    {
+      writeFiles: { [plan]: "plan" },
+      commit: "Plan",
+      push: true,
+      issuePatch: {
+        comments: [
+          {
+            author: "reviewer",
+            body: "Fresh review comment",
+            createdAt: "2026-10-16",
+          },
+        ],
+      },
+      result: done,
+    },
+    { result: { status: "needs-input", summary: "Need help" } },
+  ]);
+  await c.seed({ [spec]: "spec" });
+  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
+  await c.run();
+  assert.match(await (await c.records()).prompt(), /Fresh review comment/);
+});
+
+test("approval granted during ready revision still stops after its one session", async (t) => {
+  const c = await setupRun(t, [
+    {
+      writeFiles: { [spec]: "revision", [plan]: "plan" },
+      commit: "Revise",
+      push: true,
+      issuePatch: { labels: ["in-progress", "spec-approved"] },
+      result: done,
+    },
+  ]);
+  await c.seed({ [spec]: "spec" });
+  await c.run();
+  assert.equal((await c.records()).result.sessions.length, 1);
+  assert.deepEqual(c.host.state().issues[0]!.labels, [
+    "spec-approved",
+    "spec-review",
+  ]);
+});
+
+test("kernel run-report from the authenticated account does not reopen automatic triage", async (t) => {
+  const c = await setupRun(t, [
+    { result: { status: "needs-input", summary: "Question" } },
+    { stdout: '```json\n{"label":"agent-ready","comment":"Clear"}\n```' },
+  ]);
+  await c.run();
+  const { runTriage } = await import("./triage.ts");
+  assert.equal(c.host.state().issues[0]!.comments[0]!.author, "owner");
+  assert.deepEqual(await runTriage(c.config, c.deps, {}), []);
+  assert.equal(await fs.readFile(`${c.script}.counter`, "utf8"), "1");
+});
+
+test("a PR closing a foreign repository cannot set agent-done", async (t) => {
+  const c = await setupRun(t, [
+    { pullRequest: { draft: false, body: "Fixes other/repo#9" }, result: done },
+  ]);
+  await c.seed({ [spec]: "spec", [plan]: "plan" });
+  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
+  assert.equal((await c.run()).status, "stopped");
+  assert.deepEqual(c.host.state().issues[0]!.labels, [
+    "spec-approved",
+    "needs-info",
+  ]);
+});
+
+for (const checkout of [["-b", "operator-branch"], ["main"], ["--detach"]]) {
+  test(`wrong worktree ${checkout.join(" ")} refuses Pi at the run boundary`, async (t) => {
+    const c = await setupRun(t);
+    await c.seed({ [spec]: "spec" });
+    await c.run({ dryRun: true });
+    if (checkout[0] === "main") await c.git(["checkout", "--detach"]);
+    await c.git(["checkout", ...checkout], c.worktree);
+    await fs.writeFile(`${c.worktree}/operator.txt`, "keep");
+    const result = await c.run();
+    assert.equal(result.status, "stopped");
+    if (result.status === "stopped")
+      assert.match(result.summary, /expected branch/);
+    assert.equal(
+      await fs.readFile(`${c.worktree}/operator.txt`, "utf8"),
+      "keep",
+    );
+    await assert.rejects(fs.stat(`${c.script}.counter`), { code: "ENOENT" });
+  });
+}
+
+test("GitHub runtime envelope retains configured identity alongside authenticated identity", async (t) => {
+  const c = await setupRun(t, [
+    { result: { status: "needs-input", summary: "Question" } },
+  ]);
+  c.config.host = {
+    provider: "github-gh",
+    login: "old-owner",
+    trustedAuthors: ["reviewer"],
+  };
+  c.host.checkCli = async () => ({
+    ok: true,
+    message: "authenticated",
+    login: "alice",
+  });
+  await c.mutate((s) => {
+    s.issues[0]!.comments = ["alice", "old-owner", "reviewer"].map(
+      (author) => ({ author, body: "Reply", createdAt: "2026-10-16" }),
+    );
+  });
+  await c.run();
+  const prompt = await (await c.records()).prompt();
+  for (const author of ["alice", "old-owner", "reviewer"])
+    assert.ok(prompt.includes(`${author} (trusted,`));
+});

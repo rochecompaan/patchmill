@@ -108,19 +108,31 @@ export class GitHubHost implements Host, RepositorySetupHost {
   }
   async listOpenIssues(): Promise<Issue[]> {
     const result = await this.ghOk([
-      "issue",
-      "list",
-      "--state",
-      "open",
-      "--limit",
-      "200",
-      "--json",
-      issueFields,
+      "api",
+      "--paginate",
+      "--slurp",
+      "repos/{owner}/{repo}/issues?state=open&per_page=100",
     ]);
-    return (parseJson(result.stdout, "gh issue list") as RawIssue[]).map(
-      mapIssue,
-    );
+    type ApiIssue = Omit<RawIssue, "comments"> & {
+      user: { login: string };
+      html_url: string;
+      created_at: string;
+      pull_request?: unknown;
+    };
+    return (parseJson(result.stdout, "gh api issues") as ApiIssue[][])
+      .flat()
+      .filter((raw) => !raw.pull_request)
+      .map((raw) =>
+        mapIssue({
+          ...raw,
+          author: raw.user,
+          comments: [],
+          url: raw.html_url,
+          createdAt: raw.created_at,
+        }),
+      );
   }
+
   async viewIssue(n: number): Promise<Issue> {
     const result = await this.ghOk([
       "issue",

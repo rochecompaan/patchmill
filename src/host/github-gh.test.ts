@@ -194,28 +194,24 @@ test("commentIssue sends the body through stdin", async () => {
 test("listOpenIssues throws CommandFailedError for gh failure", async () => {
   const runner = recordingRunner([
     {
-      match: /gh issue list/,
+      match: /gh api --paginate/,
       result: { code: 1, stderr: "permission denied" },
     },
   ]);
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
   await assert.rejects(host.listOpenIssues(), (error) => {
     assert.ok(error instanceof CommandFailedError);
-    assert.match(error.message, /gh issue list/);
+    assert.match(error.message, /gh api/);
     assert.match(error.message, /permission denied/);
     return true;
   });
   assert.deepEqual(runner.calls, [
     [
       "gh",
-      "issue",
-      "list",
-      "--state",
-      "open",
-      "--limit",
-      "200",
-      "--json",
-      "number,title,body,labels,state,url,author,createdAt",
+      "api",
+      "--paginate",
+      "--slurp",
+      "repos/{owner}/{repo}/issues?state=open&per_page=100",
     ],
   ]);
 });
@@ -313,4 +309,51 @@ test("factory selects GitHub", () => {
     createHostForProvider("github-gh", "octocat", runner, "/repo") instanceof
       host.constructor,
   );
+});
+
+test("enumerates all GitHub issue pages, excluding PRs, so oldest selection and triage see older issues", async () => {
+  const raw = (number: number) => ({
+    number,
+    title: "Issue",
+    body: "Details",
+    labels: [{ name: "agent-ready" }],
+    state: "open",
+    html_url: `https://example/${number}`,
+    user: { login: "alice" },
+    created_at: number === 201 ? "2020-01-01" : "2026-01-01",
+    comments: 2,
+  });
+  const pages = [
+    Array.from({ length: 100 }, (_, i) => raw(i + 1)),
+    Array.from({ length: 100 }, (_, i) => raw(i + 101)),
+    [raw(201), { ...raw(202), pull_request: {} }],
+  ];
+  const runner: import("../process/command.ts").CommandRunner = async (
+    _command,
+    args,
+  ) => ({
+    code: 0,
+    stderr: "",
+    stdout: JSON.stringify(
+      args.includes("--paginate") && args.includes("--slurp")
+        ? pages
+        : pages[0],
+    ),
+  });
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  const issues = await host.listOpenIssues();
+  assert.equal(issues.length, 201);
+  const { selectIssue } = await import("../kernel/run-once.ts");
+  const { selectTriageCandidates } = await import("../kernel/triage.ts");
+  const { DEFAULT_CONFIG } = await import("../config/config.ts");
+  assert.equal(selectIssue(issues, DEFAULT_CONFIG.labels)?.number, 201);
+  assert.equal(
+    selectTriageCandidates(
+      issues.map((i) => ({ ...i, labels: [] })),
+      DEFAULT_CONFIG.labels,
+      [],
+    ).length,
+    201,
+  );
+  assert.equal(issues[200]!.author, "alice");
 });

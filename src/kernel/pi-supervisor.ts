@@ -10,6 +10,7 @@ export type PiSessionOptions = {
   skillPath?: string;
   promptPath: string;
   logPath: string;
+  aggregateLogPath?: string;
   extensionPaths: string[];
   timeoutMs: number;
   graceMs?: number;
@@ -60,7 +61,7 @@ export async function supervisePi(
     durationMs: 0,
   };
   if (result.aborted) return result;
-  const log = await fs.open(options.logPath, "w");
+  const logs: Awaited<ReturnType<typeof fs.open>>[] = [];
   const errors: unknown[] = [];
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let escalation: ReturnType<typeof setTimeout> | undefined;
@@ -72,6 +73,9 @@ export async function supervisePi(
   let closed = false;
   let abort: (() => void) | undefined;
   try {
+    logs.push(await fs.open(options.logPath, "w"));
+    if (options.aggregateLogPath)
+      logs.push(await fs.open(options.aggregateLogPath, "a"));
     const child = spawn(
       options.command.command,
       piCommandArgs(options.command, piArgs(options)),
@@ -117,7 +121,7 @@ export async function supervisePi(
       writes = writes.then(async () => {
         if (logFailed) return;
         try {
-          await log.writeFile(chunk);
+          for (const log of logs) await log.writeFile(chunk);
         } catch (error) {
           logFailed = true;
           fail(error);
@@ -125,7 +129,8 @@ export async function supervisePi(
       });
       if (!callbackFailed) {
         try {
-          options.onOutput?.(chunk);
+          if (options.onOutput) options.onOutput(chunk);
+          else (stdout ? process.stdout : process.stderr).write(chunk);
         } catch (error) {
           callbackFailed = true;
           fail(error);
@@ -180,10 +185,12 @@ export async function supervisePi(
     clearTimeout(timeout);
     clearTimeout(escalation);
     if (abort) options.signal?.removeEventListener("abort", abort);
-    try {
-      await log.close();
-    } catch (error) {
-      errors.push(error);
+    for (const log of logs) {
+      try {
+        await log.close();
+      } catch (error) {
+        errors.push(error);
+      }
     }
   }
   if (errors.length === 1) throw errors[0];

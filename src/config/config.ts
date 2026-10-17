@@ -155,7 +155,10 @@ export async function loadConfig(repoRoot: string): Promise<PatchmillConfig> {
   return parseConfig(raw);
 }
 
-export function trustedAuthors(config: PatchmillConfig): string[] {
-  const { login, trustedAuthors: authors } = config.host;
-  return [...new Set([...(login === "" ? [] : [login]), ...authors])];
+export function trustedAuthors(config: PatchmillConfig, login = ""): string[] {
+  const identities = [login];
+  if (config.host.provider === "github-gh") identities.push(config.host.login);
+  return [
+    ...new Set([...identities.filter(Boolean), ...config.host.trustedAuthors]),
+  ];
 }

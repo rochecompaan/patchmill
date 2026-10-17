@@ -10,6 +10,7 @@ import type { RunOnceDeps } from "./run-once.ts";
 import { renderTriageEnvelope } from "./envelope.ts";
 import { newRunId } from "./names.ts";
 import { supervisePi } from "./pi-supervisor.ts";
+import { KERNEL_COMMENT } from "./comments.ts";
 import { parseJsonBlock } from "./result.ts";
 
 export type TriageResult = { label: string; comment: string };
@@ -30,8 +31,11 @@ export function selectTriageCandidates(
 ): Issue[] {
   return issues.filter((issue) => {
     if (issue.state !== "open") return false;
-    if (!issue.labels.some((label) => Object.values(labels).includes(label)))
-      return true;
+    const classified = issue.labels.filter((label) =>
+      Object.values(labels).includes(label),
+    );
+    if (!classified.length) return true;
+    if (classified.some((label) => label !== labels.needsInfo)) return false;
     const latest = issue.comments.reduce<Issue["comments"][number] | undefined>(
       (last, comment) =>
         !last || Date.parse(comment.createdAt) >= Date.parse(last.createdAt)
@@ -42,7 +46,8 @@ export function selectTriageCandidates(
     return (
       issue.labels.includes(labels.needsInfo) &&
       latest !== undefined &&
-      trusted.includes(latest.author)
+      trusted.includes(latest.author) &&
+      !latest.body.startsWith(KERNEL_COMMENT)
     );
   });
 }
@@ -68,7 +73,7 @@ export async function runTriage(
   options: TriageOptions,
 ): Promise<Array<{ issue: number; label: string; applied: boolean }>> {
   const { host, repoRoot, output } = deps;
-  const trusted = trustedAuthors(config);
+  const trusted = trustedAuthors(config, (await host.checkCli()).login);
   const warn = (issue: number, message: string) =>
     output.stderr(`Warning: Issue #${issue}: ${message}`);
   const candidates: number[] = [];
@@ -103,6 +108,11 @@ export async function runTriage(
     if (options.signal?.aborted) break;
     try {
       const issue = await host.viewIssue(number);
+      if (
+        options.issue === undefined &&
+        !selectTriageCandidates([issue], config.labels, trusted).length
+      )
+        continue;
       const runDir = resolve(
         repoRoot,
         config.paths.runsDir,
@@ -165,7 +175,8 @@ export async function runTriage(
           [label],
           allowed.filter((value) => value !== label),
         );
-        if (comment !== "") await host.commentIssue(number, comment);
+        if (comment !== "")
+          await host.commentIssue(number, `${KERNEL_COMMENT}\n${comment}`);
       }
       outcomes.push({ issue: number, label, applied: !options.dryRun });
     } catch (error) {
