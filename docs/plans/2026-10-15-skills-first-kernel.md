@@ -1423,7 +1423,7 @@ wrapper list; run `npm test` (pass).
 - Create: `src/cli/commands/init/main.ts`,
   `src/cli/commands/init/skill-installer.ts`,
   `src/cli/commands/init/agent-dir.ts`
-- Modify: `src/cli/main.ts`
+- Modify: `src/cli/main.ts`, `scripts/smoke-packed-artifact.mjs`
 - Test: `src/cli/commands/init/skill-installer.test.ts`,
   `src/cli/commands/init/agent-dir.test.ts`,
   `src/cli/commands/init/main.test.ts`
@@ -1455,6 +1455,8 @@ export const SUPERPOWERS_SKILLS = [
   "verification-before-completion",
   "requesting-code-review",
   "receiving-code-review",
+  "using-git-worktrees",
+  "finishing-a-development-branch",
   "using-superpowers",
 ];
 export const SIMPLE_ENGLISH_SKILLS = ["simple-english"];
@@ -1482,12 +1484,20 @@ export async function ensureLocalExcludes(
 ```
 
 `init` order: load config if present (invalid fails); else write
-`DEFAULT_CONFIG` with `host.provider` from the flag and `host.login` from
-`--login`, or from `checkCli().login` when the CLI answers, else `""` (a host
-CLI failure prints a warning and never fails `init`); `installSkills`;
-`provisionAgentDir`; `ensureLocalExcludes` with `.worktrees/`,
-`.patchmill/pi-agent/`, `.patchmill/runs/`. Print one line per step. Idempotent:
-a second run reports `unchanged` for every file and exit 0.
+`DEFAULT_CONFIG` with `host.provider` from the flag. An explicit `--login` sets
+`host.login`. Without that flag, `github-gh` uses `checkCli().login` when
+available, else `""`. For `forgejo-tea`, keep the default `""` unless `--login`
+names a Tea login alias. The authenticated username returned by `checkCli()` is
+not a Tea login alias. A host CLI failure prints a warning and never fails
+`init`. Then call `installSkills`; `provisionAgentDir`; `ensureLocalExcludes`
+with `.worktrees/`, `.patchmill/pi-agent/`, `.patchmill/runs/`. Print one line
+per step. Idempotent: a second run reports `unchanged` for every file and
+exit 0.
+
+Copy every file and subdirectory within each selected skill directory, including
+sibling prompt templates. Keep both `using-git-worktrees` and
+`finishing-a-development-branch` in the installed Superpowers list. The packed
+smoke fixture must be a git repository before it calls `init`.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -1495,9 +1505,11 @@ Installer: installs the three lists into a temp dir, manifest lists every file
 with a sha256 that matches the file, a modified installed file is restored on
 rerun, rerun reports `written: 0`. Agent dir: `agents/reviewer.md` written;
 rerun does not rewrite (mtime unchanged). Excludes: appends only missing
-patterns. `main.test.ts` with a stub host: writes config with `login` from
-`checkCli`; existing valid config is untouched byte for byte; invalid config
-returns 1 naming the key; host CLI failure still exits 0 with a warning.
+patterns. `main.test.ts` with a stub host: `github-gh` writes config with
+`login` from `checkCli`; `forgejo-tea` keeps the empty default when no login
+flag is given; an explicit `--login` wins for either provider. Existing valid
+config is untouched byte for byte; invalid config returns 1 naming the key; host
+CLI failure still exits 0 with a warning.
 
 - [ ] **Step 2: Run tests; expect failure**
 - [ ] **Step 3: Implement; register `init`**
