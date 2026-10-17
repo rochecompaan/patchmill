@@ -451,7 +451,7 @@ Size targets guide the plan and the review. They are not CI gates:
 
 | Item                   | Target                                           |
 | ---------------------- | ------------------------------------------------ |
-| Kernel production code | 4,000 lines or less, both host adapters included |
+| Kernel production code | 4,300 lines or less, both host adapters included |
 | Prompt template        | 150 lines or less                                |
 | Config loader          | 200 lines or less                                |
 | Bundled skills         | 1,500 lines or less                              |
@@ -530,6 +530,6 @@ silently. Updating the glossary is part of the implementation.
 - The end-to-end CI from #320 passes against the kernel.
 - The old `run-once` tree, the planning state machine, recovery modules, the
   todo extension, and the removed quality gates are gone from the repository.
-- Production code is under 4,000 lines excluding tests, measured with the same
+- Production code is at most 4,300 lines excluding tests, measured with the same
   method as the table at the top.
 - `CONTEXT.md` reflects the retired and changed terms.

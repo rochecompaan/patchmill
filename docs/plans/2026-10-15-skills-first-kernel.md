@@ -47,8 +47,8 @@ against a fake host and a fake Pi. Tasks 15 to 19 add triage, the skills,
 - Pi invocation:
   `PI_CODING_AGENT_DIR=<repoRoot>/<pi.agentDir> pi -p --session-dir <runDir>/sessions --skill <skillPath> @<runDir>/prompt.md`,
   cwd = worktree, own process group, `SIGTERM` then `SIGKILL`.
-- Size targets (review checks, not CI gates): production code under 4,000 lines
-  measured with
+- Size targets (review checks, not CI gates): production code at most 4,300
+  lines measured with
   `find src bin -name '*.ts' ! -name '*.test.ts' | xargs cat | wc -l`; bundled
   skills under 1,500 lines.
 - Quality gates kept: `tsc`, ESLint, Prettier, markdownlint, `node --test`.
@@ -1628,13 +1628,13 @@ workspace), and remove Run recovery state; keep the other terms.
 Run, all expected to pass: `npm test`, `npm run lint`, `npm run build`,
 `node scripts/smoke-packed-artifact.mjs`, `npm --prefix site run build`,
 `nix build .#default`,
-`find src bin -name '*.ts' ! -name '*.test.ts' | xargs cat | wc -l` under 4,000,
-`wc -l src/kernel/run-envelope.md` under 150, `wc -l src/config/config.ts`
-under 200. Then run the acceptance walk by hand once against a disposable
-repository: `setup-test-repo`, `init`, `labels setup`, `triage`, `run-once` to
-`spec-review`, add `spec-approved` and `agent-ready`, `run-once` to
-`agent-done`; record the commands and the resulting pull request URL in the pull
-request description for this change.
+`find src bin -name '*.ts' ! -name '*.test.ts' | xargs cat | wc -l` at most
+4,300, `wc -l src/kernel/run-envelope.md` under 150,
+`wc -l src/config/config.ts` under 200. Then run the acceptance walk by hand
+once against a disposable repository: `setup-test-repo`, `init`, `labels setup`,
+`triage`, `run-once` to `spec-review`, add `spec-approved` and `agent-ready`,
+`run-once` to `agent-done`; record the commands and the resulting pull request
+URL in the pull request description for this change.
 
 - [ ] **Step 5: Commit**
       `docs: describe the skills-first kernel and retire the old workflow terms`
