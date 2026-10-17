@@ -72,6 +72,7 @@ async function main() {
       cwd: projectDir,
       env: environment,
     });
+    await run("git", ["init"], { cwd: projectDir, env: environment });
     await run("./node_modules/.bin/patchmill", ["init"], {
       cwd: projectDir,
       env: environment,

@@ -1,3 +1,4 @@
+import { main as initMain } from "./commands/init/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
 import { main as releaseMain } from "./commands/release/main.ts";
@@ -94,6 +95,7 @@ export function createCliMain(
 }
 
 const COMMANDS = new Map<string, CommandHandler>([
+  ["init", initMain],
   ["triage", triageMain],
   ["run-once", runOnceMain],
   ["release", releaseMain],
