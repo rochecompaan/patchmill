@@ -28,44 +28,35 @@ export type FactsResult =
   | { kind: "facts"; facts: Facts }
   | { kind: "ambiguous-branches"; branches: string[] };
 
+function assertContained(root: string, path: string): void {
+  const delta = relative(root, path);
+  if (delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta))
+    throw new Error(`Artifact directory outside the worktree: ${path}`);
+}
+
 async function findArtifact(
   worktree: string,
   directory: string,
   matches: (name: string) => boolean,
 ): Promise<string | undefined> {
   const path = resolve(worktree, directory);
-  const lexical = relative(worktree, path);
-  if (
-    lexical === ".." ||
-    lexical.startsWith(`..${sep}`) ||
-    isAbsolute(lexical)
-  ) {
-    throw new Error(`Artifact directory outside the worktree: ${directory}`);
-  }
+  assertContained(worktree, path);
   const root = await fs.realpath(worktree);
-  const canonical = await fs
-    .realpath(path)
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return undefined;
-      throw error;
-    });
-  if (canonical === undefined) return undefined;
-  const actual = relative(root, canonical);
-  if (actual === ".." || actual.startsWith(`..${sep}`) || isAbsolute(actual)) {
-    throw new Error(`Artifact directory outside the worktree: ${directory}`);
+  try {
+    assertContained(root, await fs.realpath(path));
+    const entries = await fs.readdir(path, { withFileTypes: true });
+    const name = entries
+      .filter((entry) => entry.isFile() && matches(entry.name))
+      .map((entry) => entry.name)
+      .sort()
+      .at(-1);
+    return name === undefined
+      ? undefined
+      : relative(worktree, join(path, name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
   }
-  const entries = await fs
-    .readdir(path, { withFileTypes: true })
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    });
-  const name = entries
-    .filter((entry) => entry.isFile() && matches(entry.name))
-    .map((entry) => entry.name)
-    .sort()
-    .at(-1);
-  return name === undefined ? undefined : relative(worktree, join(path, name));
 }
 
 export async function collectFacts(
@@ -99,13 +90,29 @@ export async function collectFacts(
     base: baseBranch,
     remoteExists: remoteBranchExists,
   });
-  const specPath = await findArtifact(worktree, config.paths.specsDir, (name) =>
-    isSpecFile(issue.number, name),
-  );
-  const planPath = await findArtifact(worktree, config.paths.plansDir, (name) =>
-    isPlanFile(issue.number, name),
-  );
   const today = now();
+  const specName = specFileName(today, issue.number, issue.title);
+  const planName = planFileName(today, issue.number, issue.title);
+  const expectedPath = (directory: string, name: string) =>
+    relative(worktree, resolve(worktree, directory, name));
+  const canonicalPlan = (name: string) => name.slice(10) === planName.slice(10);
+  const specPath = await findArtifact(
+    worktree,
+    config.paths.specsDir,
+    (name) => isSpecFile(issue.number, name) && !canonicalPlan(name),
+  );
+  let planPath = await findArtifact(
+    worktree,
+    config.paths.plansDir,
+    (name) =>
+      isPlanFile(issue.number, name) &&
+      (!isSpecFile(issue.number, name) || canonicalPlan(name)),
+  );
+  if (specPath && planPath) {
+    const spec = await fs.stat(join(worktree, specPath));
+    const plan = await fs.stat(join(worktree, planPath));
+    if (spec.dev === plan.dev && spec.ino === plan.ino) planPath = undefined;
+  }
   const pullRequest = await host.findPullRequestByHead(branch);
   return {
     kind: "facts",
@@ -116,22 +123,8 @@ export async function collectFacts(
       baseBranch,
       ...(specPath === undefined ? {} : { specPath }),
       ...(planPath === undefined ? {} : { planPath }),
-      expectedSpecPath: relative(
-        worktree,
-        resolve(
-          worktree,
-          config.paths.specsDir,
-          specFileName(today, issue.number, issue.title),
-        ),
-      ),
-      expectedPlanPath: relative(
-        worktree,
-        resolve(
-          worktree,
-          config.paths.plansDir,
-          planFileName(today, issue.number, issue.title),
-        ),
-      ),
+      expectedSpecPath: expectedPath(config.paths.specsDir, specName),
+      expectedPlanPath: expectedPath(config.paths.plansDir, planName),
       specApproved:
         !config.workflow.specApproval.required ||
         issue.labels.includes(config.labels.specApproved),

@@ -97,3 +97,11 @@ test("runDirectory joins the run root, issue, and identifier", () => {
     ".patchmill/runs/issue-5/x",
   );
 });
+
+test("canonical plans keep ordinary design title suffixes discoverable", () => {
+  assert.equal(isPlanFile(9, "2026-10-14-issue-9-add-design.md"), true);
+  assert.equal(
+    planFileName(date, 9, "Add design"),
+    "2026-10-15-issue-9-add-design.md",
+  );
+});

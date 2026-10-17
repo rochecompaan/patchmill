@@ -75,14 +75,24 @@ async function setup(t: TestContext, outputs: string[], issues = [issue(9)]) {
   );
   const stdout: string[] = [],
     stderr: string[] = [];
-  t.mock.method(process.stdout, "write", (chunk: string) => {
-    stdout.push(String(chunk));
-    return true;
-  });
-  t.mock.method(process.stderr, "write", (chunk: string) => {
-    stderr.push(String(chunk));
-    return true;
-  });
+  t.mock.method(
+    process.stdout,
+    "write",
+    (chunk: string, callback?: () => void) => {
+      stdout.push(String(chunk));
+      callback?.();
+      return true;
+    },
+  );
+  t.mock.method(
+    process.stderr,
+    "write",
+    (chunk: string, callback?: () => void) => {
+      stderr.push(String(chunk));
+      callback?.();
+      return true;
+    },
+  );
   const config = parseConfig({ host: { login: "owner" } });
   const deps = {
     host,

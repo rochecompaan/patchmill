@@ -337,3 +337,58 @@ test("canonical checks normalize a worktree reached through a root alias", async
     await fs.realpath(initial.worktree),
   );
 });
+
+test("a canonical design-suffix plan alone is not evidence of a spec", async (t) => {
+  const c = await setup(t);
+  const input = { ...issue, title: "Add design" };
+  const { worktree } = await c.collect(input);
+  await fs.mkdir(join(worktree, "custom/specs"), { recursive: true });
+  c.config.paths.plansDir = "custom/specs";
+  await fs.writeFile(
+    join(worktree, "custom/specs/2026-10-14-issue-9-add-design.md"),
+    "plan",
+  );
+  const facts = await c.collect(input);
+  assert.equal(facts.specPath, undefined);
+  assert.equal(facts.planPath, "custom/specs/2026-10-14-issue-9-add-design.md");
+});
+
+for (const alias of [false, true]) {
+  test(`hardlinked canonical spec and plan never supply both facts: directoryAlias=${alias}`, async (t) => {
+    const c = await setup(t);
+    const input = { ...issue, title: "Add design" };
+    const { worktree } = await c.collect(input);
+    await fs.mkdir(join(worktree, "custom/specs"), { recursive: true });
+    if (alias) {
+      await fs.symlink(
+        join(worktree, "custom/specs"),
+        join(worktree, "plans-alias"),
+        "dir",
+      );
+      c.config.paths.plansDir = "plans-alias";
+    } else await fs.mkdir(join(worktree, "custom/plans"), { recursive: true });
+    const spec = join(
+      worktree,
+      "custom/specs/2026-10-14-issue-9-add-design-design.md",
+    );
+    const plan = join(
+      worktree,
+      c.config.paths.plansDir,
+      "2026-10-14-issue-9-add-design.md",
+    );
+    await fs.writeFile(spec, "one physical artifact");
+    await fs.link(spec, plan);
+    const facts = await c.collect(input);
+    assert.equal(
+      facts.specPath,
+      "custom/specs/2026-10-14-issue-9-add-design-design.md",
+    );
+    assert.equal(facts.planPath, undefined);
+    await fs.unlink(plan);
+    await fs.writeFile(plan, "distinct plan");
+    assert.equal(
+      (await c.collect(input)).planPath,
+      `${c.config.paths.plansDir}/2026-10-14-issue-9-add-design.md`,
+    );
+  });
+}
