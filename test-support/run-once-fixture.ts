@@ -54,14 +54,24 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
   const config = structuredClone(DEFAULT_CONFIG);
   config.pi.timeoutMinutes = 0.2;
   const output: string[] = [];
-  t.mock.method(process.stdout, "write", (chunk: string) => {
-    output.push(String(chunk));
-    return true;
-  });
-  t.mock.method(process.stderr, "write", (chunk: string) => {
-    output.push(String(chunk));
-    return true;
-  });
+  t.mock.method(
+    process.stdout,
+    "write",
+    (chunk: string, callback?: () => void) => {
+      output.push(String(chunk));
+      callback?.();
+      return true;
+    },
+  );
+  t.mock.method(
+    process.stderr,
+    "write",
+    (chunk: string, callback?: () => void) => {
+      output.push(String(chunk));
+      callback?.();
+      return true;
+    },
+  );
   const deps: RunOnceDeps = {
     host,
     runner,

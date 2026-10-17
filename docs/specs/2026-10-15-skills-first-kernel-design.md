@@ -151,10 +151,11 @@ worktree when it is missing, and collects the remaining facts in that worktree:
 | F4   | Is spec approval satisfied? True when the gate is off, or when the issue carries `spec-approved`.                  |
 | F5   | Is there a pull request whose head is the branch? None, draft, open, merged, or closed.                            |
 
-F2 and F3 match these names and nothing else. A file with another name does not
-exist as far as the kernel is concerned. The F3 pattern overlaps F2, so a
-recognized design file counts only as a spec, never as a plan. The directories
-can be equal, but implementation requires a separate plan file.
+F2 and F3 match these names and nothing else. The patterns overlap. Canonical
+names for the issue title determine the role, regardless of date. A canonical
+plan name counts only as a plan, even when its title ends in `design`. Other
+design-shaped names count only as specs. The directories can be equal, but one
+physical file cannot supply both facts. Implementation requires a distinct plan.
 
 The phase follows from the facts, in this order:
 

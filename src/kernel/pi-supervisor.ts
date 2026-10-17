@@ -65,13 +65,13 @@ export async function supervisePi(
   const errors: unknown[] = [];
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let escalation: ReturnType<typeof setTimeout> | undefined;
-  let shutdown: Promise<void> | undefined;
-  let finishShutdown: (() => void) | undefined;
+  let shutdown: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let writes = Promise.resolve();
   let logFailed = false;
   let callbackFailed = false;
   let closed = false;
   let abort: (() => void) | undefined;
+  let removeSinks: (() => void) | undefined;
   try {
     logs.push(await fs.open(options.logPath, "w"));
     if (options.aggregateLogPath)
@@ -90,14 +90,13 @@ export async function supervisePi(
         },
       },
     );
-    const stop = () => {
-      if (shutdown) return;
-      shutdown = new Promise<void>((resolve) => {
-        finishShutdown = resolve;
-      });
+    const stop = (interruption?: "aborted" | "timedOut") => {
+      if (shutdown || (interruption && closed)) return;
+      if (interruption) result[interruption] = true;
+      shutdown = Promise.withResolvers<void>();
       try {
         if (!child.pid || !signalGroup(child.pid, "SIGTERM")) {
-          finishShutdown!();
+          shutdown!.resolve();
           return;
         }
       } catch (error) {
@@ -109,12 +108,17 @@ export async function supervisePi(
         } catch (error) {
           errors.push(error);
         }
-        finishShutdown!();
+        shutdown!.resolve();
       }, options.graceMs ?? 5_000);
     };
     const fail = (error: unknown) => {
-      errors.push(error);
+      if (!errors.includes(error)) errors.push(error);
       stop();
+    };
+    const sinks = options.onOutput ? [] : [process.stdout, process.stderr];
+    for (const sink of sinks) sink.on("error", fail);
+    removeSinks = () => {
+      for (const sink of sinks) sink.off("error", fail);
     };
     const output = (chunk: string, stdout: boolean) => {
       if (stdout) result.stdout += chunk;
@@ -130,7 +134,21 @@ export async function supervisePi(
       if (!callbackFailed) {
         try {
           if (options.onOutput) options.onOutput(chunk);
-          else (stdout ? process.stdout : process.stderr).write(chunk);
+          else
+            writes = writes
+              .then(
+                () =>
+                  new Promise<void>((resolve) => {
+                    (stdout ? process.stdout : process.stderr).write(
+                      chunk,
+                      (error) => {
+                        if (error) fail(error);
+                        resolve();
+                      },
+                    );
+                  }),
+              )
+              .catch(fail);
         } catch (error) {
           callbackFailed = true;
           fail(error);
@@ -155,7 +173,7 @@ export async function supervisePi(
           try {
             if (!signalGroup(child.pid, 0)) {
               clearTimeout(escalation);
-              finishShutdown!();
+              shutdown!.resolve();
             }
           } catch (error) {
             errors.push(error);
@@ -164,21 +182,13 @@ export async function supervisePi(
         resolve();
       });
     });
-    abort = () => {
-      if (closed || shutdown) return;
-      result.aborted = true;
-      stop();
-    };
-    timeout = setTimeout(() => {
-      if (closed || shutdown) return;
-      result.timedOut = true;
-      stop();
-    }, options.timeoutMs);
+    abort = () => stop("aborted");
+    timeout = setTimeout(() => stop("timedOut"), options.timeoutMs);
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
     await completion;
     await writes;
-    await shutdown;
+    await shutdown?.promise;
   } catch (error) {
     errors.push(error);
   } finally {
@@ -193,6 +203,7 @@ export async function supervisePi(
       }
     }
   }
+  removeSinks?.();
   if (errors.length === 1) throw errors[0];
   if (errors.length > 1) throw new AggregateError(errors, "Pi session failed");
   result.durationMs = performance.now() - started;

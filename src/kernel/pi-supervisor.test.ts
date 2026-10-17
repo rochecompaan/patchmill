@@ -9,11 +9,30 @@ import { join } from "node:path";
 import { mock, test, type TestContext } from "node:test";
 import { piArgs, supervisePi, type PiSessionOptions } from "./pi-supervisor.ts";
 
-async function setup(t: TestContext): Promise<PiSessionOptions> {
+async function setup(
+  t: TestContext,
+  capture: (chunk: string, stdout: boolean) => void = () => {},
+): Promise<PiSessionOptions> {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-pi-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  t.mock.method(process.stdout, "write", () => true);
-  t.mock.method(process.stderr, "write", () => true);
+  const originals = [process.stdout.write, process.stderr.write];
+  const listeners = [
+    process.stdout.listeners("error"),
+    process.stderr.listeners("error"),
+  ];
+  for (const [index, stream] of [process.stdout, process.stderr].entries())
+    t.mock.method(stream, "write", (chunk: string, callback?: () => void) => {
+      capture(String(chunk), index === 0);
+      callback?.();
+      return true;
+    });
+  t.after(() => {
+    t.mock.restoreAll();
+    assert.equal(process.stdout.write, originals[0]);
+    assert.equal(process.stderr.write, originals[1]);
+    assert.deepEqual(process.stdout.listeners("error"), listeners[0]);
+    assert.deepEqual(process.stderr.listeners("error"), listeners[1]);
+  });
   return {
     command: {
       command: process.execPath,
@@ -395,16 +414,10 @@ for (const fault of ["write", "close"]) {
 }
 
 test("production invocation tees stdout and stderr to console without a callback", async (t) => {
-  const options = await setup(t);
   const stdout: string[] = [],
     stderr: string[] = [];
-  t.mock.method(process.stdout, "write", (chunk: string) => {
-    stdout.push(String(chunk));
-    return true;
-  });
-  t.mock.method(process.stderr, "write", (chunk: string) => {
-    stderr.push(String(chunk));
-    return true;
+  const options = await setup(t, (chunk, isStdout) => {
+    (isStdout ? stdout : stderr).push(chunk);
   });
   const result = await supervisePi(options);
   assert.equal(result.stdout, "ok");
@@ -430,3 +443,71 @@ test("aggregate log open failure closes the phase log and never launches Pi", as
   assert.equal(phaseLog?.fd, -1);
   assert.equal(await fs.readFile(options.logPath, "utf8"), "");
 });
+
+for (const sink of ["stdout", "stderr"]) {
+  for (const exitsEarly of [false, true]) {
+    for (const eventOnly of [false, true]) {
+      test(
+        `async default ${sink} failure preserves error, reaps child and restores listeners: early=${exitsEarly}, eventOnly=${eventOnly}`,
+        { timeout: 5000 },
+        async (t) => {
+          const options = await setup(t);
+          // Isolate real failing Writable streams from the outer test reporter.
+          const probe = `
+        import assert from 'node:assert/strict';
+        import fs from 'node:fs/promises';
+        import { Writable } from 'node:stream';
+        import { supervisePi } from ${JSON.stringify(import.meta.resolve("./pi-supervisor.ts"))};
+        const options = ${JSON.stringify(options)};
+        const original = Object.getOwnPropertyDescriptor(process, '${sink}');
+        const failure = Object.assign(new Error('async ${sink} EPIPE'), {code:'EPIPE'});
+        let pending = false;
+        const destination = new Writable({write(chunk, encoding, callback) {
+          pending = true;
+          setTimeout(() => {
+            pending = false;
+            ${eventOnly ? "destination.emit('error', failure); callback();" : "callback(failure);"}
+          }, 80);
+        }});
+        // Keep the RED probe bounded, but do not turn the error into supervision.
+        const observed = [];
+        destination.on('error', error => observed.push(error));
+        const before = destination.listeners('error');
+        Object.defineProperty(process, '${sink}', {configurable:true, value:destination});
+        const pidPath = options.cwd + '/pid';
+        const child = "require('node:fs').writeFileSync(" + JSON.stringify(pidPath) + ", String(process.pid)); process.on('SIGTERM',()=>{}); process.${sink}.write('trigger'); ${exitsEarly ? "" : "setInterval(()=>{},1000);"}";
+        let rejection;
+        let timedOut = false;
+        const deadline = setTimeout(() => { timedOut = true; }, 1500);
+        try {
+          await supervisePi({...options, timeoutMs:1500, graceMs:40,
+            command:{command:process.execPath,argsPrefix:['-e',child,'--']}});
+        } catch(error) { rejection = error; }
+        finally { clearTimeout(deadline); Object.defineProperty(process, '${sink}', original); }
+        assert.equal(rejection, failure, 'original async error must reject supervision');
+        assert.equal(pending, false, 'pending sink write must settle before return');
+        assert.deepEqual(observed, [failure]);
+        assert.deepEqual(destination.listeners('error'), before);
+        const pid = Number(await fs.readFile(pidPath,'utf8'));
+        assert.throws(()=>process.kill(pid,0), {code:'ESRCH'});
+        assert.throws(()=>process.kill(-pid,0), {code:'ESRCH'});
+        assert.equal(timedOut, false, 'sink failure must stop child before timeout');
+        assert.equal(await fs.readFile(options.logPath,'utf8'), 'trigger');
+        console.log(JSON.stringify({sink:'${sink}',early:${exitsEarly},eventOnly:${eventOnly},error:rejection.code,pending,listenersRestored:true,childReaped:true,groupGone:true}));
+      `;
+          const { stdout } = await promisify(execFile)(
+            process.execPath,
+            ["--input-type=module", "-e", probe],
+            { timeout: 3000 },
+          );
+          t.diagnostic(stdout.trim());
+          const receipt = JSON.parse(stdout);
+          assert.equal(receipt.error, "EPIPE");
+          assert.equal(receipt.childReaped, true);
+          assert.equal(receipt.groupGone, true);
+          assert.equal(receipt.listenersRestored, true);
+        },
+      );
+    }
+  }
+}
