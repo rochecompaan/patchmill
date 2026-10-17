@@ -1,101 +1,70 @@
 ---
 title: Quickstart
-description: Install Patchmill and run the first repository checks.
+description: Install Patchmill and advance an issue.
 ---
 
-Install Patchmill with npm:
+Use a repository with an `origin` remote and an authenticated `gh` or `tea` CLI.
+See [Providers](/guides/providers/) before initialization. Patchmill has no
+migration path from earlier configuration or workflow state.
+
+## Install and initialize
+
+For GitHub, run these commands in the repository:
 
 ```sh
 npm install -g patchmill
+patchmill init --provider github-gh
+patchmill auth
+patchmill labels setup
+patchmill doctor
 ```
 
-Patchmill needs a working issue-host CLI before it can inspect issues or create
-pull requests. Set up either GitHub's `gh` CLI or Forgejo/Gitea's `tea` CLI
-first; see [Providers](/guides/providers/) for details.
+For Forgejo, replace the init command with
+`patchmill init --provider forgejo-tea`. To select a named Tea profile, append
+`--login PROFILE`. Without that flag, the empty login uses Tea's default
+profile.
 
-In the repository you want Patchmill to manage, initialize the local
-configuration:
+`init` writes missing configuration, installs skills, provisions the reviewer,
+and adds local Git excludes. It leaves valid existing configuration alone.
+`auth` opens Pi with the repository agent directory. Use `/login` and `/model`
+inside Pi. `doctor` includes a real model call.
 
-```sh
-patchmill init
-```
-
-Patchmill writes repository-local configuration, installs recommended skills,
-and sets up local state.
-
-Triage open issues with your configured workflow:
+## Triage and run
 
 ```sh
+patchmill triage --dry-run
 patchmill triage
-```
-
-Patchmill inspects open issues and applies the configured triage labels and
-comments.
-
-Advance one ready issue through the production line:
-
-```sh
+patchmill run-once --dry-run
 patchmill run-once
 ```
 
-A fresh ready issue initializes strict planning state. If the result is
-`review-pending`, review and merge the exact planning pull request, then rerun:
+Triage dry run calls Pi and writes local logs, but does not change host labels
+or comments. Run-once dry run prints the selected issue and derived phase
+without claiming it or running Pi.
+
+At `spec-review`, review the pushed spec on the issue branch. To approve it, add
+`spec-approved` and `agent-ready` to the issue. Then run:
 
 ```sh
-# If the result is review-pending, review and merge the exact planning PR.
 patchmill run-once --issue N
 ```
 
-`review-pending` exits `0`; labels and comments do not approve a fresh phase. A
-successful implementation ends in an open issue-closing pull request.
+To request a revision, leave approval off and add review comments and
+`agent-ready`. The next attempt revises the existing spec and stops for review
+again. Approval is never inferred from the agent's own review.
 
-## Try Patchmill on a disposable demo repository
+After implementation, `agent-done` identifies a ready pull request that closes
+the issue. Review and merge it through the host. Patchmill does not merge or
+remove the worktree.
 
-Before pointing Patchmill at a production repository, create a disposable Team
-Lunch Poll demo repository and let Patchmill triage its seeded issues.
+## Optional disposable repository
 
-For GitHub:
+`patchmill setup-test-repo --provider github-gh --repo OWNER/REPO` creates a
+public demo repository and seeded issues. Use only an explicitly disposable
+repository. The `--reset` flag deletes and recreates it. For Forgejo, use
+`--provider forgejo-tea` and an optional `--login PROFILE`. Clone the resulting
+repository, then follow the initialization commands above.
 
-```bash
-patchmill setup-test-repo --provider github-gh --repo OWNER/REPO
-gh repo clone OWNER/REPO
-cd REPO
-patchmill init
-patchmill triage
-patchmill run-once
-```
-
-For Forgejo or Gitea with a named `tea` login:
-
-```bash
-patchmill setup-test-repo --provider forgejo-tea --repo OWNER/REPO --login LOGIN
-tea clone OWNER/REPO
-cd REPO
-patchmill init
-patchmill triage
-patchmill run-once
-```
-
-Use an explicit disposable public repository for `OWNER/REPO`. The reset form
-deletes and recreates that repository:
-
-```bash
-patchmill setup-test-repo --provider github-gh --repo OWNER/REPO --reset
-patchmill setup-test-repo --provider forgejo-tea --repo OWNER/REPO --login LOGIN --reset
-```
-
-## Updating Patchmill-managed skills
-
-To update a repository after Patchmill publishes a newer bundled skill pack,
-run:
-
-```sh
-npx patchmill@latest skills update
-```
-
-The update command only changes Patchmill-managed project-local skills. It stops
-if managed skill files were edited locally. Crossing the `2026.09.1` pack
-boundary prints the planning-pull-request and deprecated-controls notice once;
-an already-current pack retains the ordinary up-to-date result. After a
-successful update, run `git diff` and commit the skill changes with the
-repository.
+To reinstall the shipped skills for the installed Patchmill version, run
+`patchmill init` again. Review and commit configuration and skill changes. Keep
+credentials, logs, and sessions local.
