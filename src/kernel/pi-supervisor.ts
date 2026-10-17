@@ -188,12 +188,10 @@ export async function supervisePi(
     if (options.signal?.aborted) abort();
     await completion;
     await writes;
-    await shutdown?.promise;
   } catch (error) {
     errors.push(error);
   } finally {
     clearTimeout(timeout);
-    clearTimeout(escalation);
     if (abort) options.signal?.removeEventListener("abort", abort);
     for (const log of logs) {
       try {
@@ -202,8 +200,11 @@ export async function supervisePi(
         errors.push(error);
       }
     }
+    // With no shutdown, do not yield before removing its last initiation source.
+    if (shutdown) await shutdown.promise;
+    removeSinks?.();
+    clearTimeout(escalation);
   }
-  removeSinks?.();
   if (errors.length === 1) throw errors[0];
   if (errors.length > 1) throw new AggregateError(errors, "Pi session failed");
   result.durationMs = performance.now() - started;

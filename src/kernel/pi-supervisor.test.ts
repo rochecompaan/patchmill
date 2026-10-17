@@ -511,3 +511,120 @@ for (const sink of ["stdout", "stderr"]) {
     }
   }
 }
+
+for (const sink of ["stdout", "stderr"]) {
+  for (const closeFails of [false, true]) {
+    test(
+      `first default ${sink} error during log closure awaits owned shutdown: closeFails=${closeFails}`,
+      { timeout: 7000 },
+      async (t) => {
+        const options = await setup(t);
+        // Real streams, descriptors and process groups; isolate the reporter.
+        const probe = `
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs/promises';
+          import { Writable } from 'node:stream';
+          import { createServer } from 'node:net';
+          import { once } from 'node:events';
+          import { setTimeout as delay } from 'node:timers/promises';
+          import { supervisePi } from ${JSON.stringify(import.meta.resolve("./pi-supervisor.ts"))};
+          const options = ${JSON.stringify(options)};
+          const original = Object.getOwnPropertyDescriptor(process, '${sink}');
+          const open = fs.open;
+          const failure = Object.assign(new Error('late ${sink} EPIPE'), {code:'EPIPE'});
+          const cleanup = new Error('secondary close failure');
+          let wrote = false, errorAt, pids, peer, died = false, settled = false;
+          let closed = 0;
+          const handles = [];
+          const destination = new Writable({write(chunk, encoding, callback) {
+            callback(); wrote = true;
+          }});
+          const observed = [];
+          destination.on('error', error => observed.push(error));
+          const before = destination.listeners('error');
+          const server = createServer(socket => {
+            peer = socket;
+            socket.on('error', () => {});
+            socket.on('close', () => { died = true; });
+          });
+          server.listen(0, '127.0.0.1');
+          await once(server, 'listening');
+          const port = server.address().port;
+          const descendant = "process.on('SIGTERM',()=>{}); require('node:net').createConnection("+port+",'127.0.0.1',()=>{process.send(process.pid);process.disconnect();}); setInterval(()=>{},1000);";
+          const leader = "const {spawn}=require('node:child_process'); const c=spawn(process.execPath,['-e',"+JSON.stringify(descendant)+"],{stdio:['ignore','ignore','ignore','ipc']}); c.on('message',pid=>{c.once('disconnect',()=>{c.unref();require('node:fs').writeFileSync("+JSON.stringify(options.cwd+'/pids')+",JSON.stringify({leader:process.pid,child:pid})); process.${sink}.write('trigger');});});";
+          const kill = () => {
+            if (pids) { try { process.kill(-pids.leader,'SIGKILL'); } catch(error) { if(error.code!=='ESRCH') throw error; } }
+          };
+          const watchdog = setTimeout(async () => {
+            pids ??= JSON.parse(await fs.readFile(options.cwd+'/pids','utf8'));
+            kill();
+          }, 2500);
+          let rejection, elapsed;
+          try {
+            Object.defineProperty(process,'${sink}',{configurable:true,value:destination});
+            fs.open = async (...args) => {
+              const handle = await open(...args);
+              handles.push(handle);
+              const close = handle.close.bind(handle);
+              handle.close = async () => {
+                assert.equal(wrote,true,'write must succeed before first sink error');
+                pids = JSON.parse(await fs.readFile(options.cwd+'/pids','utf8'));
+                assert.throws(()=>process.kill(pids.leader,0),{code:'ESRCH'});
+                assert.ok(peer && !peer.destroyed,'descendant is active after leader exit');
+                if (!errorAt) {
+                  setImmediate(() => { errorAt = performance.now(); destination.destroy(failure); });
+                }
+                await delay(30);
+                assert.equal(settled,false,'must retain ownership during asynchronous close');
+                await close();
+                closed++;
+                if (${closeFails} && closed===1) throw cleanup;
+              };
+              return handle;
+            };
+            try {
+              await supervisePi({...options,timeoutMs:1800,graceMs:400,
+                aggregateLogPath:options.cwd+'/aggregate.log',
+                command:{command:process.execPath,argsPrefix:['-e',leader,'--']}});
+            } catch(error) { rejection = error; }
+            settled = true;
+            elapsed = performance.now() - errorAt;
+            if (${closeFails}) {
+              assert.ok(rejection instanceof AggregateError);
+              assert.deepEqual(rejection.errors,[failure,cleanup]);
+            } else assert.equal(rejection,failure,'sole error identity must survive');
+            assert.equal(closed,2);
+            assert.ok(handles.every(handle=>handle.fd===-1),'all real descriptors closed');
+            assert.deepEqual(destination.listeners('error'),before);
+            assert.deepEqual(observed,[failure]);
+            assert.ok(elapsed>=390,'supervision returned before owned shutdown escalation: '+elapsed);
+            // Socket closure proves cessation, unlike signal-0 on a zombie.
+            await Promise.race([once(peer,'close'),delay(150).then(()=>{
+              if (!died) throw new Error('owned descendant still active after supervision');
+            })]);
+            assert.equal(died,true);
+            for (const path of [options.logPath,options.cwd+'/aggregate.log'])
+              assert.equal(await fs.readFile(path,'utf8'),'trigger');
+          } finally {
+            fs.open = open;
+            Object.defineProperty(process,'${sink}',original);
+            clearTimeout(watchdog);
+            kill();
+            peer?.destroy();
+            await new Promise(resolve=>server.close(resolve));
+            await Promise.all(handles.filter(handle=>handle.fd!==-1).map(handle=>handle.close()));
+          }
+          console.log(JSON.stringify({sink:'${sink}',closeFails:${closeFails},elapsed,closed,
+            originalErrorVisible:true,leaderReaped:true,descendantStopped:died,listenersRestored:true}));
+        `;
+        const { stdout } = await promisify(execFile)(
+          process.execPath,
+          ["--input-type=module", "-e", probe],
+          { timeout: 5000 },
+        );
+        t.diagnostic(stdout.trim());
+        assert.equal(JSON.parse(stdout).descendantStopped, true);
+      },
+    );
+  }
+}
