@@ -1,130 +1,62 @@
 ---
 name: patchmill-visual-evidence
 description:
-  Use when Patchmill run-once changes visible UI and needs committed reference
-  screenshot evidence in the final pr-created JSON.
+  Use when a Patchmill issue changes visible UI and needs committed reference
+  screenshots.
 ---
 
 # Patchmill Visual Evidence
 
-## Overview
+Capture screenshots from the approved running app in the existing issue
+worktree. Use the same issue branch as the implementation and its pull request.
+Screenshots support review. They do not replace project tests or validation
+commands.
 
-Visual evidence is a durable Patchmill handoff artifact. Capture screenshots
-from the approved running app, save or update them as committed reference
-screenshots in the issue worktree, and return structured metadata so Patchmill
-can verify the reference screenshots before it cleans up the worktree.
+## Capture reference screenshots
 
-## Patchmill Contract
+1. Read the project instructions for the approved app instance and readiness
+   command.
+2. Use Playwright or the project browser tooling, not OS or window screenshots.
+3. Wait for visible text or selectors that prove the changed UI state before
+   capture.
+4. Update an existing reference screenshot, or save a new one under
+   `docs/screenshots/` unless project instructions specify another directory.
+5. Use a stable semantic filename, such as `admin-log-entries-empty.png`. Do not
+   use issue numbers, dates, or temporary names.
+6. Commit the screenshots with the implementation changes and push them to the
+   issue branch.
 
-When the issue changes visible UI, the final `pr-created` JSON must include
-`visualEvidence` entries that point at committed reference screenshots:
+Keep screenshots inside the worktree. Use `.png`, `.jpg`, `.jpeg`, `.gif`, or
+`.webp` files. Avoid secrets and private data in screenshots. Describe the UI
+state and repository-relative screenshot paths in the pull request body. Do not
+upload screenshots or post issue comments through this skill.
 
-```json
-"visualEvidence": [
-  {
-    "screenshotPath": "docs/screenshots/admin-log-entries-page.png",
-    "caption": "Reference screenshot for the server-driven log entries page"
-  }
-]
-```
+## Optional helper
 
-Rules:
-
-- `screenshotPath` is required and must point to a real `.png`, `.jpg`, `.jpeg`,
-  `.gif`, or `.webp` file inside the worktree.
-- `screenshotPath` must be a committed reference screenshot. By default, use
-  `docs/screenshots/` unless project instructions specify another reference
-  screenshot directory.
-- For an existing screen, update the existing reference screenshot file.
-- For a new screen, create a semantic kebab-case filename based on the route,
-  page/component name, or visible title.
-- Do not use issue numbers, dates, random hashes, or temporary proof names for
-  committed reference screenshots.
-- `caption` should describe the UI state represented by the reference
-  screenshot.
-- `referencePaths` is optional; use it only when pointing to additional
-  committed baseline/reference screenshots used for comparison.
-- Omit `visualEvidence` when the issue does not change visible UI.
-- Do not upload or comment on visual evidence manually unless project/user
-  instructions explicitly require it; the committed reference screenshot is the
-  durable artifact.
-
-## Filename Pattern
-
-Use stable names that future UI changes can update in place:
-
-| UI surface                    | Reference screenshot path                         |
-| ----------------------------- | ------------------------------------------------- |
-| `/admin/log-entries` route    | `docs/screenshots/admin-log-entries.png`          |
-| `LogEntriesPage` component    | `docs/screenshots/log-entries-page.png`           |
-| `Log entries` visible title   | `docs/screenshots/log-entries.png`                |
-| Empty/error/mobile UI states  | `docs/screenshots/log-entries-empty.png` etc.     |
-| Existing dashboard screenshot | update the existing dashboard reference file path |
-
-## Required Pattern
-
-1. **Use the approved app instance.** Run the project's readiness command or use
-   the prepared development environment. Do not start ad-hoc servers when
-   project rules forbid them.
-2. **Use Playwright/browser automation.** Do not use OS/window screenshots
-   unless the user explicitly asks.
-3. **Wait for proof conditions.** Require visible text or selectors that
-   demonstrate the changed UI before capturing.
-4. **Save or update a reference screenshot.** Use `docs/screenshots/` by
-   default. Commit the screenshot file with the implementation changes.
-5. **Return `visualEvidence`.** The screenshot is evidence only if the final
-   `pr-created` JSON references the committed screenshot path.
-
-## Helper Script
-
-Use the bundled helper when the project has `@playwright/test` available.
-Resolve `scripts/capture-visual-evidence.cjs` relative to this skill's
-`SKILL.md` file, then run it from the issue worktree:
+If the project provides `@playwright/test`, use the helper bundled beside this
+skill. Resolve `scripts/capture-visual-evidence.cjs` relative to this
+`SKILL.md`, then run it from the issue worktree:
 
 ```bash
 node /absolute/path/to/patchmill-visual-evidence/scripts/capture-visual-evidence.cjs \
   --url "$URL" \
-  --output docs/screenshots/admin-log-entries-page.png \
+  --output docs/screenshots/admin-log-entries.png \
   --wait-text "Log entries"
 ```
 
-Options:
+Use `--ready-command` for the approved readiness command. Use `--wait-selector`
+or repeated `--wait-text` flags for visible proof conditions. Use
+`--storage-state` for existing browser authentication state. The helper also
+supports viewport, load-state, and login environment-variable options. Read its
+source for those options before use. Do not pass passwords as command-line
+arguments. If Playwright is unavailable, use approved project tools or ask for a
+setup decision. Do not add dependencies without approval.
 
-| Need                | Option                                                               |
-| ------------------- | -------------------------------------------------------------------- |
-| Readiness check     | `--ready-command 'just tilt-ready'`                                  |
-| Viewport            | `--viewport 1366x900`                                                |
-| Page load state     | `--load-state domcontentloaded` (`load` or `networkidle` if needed)  |
-| Visible text        | `--wait-text 'Changed label'` repeated as needed                     |
-| Selector            | `--wait-selector '[data-testid="changed-panel"]'` repeated as needed |
-| Auth storage state  | `--storage-state playwright/.auth/user.json`                         |
-| Login redirect      | `--login-username-env USER_VAR --login-password-env PASSWORD_VAR`    |
-| Viewport screenshot | `--no-full-page`                                                     |
+## Kernel result
 
-The helper intentionally does not install or bundle Playwright. If
-`@playwright/test` is unavailable, use the project's approved screenshot tooling
-or ask for a project setup decision before adding dependencies. Do not pass
-passwords as command-line arguments; use storage state or environment-variable
-options so secrets do not appear in process listings or command logs.
-
-## Common Mistakes
-
-| Mistake                               | Fix                                                           |
-| ------------------------------------- | ------------------------------------------------------------- |
-| Screenshot from manual browser/window | Use Playwright and wait for proof text/selectors              |
-| Wrong/stale server instance           | Run the approved readiness command immediately before capture |
-| Screenshot saved under `.tmp/`        | Save/update a committed reference under `docs/screenshots/`   |
-| Issue-number screenshot filename      | Use a stable semantic filename future changes can update      |
-| Missing committed screenshot          | Commit the reference screenshot before returning final JSON   |
-| Missing final JSON evidence           | Add `visualEvidence` to the final `pr-created` result         |
-| Treating screenshot as validation     | Still run required validation commands separately             |
-
-## Red Flags
-
-Stop if you are about to write:
-
-- “I’ll just take a quick screenshot manually.”
-- “I’ll save it under `.tmp/`; Patchmill will upload it.”
-- “I’ll name it `issue-42-after.png`.”
-- “The screenshot exists, so Patchmill will find it automatically.”
-- “The UI changed, but I’ll omit `visualEvidence`.”
+The planning and implementation result contains exactly `status` and `summary`.
+Mention committed screenshot paths and the pull request URL in the summary
+string when useful. Do not add `visualEvidence`, `referencePaths`, or a legacy
+`pr-created` status to the final JSON. The kernel does not upload screenshots or
+consume separate screenshot metadata. Make sure that screenshots are committed
+and referenced in the pull request before reporting `done`.

@@ -75,9 +75,11 @@ jobs:
           console.log(`target_tag=${summary.targetTag}`);
           NODE
 
-      - name: Run Pi compatibility contract
+      - name: Verify skill installation and offline Pi extension loading
         if: steps.update.outputs.no_update != 'true'
-        run: node --test src/cli/commands/init/pi-dependency-contract.test.ts
+        run:
+          node --test src/cli/commands/init/skill-installer.test.ts
+          src/pi/pi-subagents-dependency-contract.test.ts
 
       - name: Run Node tests
         if: steps.update.outputs.no_update != 'true'
@@ -134,7 +136,6 @@ jobs:
             package-lock.json
             npm-shrinkwrap.json
             nix/package.nix
-            src/workflow/skill-pack.ts
             THIRD_PARTY_NOTICES.md
             .patchmill/skills
           branch: automation/superpowers-${{ steps.update.outputs.target_tag }}

@@ -1,28 +1,40 @@
 {
   "host": {
     "provider": "github-gh",
-    "login": ""
+    "login": "rochecompaan",
+    "trustedAuthors": []
+  },
+  "labels": {
+    "ready": "agent-ready",
+    "inProgress": "in-progress",
+    "specReview": "spec-review",
+    "specApproved": "spec-approved",
+    "needsInfo": "needs-info",
+    "done": "agent-done",
+    "unsuitable": "agent-unsuitable",
+    "blocked": "blocked"
+  },
+  "paths": {
+    "specsDir": "docs/specs",
+    "plansDir": "docs/plans",
+    "worktreeDir": ".worktrees",
+    "runsDir": ".patchmill/runs"
+  },
+  "git": {
+    "baseBranch": null
   },
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
-    "developmentEnvironment": ".patchmill/skills/patchmill-development-environment",
-    "landing": ".patchmill/skills/landing"
+    "implementation": ".patchmill/skills/patchmill-implementation"
   },
-  "git": {
-    "allowDirectLand": false
+  "pi": {
+    "agentDir": ".patchmill/pi-agent",
+    "timeoutMinutes": 90
   },
   "workflow": {
     "specApproval": {
-      "required": true,
-      "reviewLabel": "spec-review",
-      "approvedLabel": "spec-approved"
-    },
-    "planApproval": {
-      "required": false,
-      "reviewLabel": "plan-review",
-      "approvedLabel": "plan-approved"
+      "required": true
     }
   }
 }
