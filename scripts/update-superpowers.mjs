@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { repairMissingLockfileIntegrities } from "./lockfile-integrity.mjs";
@@ -25,14 +27,15 @@ const trackedRoots = [
   "package-lock.json",
   "npm-shrinkwrap.json",
   "nix/package.nix",
-  "src/workflow/skill-pack.ts",
   "THIRD_PARTY_NOTICES.md",
   ".patchmill/skills",
 ];
+const installerPath = "src/cli/commands/init/skill-installer.ts";
+const installerModule = `import { installSkills } from "./${installerPath}"; await installSkills({ repoRoot: process.cwd(), skillDir: ".patchmill/skills", packageRoot: process.cwd() });`;
 export const validationCommands = [
   "npm ci",
-  "node bin/patchmill.ts skills update",
-  "node --test src/cli/commands/init/pi-dependency-contract.test.ts",
+  `node --input-type=module -e '${installerModule}'`,
+  "node --test src/cli/commands/init/skill-installer.test.ts src/pi/pi-subagents-dependency-contract.test.ts",
   "npm test",
   "node scripts/smoke-packed-artifact.mjs",
   "npm run lint",
@@ -116,69 +119,91 @@ function replaceExpected(text, expected, target, expectedCount, label) {
     );
   return text.replaceAll(expected, target);
 }
-async function configuredSuperpowersSkills(rootDir) {
-  const { PATCHMILL_RECOMMENDED_SKILL_PACK } = await import(
-    pathToFileURL(join(rootDir, "src/workflow/skill-pack.ts")).href
-  );
-  return PATCHMILL_RECOMMENDED_SKILL_PACK.skills
-    .filter((skill) => skill.source === "superpowers")
-    .map((skill) => skill.name);
-}
 async function assertSynchronizedRepository(rootDir, expectedVersion) {
-  const [
-    packageJson,
-    packageLock,
-    shrinkwrap,
-    skillPackSource,
-    notices,
-    metadata,
-  ] = await Promise.all([
-    readJson(join(rootDir, "package.json")),
-    readJson(join(rootDir, "package-lock.json")),
-    readJson(join(rootDir, "npm-shrinkwrap.json")),
-    readFile(join(rootDir, "src/workflow/skill-pack.ts"), "utf8"),
-    readFile(join(rootDir, "THIRD_PARTY_NOTICES.md"), "utf8"),
-    readJson(join(rootDir, ".patchmill/skills/patchmill-skill-pack.json")),
-  ]);
+  const [packageJson, packageLock, shrinkwrap, notices, metadata] =
+    await Promise.all([
+      readJson(join(rootDir, "package.json")),
+      readJson(join(rootDir, "package-lock.json")),
+      readJson(join(rootDir, "npm-shrinkwrap.json")),
+      readFile(join(rootDir, "THIRD_PARTY_NOTICES.md"), "utf8"),
+      readJson(join(rootDir, ".patchmill/skills/patchmill-skill-pack.json")),
+    ]);
   assertLockfilesMatchSuperpowersTarget({
     packageJson,
     packageLock,
     shrinkwrap,
     targetVersion: expectedVersion,
   });
-  const tag = `v${expectedVersion}`;
-  const url = tarballUrlForVersion(expectedVersion);
-  if (
-    (skillPackSource.match(new RegExp(tag, "gu")) ?? []).length !== 2 ||
-    !skillPackSource.includes(url)
-  )
-    throw new Error(
-      `src/workflow/skill-pack.ts must contain exactly two ${tag} references and ${url}`,
-    );
-  const noticeUrl = `https://github.com/obra/superpowers/tree/${tag}/skills`;
-  if (
-    (
-      notices.match(
-        new RegExp(noticeUrl.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "gu"),
-      ) ?? []
-    ).length !== 1
-  )
+  const noticeUrl = `https://github.com/obra/superpowers/tree/v${expectedVersion}/skills`;
+  if (notices.split(noticeUrl).length - 1 !== 1)
     throw new Error(
       `THIRD_PARTY_NOTICES.md must contain exactly one ${noticeUrl}`,
     );
-  const source = metadata.pack?.source;
+  const require = createRequire(join(rootDir, "package.json"));
+  const installer = await import(
+    pathToFileURL(join(rootDir, installerPath)).href
+  );
+  const packs = [
+    [rootDir, installer.PATCHMILL_SKILLS, "patchmill"],
+    [
+      dirname(require.resolve("superpowers/package.json")),
+      installer.SUPERPOWERS_SKILLS,
+      "superpowers",
+    ],
+    [
+      dirname(require.resolve("simple-english/package.json")),
+      installer.SIMPLE_ENGLISH_SKILLS,
+      "simpleEnglish",
+    ],
+  ];
+  const expected = new Map();
+  async function collect(source, relative) {
+    for (const entry of await readdir(source, { withFileTypes: true })) {
+      const from = join(source, entry.name);
+      const path = join(relative, entry.name);
+      if (entry.isDirectory()) await collect(from, path);
+      else
+        expected.set(
+          path,
+          createHash("sha256")
+            .update(await readFile(from))
+            .digest("hex"),
+        );
+    }
+  }
+  for (const [root, skills, key] of packs) {
+    const { version } = await readJson(join(root, "package.json"));
+    if (
+      metadata.sources?.[key] !== version ||
+      (key === "superpowers" && version !== expectedVersion)
+    )
+      throw new Error(
+        `Skill manifest source ${key} must match installed version ${version} and target`,
+      );
+    for (const skill of skills) {
+      await readFile(join(root, "skills", skill, "SKILL.md"));
+      await collect(join(root, "skills", skill), skill);
+    }
+  }
   if (
-    source?.repository !== "obra/superpowers" ||
-    source?.tag !== tag ||
-    source?.tarballUrl !== url
+    !Array.isArray(metadata.files) ||
+    metadata.files.length !== expected.size ||
+    new Set(metadata.files.map((file) => file.path)).size !== expected.size
   )
     throw new Error(
-      `.patchmill/skills/patchmill-skill-pack.json source must match ${tag} and ${url}`,
+      "Skill manifest files must match complete selected upstream directories",
     );
-  for (const skill of await configuredSuperpowersSkills(rootDir))
-    await access(
-      join(rootDir, "node_modules/superpowers/skills", skill, "SKILL.md"),
+  for (const file of metadata.files) {
+    if (!expected.has(file.path) || file.sha256 !== expected.get(file.path))
+      throw new Error(
+        `Skill manifest hash differs from upstream: ${file.path}`,
+      );
+    const installed = await readFile(
+      join(rootDir, ".patchmill/skills", file.path),
     );
+    if (createHash("sha256").update(installed).digest("hex") !== file.sha256)
+      throw new Error(`Installed skill content hash differs: ${file.path}`);
+  }
 }
 async function regenerateLockfiles(rootDir, runCommand) {
   await runCommand(
@@ -275,17 +300,6 @@ export async function runSuperpowersUpgrade(args, dependencies = {}) {
       await writeJson(join(rootDir, "package.json"), packageJson);
       const currentTag = `v${currentVersion}`;
       const targetTag = resolution.targetTag;
-      const skillPath = join(rootDir, "src/workflow/skill-pack.ts");
-      await writeFile(
-        skillPath,
-        replaceExpected(
-          await readFile(skillPath, "utf8"),
-          currentTag,
-          targetTag,
-          2,
-          "src/workflow/skill-pack.ts",
-        ),
-      );
       const noticePath = join(rootDir, "THIRD_PARTY_NOTICES.md");
       await writeFile(
         noticePath,
@@ -310,7 +324,7 @@ export async function runSuperpowersUpgrade(args, dependencies = {}) {
       await runCommand("npm", ["ci"], rootDir);
       await runCommand(
         "node",
-        ["bin/patchmill.ts", "skills", "update"],
+        ["--input-type=module", "-e", installerModule],
         rootDir,
       );
       if (!options.skipNixHash)

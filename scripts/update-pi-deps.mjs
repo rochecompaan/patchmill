@@ -26,7 +26,7 @@ const trackedMetadataPaths = {
   nixPackage: join(rootDir, "nix/package.nix"),
 };
 const validationCommands = [
-  "node --test src/cli/commands/init/pi-dependency-contract.test.ts",
+  "node --test src/cli/commands/init/skill-installer.test.ts src/pi/pi-subagents-dependency-contract.test.ts",
   "npm test",
   "node scripts/smoke-packed-artifact.mjs",
   "npm run lint",
