@@ -63,6 +63,7 @@ export class FakeHost implements Host {
     return this.call("checkCli", () => ({
       ok: true,
       message: "Fake host is ready",
+      login: "owner",
     }));
   }
 
@@ -105,7 +106,7 @@ export class FakeHost implements Host {
   async commentIssue(n: number, body: string) {
     this.call(`commentIssue:${n}`, (state) => {
       this.issue(state, n).comments.push({
-        author: "fake-host",
+        author: "owner",
         body,
         createdAt: new Date().toISOString(),
       });

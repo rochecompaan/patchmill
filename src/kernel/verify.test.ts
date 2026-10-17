@@ -23,6 +23,7 @@ const facts: Facts = {
 };
 const input: VerifyInput = {
   issue: 12,
+  repository: { owner: "owner", repo: "repo" },
   phase: "implementation",
   result: {
     ok: true,
@@ -47,7 +48,7 @@ for (const [body, expected] of [
   ["fix #12", true],
   ["fixed #12", true],
   ["resolve #12", true],
-  ["resolved owner-name/repo.name#12", true],
+  ["resolved owner-name/repo.name#12", false],
   ["Fixes\n#12", true],
   ["prefixfixes #12", false],
   ["Fixing #12", false],
@@ -57,13 +58,13 @@ for (const [body, expected] of [
   ["Fixes #12suffix", true],
 ] as const) {
   test(`closesIssue(${JSON.stringify(body)}) is ${expected}`, () => {
-    assert.equal(closesIssue(body, 12), expected);
+    assert.equal(closesIssue(body, 12, input.repository), expected);
   });
 }
 
 test("closesIssue uses the supplied issue number", () => {
-  assert.equal(closesIssue("Fixes #123", 123), true);
-  assert.equal(closesIssue("Fixes #12", 123), false);
+  assert.equal(closesIssue("Fixes #123", 123, input.repository), true);
+  assert.equal(closesIssue("Fixes #12", 123, input.repository), false);
 });
 
 for (const [name, result, session, reasons] of [
@@ -257,3 +258,20 @@ test("warnings remain available on a parser failure", () => {
     "unpushed commits",
   ]);
 });
+
+for (const body of [
+  "Fixes other/repo#12",
+  "Fixes owner/other#12",
+  "Fixes prefixowner/repo#12",
+  "Fixes owner/repo#123",
+  "Fixes other/owner/repo#12",
+]) {
+  test(`foreign or partial reference cannot verify done: ${body}`, () => {
+    const result = verifyOutcome({
+      ...input,
+      facts: { ...facts, pullRequest: { ...facts.pullRequest!, body } },
+    });
+    assert.equal(result.kind, "stop");
+    if (result.kind === "stop") assert.equal(result.label, "needsInfo");
+  });
+}

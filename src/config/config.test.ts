@@ -151,3 +151,18 @@ for (const text of ["{", "null", "[]", '"config"']) {
     );
   });
 }
+
+test("Tea selector never grants author trust when authenticated identity is unavailable", () => {
+  assert.deepEqual(
+    trustedAuthors(
+      parseConfig({
+        host: {
+          provider: "forgejo-tea",
+          login: "work",
+          trustedAuthors: ["reviewer"],
+        },
+      }),
+    ),
+    ["reviewer"],
+  );
+});

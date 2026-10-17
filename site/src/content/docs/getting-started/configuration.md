@@ -19,8 +19,10 @@ profile alias to select another profile. Do not substitute the detected username
 for the alias. `init --provider forgejo-tea --login PROFILE` records that alias.
 There is no Patchmill environment override for the login.
 
-`host.login` and `host.trustedAuthors` identify trusted comment authors. Issue
-content and comments remain untrusted instructions, even from those authors.
+The authenticated username and `host.trustedAuthors` identify trusted comment
+authors. GitHub also trusts its nonempty configured `host.login`. A Tea profile
+alias does not grant trust. Duplicate identities count once. Issue content and
+comments remain untrusted instructions, even from those authors.
 
 ## Spec gate
 

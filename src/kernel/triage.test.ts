@@ -75,6 +75,14 @@ async function setup(t: TestContext, outputs: string[], issues = [issue(9)]) {
   );
   const stdout: string[] = [],
     stderr: string[] = [];
+  t.mock.method(process.stdout, "write", (chunk: string) => {
+    stdout.push(String(chunk));
+    return true;
+  });
+  t.mock.method(process.stderr, "write", (chunk: string) => {
+    stderr.push(String(chunk));
+    return true;
+  });
   const config = parseConfig({ host: { login: "owner" } });
   const deps = {
     host,
@@ -105,7 +113,7 @@ test("applies a validated result and launches isolated Pi with the configured en
     { issue: 9, label: "agent-ready", applied: true },
   ]);
   assert.deepEqual(f.host.state().issues[0]!.labels, ["agent-ready"]);
-  assert.equal(f.host.state().issues[0]!.comments[0]!.body, "Looks clear.");
+  assert.match(f.host.state().issues[0]!.comments[0]!.body, /Looks clear\.$/);
   const launch = JSON.parse(
     (await fs.readFile(join(f.root, "launches"), "utf8")).trim(),
   );
@@ -253,3 +261,119 @@ for (const mode of ["failed", "timeout", "cancelled"] as const) {
     assert.match(f.stderr.join("\n"), /9/);
   });
 }
+
+for (const login of ["work", ""]) {
+  test(`runtime triage trusts authenticated identity, not Tea selector ${JSON.stringify(login)}`, async (t) => {
+    const people = ["alice", "work", "reviewer"];
+    const f = await setup(
+      t,
+      [block(), block()],
+      people.map((author, n) => ({
+        ...issue(n + 1, ["needs-info"]),
+        comments: [comment(author, "2026-10-16")],
+      })),
+    );
+    f.config.host = {
+      provider: "forgejo-tea",
+      login,
+      trustedAuthors: ["reviewer"],
+    };
+    f.host.checkCli = async () => ({
+      ok: true,
+      message: "authenticated",
+      login: "alice",
+    });
+    assert.deepEqual(
+      (await f.run()).map((o) => o.issue),
+      [1, 3],
+    );
+    const launches = (await fs.readFile(join(f.root, "launches"), "utf8"))
+      .trim()
+      .split("\n");
+    const prompt = await fs.readFile(
+      JSON.parse(launches[0]!).args.at(-1).slice(1),
+      "utf8",
+    );
+    assert.match(prompt, /alice \(trusted,/);
+  });
+}
+
+test("kernel needs-info is not a trusted reply, but a genuine reply from the same account is", async (t) => {
+  const f = await setup(t, [block("needs-info", "What is missing?"), block()]);
+  await f.run();
+  assert.equal(f.host.state().issues[0]!.comments[0]!.author, "owner");
+  assert.deepEqual(await f.run(), []);
+  await f.host.commentIssue(9, "Here is the answer.");
+  assert.equal((await f.run()).length, 1);
+  assert.equal(
+    (await fs.readFile(join(f.root, "launches"), "utf8")).trim().split("\n")
+      .length,
+    2,
+  );
+});
+
+for (const stale of [
+  "closed",
+  "in-progress",
+  "agent-done",
+  "ready",
+  "needs-info+in-progress",
+]) {
+  test(`automatic triage skips freshly ${stale} candidate without Pi or writes`, async (t) => {
+    const f = await setup(t, [block(), block()], [issue(9), issue(10)]);
+    const view = f.host.viewIssue.bind(f.host);
+    f.host.viewIssue = async (n) => {
+      if (n === 10) {
+        const state = f.host.state();
+        const target = state.issues[1]!;
+        if (stale === "closed") target.state = "closed";
+        else
+          target.labels =
+            stale === "ready" ? ["agent-ready"] : stale.split("+");
+        target.comments = [comment("owner", "2026-10-16")];
+        writeFakeHostState(join(f.root, "host.json"), state);
+      }
+      return view(n);
+    };
+    assert.deepEqual(
+      (await f.run()).map((o) => o.issue),
+      [9],
+    );
+    assert.equal(
+      f.host
+        .state()
+        .calls.some((c) => /(?:setLabels|commentIssue):10$/.test(c)),
+      false,
+    );
+    assert.equal(
+      (await fs.readFile(join(f.root, "launches"), "utf8")).trim().split("\n")
+        .length,
+      1,
+    );
+  });
+}
+
+test("GitHub runtime triage retains configured identity alongside authenticated identity", async (t) => {
+  const f = await setup(
+    t,
+    [block(), block(), block()],
+    ["alice", "old-owner", "reviewer"].map((author, n) => ({
+      ...issue(n + 1, ["needs-info"]),
+      comments: [comment(author, "2026-10-16")],
+    })),
+  );
+  f.config.host = {
+    provider: "github-gh",
+    login: "old-owner",
+    trustedAuthors: ["reviewer"],
+  };
+  f.host.checkCli = async () => ({
+    ok: true,
+    message: "authenticated",
+    login: "alice",
+  });
+  assert.deepEqual(
+    (await f.run()).map((o) => o.issue),
+    [1, 2, 3],
+  );
+});

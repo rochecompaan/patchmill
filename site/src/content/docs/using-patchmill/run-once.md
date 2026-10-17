@@ -105,12 +105,15 @@ request. Patchmill does not merge or automatically retry failed attempts.
 | Plan       | `docs/plans/YYYY-MM-DD-issue-N-<slug>.md`.                     |
 | Run output | `.patchmill/runs/issue-N/<run-id>/`.                           |
 
-Only the configured spec and plan naming patterns count as artifacts. Each
-attempt writes `prompt.md`, `session-N.log`, `sessions/`, and `result.json`. The
-prompt is replaced for each phase in the attempt. Session logs stay separate.
-`result.json` is a write-only record, never a resume input. Console output
-includes the final agent JSON when present, an outcome line, and a best-effort
-cost line. It is not a single machine-readable JSON stream.
+Only the configured spec and plan naming patterns count as artifacts. A design
+file cannot also count as a plan, even when both directories are equal. Each
+attempt writes `prompt.md`, `pi.log`, `session-N.log`, `sessions/`, and
+`result.json`. The prompt is replaced for each phase in the attempt. Session
+logs stay separate. The aggregate `pi.log` contains stdout and stderr from all
+phases. Both streams also go to the console. `result.json` is a write-only
+record, never a resume input. Console output includes the final agent JSON when
+present, an outcome line, and a best-effort cost line. It is not a single
+machine-readable JSON stream.
 
 ## Supervision and cleanup
 

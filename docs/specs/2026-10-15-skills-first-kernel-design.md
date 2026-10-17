@@ -152,7 +152,9 @@ worktree when it is missing, and collects the remaining facts in that worktree:
 | F5   | Is there a pull request whose head is the branch? None, draft, open, merged, or closed.                            |
 
 F2 and F3 match these names and nothing else. A file with another name does not
-exist as far as the kernel is concerned.
+exist as far as the kernel is concerned. The F3 pattern overlaps F2, so a
+recognized design file counts only as a spec, never as a plan. The directories
+can be equal, but implementation requires a separate plan file.
 
 The phase follows from the facts, in this order:
 
@@ -256,7 +258,9 @@ order:
    time limit, and the result contract.
 4. The untrusted issue content boundary, then the issue title, body, labels, and
    comments. Each comment carries its author and a trusted or untrusted mark.
-   Trusted authors are `host.login` plus `host.trustedAuthors`.
+   Trusted authors are the authenticated username plus `host.trustedAuthors`.
+   GitHub also trusts its nonempty configured `host.login`. A Tea profile alias
+   selects credentials, not a trusted author. Duplicate identities count once.
 5. Hard rules, kept to a handful: commit and push before finishing; never push
    the base branch; never force-push; never change labels; put questions in the
    summary; end with the JSON block.

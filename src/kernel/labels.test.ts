@@ -138,3 +138,14 @@ for (const [outcome, name] of [
     });
   });
 }
+
+test("two roles sharing a missing label create and return that name once", async () => {
+  const shared = { ...labels, ready: "shared", blocked: "shared" };
+  const h = fakeHost(
+    Object.values(shared)
+      .filter((name) => name !== "shared")
+      .map((name) => ({ name, color: "123456", description: "Existing" })),
+  );
+  assert.deepEqual(await ensureLabels(h.host, shared), ["shared"]);
+  assert.equal(h.stored.filter((label) => label.name === "shared").length, 1);
+});

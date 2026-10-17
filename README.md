@@ -118,7 +118,9 @@ configuration. There is no compatibility or migration path from earlier
 Patchmill versions. GitHub init can seed `host.login` from the detected user.
 For Forgejo, an empty login selects Tea's default profile. Only an explicit
 profile alias selects another profile. The detected username is not that alias.
-`host.login` and `host.trustedAuthors` also identify trusted comment authors.
+The authenticated username and `host.trustedAuthors` identify trusted comment
+authors. GitHub also trusts its configured `host.login`. A Tea profile alias
+does not grant author trust.
 
 ## Label lifecycle
 

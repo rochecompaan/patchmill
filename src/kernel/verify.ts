@@ -1,3 +1,5 @@
+import type { Repository } from "../host/types.ts";
+import { specReviewComment } from "./comments.ts";
 import type { Facts } from "./facts.ts";
 import type { Phase } from "./phase.ts";
 import type { PiSession } from "./pi-supervisor.ts";
@@ -9,21 +11,33 @@ export type Outcome =
   | { kind: "stop"; label: OutcomeLabel; comment: string; warnings: string[] };
 export type VerifyInput = {
   issue: number;
+  repository: Pick<Repository, "owner" | "repo">;
   phase: Phase;
   result: ParsedResult;
   session: Pick<PiSession, "exitCode" | "timedOut" | "aborted">;
   facts: Facts;
   gateRequired: boolean;
+  revision?: boolean;
   logPath: string;
   uncommitted: boolean;
   unpushed: number | "no-remote-branch";
 };
 
-export function closesIssue(body: string, issue: number): boolean {
-  return new RegExp(
-    `\\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\\s+(?:[\\w.-]+\\/[\\w.-]+)?#${issue}(?!\\d)`,
-    "i",
-  ).test(body);
+export function closesIssue(
+  body: string,
+  issue: number,
+  repository: Pick<Repository, "owner" | "repo">,
+): boolean {
+  const references = body.matchAll(
+    new RegExp(
+      `\\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\\s+(?:([\\w.-]+\\/[\\w.-]+))?#${issue}(?!\\d)`,
+      "gi",
+    ),
+  );
+  const slug = `${repository.owner}/${repository.repo}`.toLowerCase();
+  return [...references].some(
+    (match) => !match[2] || match[2].toLowerCase() === slug,
+  );
 }
 
 export function verifyOutcome(input: VerifyInput): Outcome {
@@ -46,9 +60,9 @@ export function verifyOutcome(input: VerifyInput): Outcome {
     if (!facts.specPath) missing.push("The spec path is missing.");
     if (missing.length > 0) {
       reason = `The claim was not verified. ${missing.join(" ")}`;
-    } else if (input.gateRequired && !facts.specApproved) {
+    } else if ((input.gateRequired && !facts.specApproved) || input.revision) {
       label = "specReview";
-      reason = "The spec is ready for review. Approval is required.";
+      reason = specReviewComment(facts);
     } else {
       return { kind: "advance" };
     }
@@ -66,7 +80,7 @@ export function verifyOutcome(input: VerifyInput): Outcome {
           `The pull request head does not match branch ${facts.branch}.`,
         );
       }
-      if (!closesIssue(pr.body, input.issue)) {
+      if (!closesIssue(pr.body, input.issue, input.repository)) {
         missing.push(`The pull request body does not close #${input.issue}.`);
       }
     }

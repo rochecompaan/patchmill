@@ -41,12 +41,7 @@ export function createKernelGit(
       );
       return ref?.replace(/^refs\/remotes\/origin\//, "");
     },
-    async ensureWorktree(input: {
-      path: string;
-      branch: string;
-      base: string;
-      remoteExists: boolean;
-    }): Promise<"created" | "existing"> {
+    async ensureWorktree(input) {
       await git(["worktree", "prune"]);
       const path = resolve(repoRoot, input.path);
       const canonicalPath = await fs
@@ -56,7 +51,16 @@ export function createKernelGit(
           throw error;
         });
       const registered = await git(["worktree", "list", "--porcelain", "-z"]);
-      if (registered!.split("\0").includes(`worktree ${canonicalPath}`)) {
+      const record = registered!
+        .split("\0\0")
+        .find((entry) =>
+          entry.split("\0").includes(`worktree ${canonicalPath}`),
+        );
+      if (record) {
+        if (!record.split("\0").includes(`branch refs/heads/${input.branch}`))
+          throw new Error(
+            `Worktree ${input.path}: expected branch ${input.branch}.`,
+          );
         return "existing";
       }
       try {
@@ -77,24 +81,15 @@ export function createKernelGit(
       );
       if (local !== undefined) {
         await git(["worktree", "add", path, input.branch]);
-      } else if (input.remoteExists) {
-        await git([
-          "worktree",
-          "add",
-          "--track",
-          "-b",
-          input.branch,
-          path,
-          `origin/${input.branch}`,
-        ]);
       } else {
         await git([
           "worktree",
           "add",
+          ...(input.remoteExists ? ["--track"] : []),
           "-b",
           input.branch,
           path,
-          `origin/${input.base}`,
+          `origin/${input.remoteExists ? input.branch : input.base}`,
         ]);
       }
       return "created";
@@ -102,20 +97,14 @@ export function createKernelGit(
     async hasUncommittedChanges(worktree: string): Promise<boolean> {
       return (await git(["status", "--porcelain"], undefined, worktree)) !== "";
     },
-    async unpushedCommits(
-      worktree: string,
-      branch: string,
-    ): Promise<number | "no-remote-branch"> {
+    async unpushedCommits(worktree, branch) {
       const remote = `refs/remotes/origin/${branch}`;
-      if (
-        (await git(
-          ["show-ref", "--verify", "--quiet", remote],
-          1,
-          worktree,
-        )) === undefined
-      ) {
-        return "no-remote-branch";
-      }
+      const remoteRef = await git(
+        ["show-ref", "--verify", "--quiet", remote],
+        1,
+        worktree,
+      );
+      if (remoteRef === undefined) return "no-remote-branch";
       return Number(
         await git(
           ["rev-list", "--count", `${remote}..refs/heads/${branch}`, "--"],

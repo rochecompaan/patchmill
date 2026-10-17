@@ -215,3 +215,20 @@ test("status and count failures are not mistaken for clean or missing remote", a
     CommandFailedError,
   );
 });
+
+for (const checkout of [["-b", "unrelated"], ["main"], ["--detach"]]) {
+  test(`refuses registered worktree on ${checkout.join(" ")} without modifying it`, async (t) => {
+    const { kernel, git, input, path } = await worktreeSetup(t);
+    await kernel.ensureWorktree(input);
+    if (checkout[0] === "main") await git(["checkout", "--detach"]);
+    await git(["checkout", ...checkout], path);
+    await fs.writeFile(join(path, "keep.txt"), "operator work");
+    const head = await git(["rev-parse", "HEAD"], path);
+    await assert.rejects(kernel.ensureWorktree(input), /expected branch/i);
+    assert.equal(await git(["rev-parse", "HEAD"], path), head);
+    assert.equal(
+      await fs.readFile(join(path, "keep.txt"), "utf8"),
+      "operator work",
+    );
+  });
+}
