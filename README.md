@@ -52,8 +52,9 @@ patchmill run-once
 ```
 
 Run these commands in a repository with an `origin` remote and authenticated
-host CLI. `auth` opens Pi. Use Pi's `/login` and `/model` flows there. `doctor`
-includes a real model smoke prompt. Triage dry runs also call the model.
+host CLI. `auth` opens Pi's login picker. After login, use `/model` to choose a
+model and `/quit` to return to your shell. `doctor` includes a real model smoke
+prompt. Triage dry runs also call the model.
 
 At `spec-review`, review the pushed spec. To approve it, add `spec-approved` and
 `agent-ready` to the issue, then run `patchmill run-once --issue N`. To request
@@ -66,17 +67,17 @@ with that pull request. The kernel never deletes the issue worktree.
 
 ## Commands
 
-| Command                                                    | Behaviour                                                                                                                            |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                                |
-| `patchmill auth`                                           | Run Pi interactively with the agent directory set. Login and model choice use Pi's `/login` and `/model`. Patchmill records nothing. |
-| `patchmill doctor`                                         | Read-only checks: host CLI logged in, labels exist, worktree directory ignored, skills present, Pi answers a smoke prompt.           |
-| `patchmill labels setup`                                   | Create missing labels.                                                                                                               |
-| `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                |
-| `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                               |
-| `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                              |
-| `patchmill version`                                        | Print the version.                                                                                                                   |
-| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                   |
+| Command                                                    | Behaviour                                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                            |
+| `patchmill auth`                                           | Open Pi's login picker for the configured agent directory. Use `/model` after login and `/quit` to exit. Credentials stay in Pi. |
+| `patchmill doctor`                                         | Read-only checks: host CLI logged in, labels exist, worktree directory ignored, skills present, Pi answers a smoke prompt.       |
+| `patchmill labels setup`                                   | Create missing labels.                                                                                                           |
+| `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.            |
+| `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                           |
+| `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                          |
+| `patchmill version`                                        | Print the version.                                                                                                               |
+| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                               |
 
 ## Configuration
 

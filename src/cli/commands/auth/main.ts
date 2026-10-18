@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfig, type PatchmillConfig } from "../../../config/config.ts";
 import type { CliOutput } from "../../main.ts";
 import { resolveBundledPiCommand, type PiCommandSpec } from "../../pi-cli.ts";
@@ -15,7 +16,17 @@ export function authSpawnPlan(
 } {
   return {
     command: pi.command,
-    args: [...pi.argsPrefix],
+    args: [
+      ...pi.argsPrefix,
+      "--no-session",
+      "--extension",
+      fileURLToPath(
+        new URL(
+          import.meta.url.endsWith(".ts") ? "./login.ts" : "./login.js",
+          import.meta.url,
+        ),
+      ),
+    ],
     env: {
       ...process.env,
       PI_CODING_AGENT_DIR: resolve(repoRoot, config.pi.agentDir),
@@ -27,6 +38,7 @@ export async function main(
   args: string[] = process.argv.slice(2),
   options: {
     repoRoot?: string;
+    isInteractive?: boolean;
     piCommand?: PiCommandSpec;
     spawn?: typeof spawn;
     output?: CliOutput;
@@ -38,7 +50,7 @@ export async function main(
   };
   if (args.length === 1 && ["--help", "-h", "help"].includes(args[0]!)) {
     output.stdout(
-      "Usage: patchmill auth\nOpen interactive Pi for repo-local provider authentication.",
+      "Usage: patchmill auth\nOpen Pi's login picker for repo-local provider authentication.\nAfter login, use /model to choose a model and /quit to return to your shell.",
     );
     return 0;
   }
@@ -47,6 +59,14 @@ export async function main(
       throw new Error(`Unknown argument: ${args[0]}. Use --help.`);
     const repoRoot = options.repoRoot ?? process.cwd();
     const config = await loadConfig(repoRoot);
+    if (
+      !(
+        options.isInteractive ??
+        Boolean(process.stdin.isTTY && process.stdout.isTTY)
+      )
+    ) {
+      throw new Error("Run `patchmill auth` in an interactive terminal.");
+    }
     const plan = authSpawnPlan(
       repoRoot,
       config,
