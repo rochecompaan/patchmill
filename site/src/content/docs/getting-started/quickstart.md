@@ -26,8 +26,10 @@ profile.
 
 `init` writes missing configuration, installs skills, provisions the reviewer,
 and adds local Git excludes. It leaves valid existing configuration alone.
-`auth` opens Pi with the repository agent directory. Use `/login` and `/model`
-inside Pi. `doctor` includes a real model call.
+`auth` asks for an authentication method, provider, and default model. It saves
+them in the repository's Pi agent directory, verifies the provider with a real
+model call, and returns to the shell without opening Pi chat. `doctor` also
+includes a real model call.
 
 ## Triage and run
 

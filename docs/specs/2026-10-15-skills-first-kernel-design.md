@@ -65,26 +65,26 @@ not in a prompt renderer with a config schema behind it.
 
 ## Decisions
 
-| Topic              | Decision                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kernel scope       | Five responsibilities: supervise Pi, claim and release, derive phase, verify outcome, fixed names. Nothing else is deterministic.                             |
-| Workflow state     | None persisted. Every Run attempt derives the phase from git and the host. Logs and session files are outputs, never inputs.                                  |
-| Branch model       | One branch and one worktree per issue. Spec, plan, and implementation live on that branch. No planning pull requests.                                         |
-| Pull request model | One pull request per issue. The agent may open it as a draft during planning and marks it ready when implementation is complete.                              |
-| Human gate         | One optional gate: spec approval, recorded as the `spec-approved` label on the issue. No plan approval gate. The plan is reviewed with the pull request.      |
-| Host mutations     | The kernel owns issue labels and the run report comment. The agent owns git, the branch, and the pull request. Neither does the other's job.                  |
-| Prompt             | One short envelope: facts, the untrusted boundary, the skill to follow, and the result contract. Target under 150 template lines.                             |
-| Result contract    | A final fenced JSON block with `status` and `summary`. Nothing else.                                                                                          |
-| Todo contract      | Removed. The vendored todo extension, task contract, done-status policy, and todo checks go. Skills may recommend todos. Code never checks them.              |
-| Config             | Host, labels, paths, base branch, skills, Pi timeout and agent directory, trusted authors, and the spec gate. Unknown keys fail loading by name.              |
-| Init and auth      | Patchmill provisions the agent directory and skills. Provider login and model choice use Pi's own interactive flows.                                          |
-| Triage             | Code lists candidates, runs Pi with the triage skill, and applies the returned labels and comment. No simulated dry-run agent.                                |
-| Diagnostics        | The agent's `summary` is the diagnostic. The kernel prints the final JSON, one outcome line, and a best-effort cost line.                                     |
-| Build strategy     | Blank slate. The kernel is a fresh tree. No code is ported for compatibility. The old tree is deleted in the same change.                                     |
-| Earlier versions   | No upgrade path. The kernel reads no run state, config, label, spec, or plan from an earlier Patchmill and contains no migration code.                        |
-| Quality gates      | Keep type checks, lint, format, markdown lint, and `node --test`. Remove mutation testing, the CRAP gate, dependency-cruiser, property tests, contract tests. |
-| Tests              | End-to-end tests of `runOneIssue` against a fake host and a fake Pi. Unit tests only for the derived-phase table, result parsing, naming, and supervision.    |
-| Hosts              | GitHub through `gh` and Forgejo through `tea`, both behind one small interface.                                                                               |
+| Topic              | Decision                                                                                                                                                                         |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kernel scope       | Five responsibilities: supervise Pi, claim and release, derive phase, verify outcome, fixed names. Nothing else is deterministic.                                                |
+| Workflow state     | None persisted. Every Run attempt derives the phase from git and the host. Logs and session files are outputs, never inputs.                                                     |
+| Branch model       | One branch and one worktree per issue. Spec, plan, and implementation live on that branch. No planning pull requests.                                                            |
+| Pull request model | One pull request per issue. The agent may open it as a draft during planning and marks it ready when implementation is complete.                                                 |
+| Human gate         | One optional gate: spec approval, recorded as the `spec-approved` label on the issue. No plan approval gate. The plan is reviewed with the pull request.                         |
+| Host mutations     | The kernel owns issue labels and the run report comment. The agent owns git, the branch, and the pull request. Neither does the other's job.                                     |
+| Prompt             | One short envelope: facts, the untrusted boundary, the skill to follow, and the result contract. Target under 150 template lines.                                                |
+| Result contract    | A final fenced JSON block with `status` and `summary`. Nothing else.                                                                                                             |
+| Todo contract      | Removed. The vendored todo extension, task contract, done-status policy, and todo checks go. Skills may recommend todos. Code never checks them.                                 |
+| Config             | Host, labels, paths, base branch, skills, Pi timeout and agent directory, trusted authors, and the spec gate. Unknown keys fail loading by name.                                 |
+| Init and auth      | Init provisions the agent directory and skills. Auth retains standalone provider login and model selection, uses Pi's credential storage and settings, and returns to the shell. |
+| Triage             | Code lists candidates, runs Pi with the triage skill, and applies the returned labels and comment. No simulated dry-run agent.                                                   |
+| Diagnostics        | The agent's `summary` is the diagnostic. The kernel prints the final JSON, one outcome line, and a best-effort cost line.                                                        |
+| Build strategy     | Blank-slate workflow kernel. Retain the standalone auth UI outside the workflow kernel. No earlier-version readers or compatibility shims.                                       |
+| Earlier versions   | No upgrade path. The kernel reads no run state, config, label, spec, or plan from an earlier Patchmill and contains no migration code.                                           |
+| Quality gates      | Keep type checks, lint, format, markdown lint, and `node --test`. Remove mutation testing, the CRAP gate, dependency-cruiser, property tests, contract tests.                    |
+| Tests              | End-to-end tests of `runOneIssue` against a fake host and fake Pi. Focused unit tests cover the derived-phase table, result parsing, naming, supervision, and standalone auth.   |
+| Hosts              | GitHub through `gh` and Forgejo through `tea`, both behind one small interface.                                                                                                  |
 
 ## The kernel's five responsibilities
 
@@ -312,19 +312,27 @@ subagents. The kernel does not observe them.
 
 ## Commands
 
-| Command                                                    | Behaviour                                                                                                                            |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                                |
-| `patchmill auth`                                           | Run Pi interactively with the agent directory set. Login and model choice use Pi's `/login` and `/model`. Patchmill records nothing. |
-| `patchmill doctor`                                         | Read-only checks: host CLI logged in, labels exist, worktree directory ignored, skills present, Pi answers a smoke prompt.           |
-| `patchmill labels setup`                                   | Create missing labels.                                                                                                               |
-| `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                |
-| `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                               |
-| `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                              |
-| `patchmill version`                                        | Print the version.                                                                                                                   |
-| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                   |
+| Command                                                    | Behaviour                                                                                                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                                                         |
+| `patchmill auth`                                           | Choose a subscription or API key, provider, and default model. Save them in the configured Pi agent directory, verify the provider, then return to the shell. |
+| `patchmill doctor`                                         | Read-only checks: host CLI logged in, labels exist, worktree directory ignored, skills present, Pi answers a smoke prompt.                                    |
+| `patchmill labels setup`                                   | Create missing labels.                                                                                                                                        |
+| `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                                         |
+| `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                                                        |
+| `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                       |
+| `patchmill version`                                        | Print the version.                                                                                                                                            |
+| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
 
 This table is the complete command set.
+
+`auth` retains Patchmill's standalone authentication-method, provider, and model
+pickers. Pi's SDK writes credentials to the configured agent directory's
+`auth.json`. Patchmill preserves unrelated Pi settings and writes
+`defaultProvider` and `defaultModel` to `settings.json`. It runs a real provider
+smoke prompt and returns to the shell. It does not open Pi chat, require slash
+commands, or change global Pi settings. Cancellation returns a nonzero exit code
+without running the smoke prompt. Auth is operator setup, not workflow policy.
 
 `runOneIssue(config, options)` remains the programmatic entry point so a later
 loop (#236) can call it.
@@ -406,8 +414,9 @@ same change:
   runner.
 - `src/pi/subagent-progress*`, `src/pi/extensions/`, and `extensions/todos.ts`.
 - `src/cli/commands/init/` and `src/cli/commands/triage/` are rewritten. The
-  auth flow, model selection, git policy, push setup, dry-run agent, blocked
-  preprocessor, and Forgejo-specific module have no successor.
+  standalone auth flow and model selection move to `src/cli/commands/auth/`. Git
+  policy, push setup, dry-run agent, blocked preprocessor, and the
+  Forgejo-specific module have no successor.
 - `src/cli/commands/run/`, `set-artifact/`, `skills/`, and every deprecation
   shim.
 - `src/config/load.ts` and its deep-merge and clone helpers. The new loader

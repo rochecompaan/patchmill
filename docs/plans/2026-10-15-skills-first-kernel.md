@@ -1526,8 +1526,10 @@ CLI failure still exits 0 with a warning.
 
 - Create: `src/cli/commands/auth/main.ts`, `src/cli/commands/doctor/main.ts`,
   `src/cli/commands/doctor/checks.ts`
+- Restore under `src/cli/commands/auth/`: the standalone auth UI, model picker,
+  Pi runtime adapter, local settings helpers, and provider smoke prompt.
 - Modify: `src/cli/main.ts`
-- Test: `src/cli/commands/auth/main.test.ts`,
+- Test: `src/cli/commands/auth/*.test.ts`,
   `src/cli/commands/doctor/checks.test.ts`
 
 **Interfaces:**
@@ -1536,11 +1538,11 @@ CLI failure still exits 0 with a warning.
 
 ```ts
 // auth/main.ts
-export function authSpawnPlan(
-  repoRoot: string,
-  config: PatchmillConfig,
-  pi: PiCommandSpec,
-): { command: string; args: string[]; env: Record<string, string | undefined> }; // interactive pi, no -p, PI_CODING_AGENT_DIR set
+export async function runAuth(
+  args: string[],
+  repoRoot?: string,
+  output?: AuthOutput,
+): Promise<number>; // standalone provider login, model selection, smoke prompt
 // doctor/checks.ts
 export type DoctorCheck = {
   name: string;
@@ -1568,10 +1570,17 @@ path), trusted authors non-empty (warn). `doctor` prints
 
 - [ ] **Step 1: Write failing tests**
 
-`authSpawnPlan` args contain no `-p` and env has `PI_CODING_AGENT_DIR` ending in
-`.patchmill/pi-agent`. `runDoctorChecks` with stubs: missing label gives a
-`fail` naming it; missing `SKILL.md` gives `fail`; smoke stdout `OK` gives
-`pass`; `trustedAuthors` empty gives `warn`.
+Auth presents the standalone authentication-method, provider, and model pickers.
+Pi's SDK saves credentials in `pi.agentDir/auth.json`. Patchmill saves
+`defaultProvider` and `defaultModel` in `pi.agentDir/settings.json` while
+preserving unrelated settings. Test configured and default agent directories,
+API-key and subscription login, model search and selection, cancellation,
+provider smoke success and failure, and return to the shell without starting
+interactive Pi. No slash commands or login startup extension are needed.
+
+`runDoctorChecks` with stubs: missing label gives a `fail` naming it; missing
+`SKILL.md` gives `fail`; smoke stdout `OK` gives `pass`; `trustedAuthors` empty
+gives `warn`.
 
 - [ ] **Step 2: Run tests; expect failure**
 - [ ] **Step 3: Implement; register `auth` and `doctor`**

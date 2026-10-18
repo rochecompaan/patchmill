@@ -1,180 +1,241 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-  ExtensionFactory,
-  SessionStartEvent,
-} from "@earendil-works/pi-coding-agent";
-import { Editor, ProcessTerminal, TuiMainScreen } from "@earendil-works/pi-tui";
-import { DEFAULT_CONFIG } from "../../../config/config.ts";
-import { runCommand } from "../../../process/command.ts";
-import { authSpawnPlan, main } from "./main.ts";
+import { HELP_TEXT, main, runAuth } from "./main.ts";
+import type { PiAuthSetupResult } from "./pi-auth-setup.ts";
+import type { PiModelChoice, PiReadiness } from "./pi-preflight.ts";
 
-test("auth opens login without saving a chat session and preserves repo-local credentials", () => {
-  const config = structuredClone(DEFAULT_CONFIG);
-  const pi = { command: "node", argsPrefix: ["pi.js"] };
-  const plan = authSpawnPlan("/repo", config, pi);
-  assert.deepEqual(plan.args, [
-    "pi.js",
-    "--no-session",
-    "--extension",
-    fileURLToPath(new URL("./login.ts", import.meta.url)),
-  ]);
-  assert.equal(plan.command, "node");
-  assert.equal(plan.env.PI_CODING_AGENT_DIR, "/repo/.patchmill/pi-agent");
-  assert.equal(plan.env.PATH, process.env.PATH);
-  config.pi.agentDir = "custom/agent";
-  assert.equal(
-    authSpawnPlan("/repo", config, pi).env.PI_CODING_AGENT_DIR,
-    "/repo/custom/agent",
-  );
-});
-
-test("auth submits built-in login through the editor only once and only in a terminal", async (t) => {
-  const plan = authSpawnPlan("/repo", DEFAULT_CONFIG, {
-    command: "node",
-    argsPrefix: ["pi.js"],
-  });
-  const extensionIndex = plan.args.indexOf("--extension");
-  assert.notEqual(extensionIndex, -1, "auth must load its login startup hook");
-  const { default: login } = (await import(
-    pathToFileURL(plan.args[extensionIndex + 1]!).href
-  )) as { default: ExtensionFactory };
-  type StartHandler = (
-    event: SessionStartEvent,
-    context: ExtensionContext,
-  ) => unknown;
-  const hooks: { start?: StartHandler } = {};
-  await login({
-    on(_event: "session_start", handler: StartHandler) {
-      hooks.start = handler;
-      return () => {};
-    },
-  } as ExtensionAPI);
-  assert.ok(hooks.start);
-
-  const plain = (text: string) => text;
-  const editor = new Editor(new TuiMainScreen(new ProcessTerminal()), {
-    borderColor: plain,
-    selectList: {
-      selectedPrefix: plain,
-      selectedText: plain,
-      description: plain,
-      scrollInfo: plain,
-      noMatch: plain,
-    },
-  });
-  const submitted: string[] = [];
-  editor.onSubmit = (text) => submitted.push(text);
-  const receiveInput = (data: Buffer) => editor.handleInput(data.toString());
-  const wasFlowing = process.stdin.readableFlowing === true;
-  process.stdin.on("data", receiveInput);
-  t.after(() => {
-    process.stdin.off("data", receiveInput);
-    if (!wasFlowing) process.stdin.pause();
-  });
-  const context = {
-    mode: "tui",
-    ui: { setEditorText: (text: string) => editor.setText(text) },
-  } as ExtensionContext;
-  await hooks.start({ type: "session_start" }, { ...context, mode: "print" });
-  assert.deepEqual(submitted, []);
-  await hooks.start({ type: "session_start" }, context);
-  await hooks.start({ type: "session_start" }, context);
-  assert.deepEqual(submitted, ["/login"]);
-});
-
-test("auth refuses redirected input or output instead of entering Pi print mode", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "patchmill-auth-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  await writeFile(join(root, "patchmill.config.json"), "{}");
-  const errors: string[] = [];
-  assert.equal(
-    await main([], {
-      repoRoot: root,
-      isInteractive: false,
-      output: { stdout: () => {}, stderr: (line) => errors.push(line) },
-      spawn: () => assert.fail("auth must not launch Pi without a terminal"),
-    }),
-    1,
-  );
-  assert.match(errors.join("\n"), /interactive terminal/i);
-});
-
-test("auth uses inherited terminal, returns child failures and reports spawn/config errors", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "patchmill-auth-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  await writeFile(join(root, "patchmill.config.json"), "{}");
-  const errors: string[] = [];
-  const options = {
-    repoRoot: root,
-    isInteractive: true,
-    output: { stdout: () => {}, stderr: (s: string) => errors.push(s) },
+function model(): PiModelChoice {
+  return {
+    provider: "anthropic",
+    providerName: "Anthropic",
+    id: "claude-sonnet-4-5",
+    label: "Anthropic / Claude Sonnet 4.5",
+    value: "anthropic/claude-sonnet-4-5",
+    authSource: "stored",
+    reasoning: true,
+    input: ["text"],
   };
-  for (const code of [0, 7]) {
-    assert.equal(
-      await main([], {
-        ...options,
-        piCommand: {
-          command: process.execPath,
-          argsPrefix: ["-e", `process.exit(${code})`, "--"],
+}
+
+function readyReadiness(): PiReadiness {
+  return {
+    status: "ready",
+    message: "Pi reported 1 provider/model option with configured auth.",
+    models: [model()],
+  };
+}
+
+function missingReadiness(): PiReadiness {
+  return {
+    status: "missing",
+    message: "Pi did not report any provider/model with configured auth.",
+    models: [],
+  };
+}
+
+function readySetup(): PiAuthSetupResult {
+  return {
+    status: "ready",
+    readiness: readyReadiness(),
+    selection: {
+      status: "selected",
+      model: "anthropic/claude-sonnet-4-5",
+      provider: "anthropic",
+      modelId: "claude-sonnet-4-5",
+      message: "Using Pi model Anthropic / Claude Sonnet 4.5.",
+    },
+    smoke: {
+      status: "pass",
+      message:
+        "Pi completed the provider smoke test with anthropic/claude-sonnet-4-5.",
+      command: "pi smoke",
+      details: "ok",
+    },
+  };
+}
+
+test("patchmill auth --help prints help", async () => {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+
+  assert.equal(
+    await runAuth(["--help"], "/repo", {
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    }),
+    0,
+  );
+  assert.deepEqual(stdout, [HELP_TEXT]);
+  assert.deepEqual(stderr, []);
+});
+
+test("patchmill auth rejects unknown options", async () => {
+  await assert.rejects(
+    runAuth(["--unknown"], "/repo", {
+      stdout: () => undefined,
+      stderr: () => undefined,
+    }),
+    /Unknown option: --unknown/,
+  );
+});
+
+test("main returns numeric exit code", async () => {
+  assert.equal(typeof (await main(["--help"])), "number");
+});
+
+test("successful interactive auth prints repo-local summary and next commands", async () => {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const repoRoot = "/repo";
+  let forceInteractiveSetup: boolean | undefined;
+
+  const exitCode = await runAuth(
+    [],
+    repoRoot,
+    {
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    },
+    {
+      isInteractive: true,
+      detectPiReadiness: () => readyReadiness(),
+      readLocalPiDefaultModel: async () => undefined,
+      persistDefaultModel: async () => undefined,
+      resolvePiAuthSetup: async (options) => {
+        forceInteractiveSetup = options.forceInteractiveSetup;
+        assert.equal(
+          options.piAgentDir,
+          join(repoRoot, ".patchmill", "pi-agent"),
+        );
+        return readySetup();
+      },
+    },
+  );
+
+  assert.equal(exitCode, 0);
+  assert.equal(forceInteractiveSetup, true);
+  assert.deepEqual(stderr, []);
+  assert.match(
+    stdout[0] ?? "",
+    /Pi agent directory: \/repo\/\.patchmill\/pi-agent/,
+  );
+  assert.match(stdout[0] ?? "", /Pi reported 1 provider\/model option/);
+  assert.match(stdout[0] ?? "", /Selected model: anthropic\/claude-sonnet-4-5/);
+  assert.match(stdout[0] ?? "", /Pi completed the provider smoke test/);
+  assert.match(stdout[0] ?? "", /Details:\nok/);
+  assert.match(
+    stdout[0] ?? "",
+    /Next:\n {2}patchmill doctor\n {2}patchmill triage/,
+  );
+});
+
+test("incomplete non-interactive setup exits before prompt-capable setup", async () => {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  let setupCalled = false;
+
+  const exitCode = await runAuth(
+    [],
+    "/repo",
+    {
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    },
+    {
+      isInteractive: false,
+      detectPiReadiness: () => missingReadiness(),
+      resolvePiAuthSetup: async () => {
+        setupCalled = true;
+        throw new Error("setup should not run");
+      },
+    },
+  );
+
+  assert.equal(exitCode, 1);
+  assert.equal(setupCalled, false);
+  assert.deepEqual(stdout, []);
+  assert.deepEqual(stderr, [
+    "Pi provider/model setup is incomplete.\nRerun `patchmill auth` in an interactive terminal to configure provider auth and select a model.",
+  ]);
+});
+
+test("local Pi default model read failures are surfaced", async () => {
+  await assert.rejects(
+    runAuth(
+      [],
+      "/repo",
+      {
+        stdout: () => undefined,
+        stderr: () => undefined,
+      },
+      {
+        isInteractive: true,
+        detectPiReadiness: () => readyReadiness(),
+        readLocalPiDefaultModel: async () => {
+          throw new Error("settings are malformed");
         },
-        spawn: (command, args, opts) => {
-          assert.equal(opts?.stdio, "inherit");
-          assert.equal(opts?.cwd, root);
-          assert.equal(
-            opts?.env?.PI_CODING_AGENT_DIR,
-            join(root, ".patchmill/pi-agent"),
-          );
-          return spawn(command, args, opts);
+        resolvePiAuthSetup: async () => {
+          throw new Error("setup should not run");
+        },
+      },
+    ),
+    /settings are malformed/,
+  );
+});
+
+test("ready state still forces interactive setup", async () => {
+  let forceInteractiveSetup: boolean | undefined;
+
+  await runAuth(
+    [],
+    "/repo",
+    {
+      stdout: () => undefined,
+      stderr: () => undefined,
+    },
+    {
+      isInteractive: true,
+      detectPiReadiness: () => readyReadiness(),
+      readLocalPiDefaultModel: async () => undefined,
+      persistDefaultModel: async () => undefined,
+      resolvePiAuthSetup: async (options) => {
+        forceInteractiveSetup = options.forceInteractiveSetup;
+        return readySetup();
+      },
+    },
+  );
+
+  assert.equal(forceInteractiveSetup, true);
+});
+
+test("cancelled setup exits 1 without workflow commands", async () => {
+  const stdout: string[] = [];
+
+  const exitCode = await runAuth(
+    [],
+    "/repo",
+    {
+      stdout: (line) => stdout.push(line),
+      stderr: () => undefined,
+    },
+    {
+      isInteractive: true,
+      detectPiReadiness: () => readyReadiness(),
+      readLocalPiDefaultModel: async () => undefined,
+      persistDefaultModel: async () => undefined,
+      resolvePiAuthSetup: async () => ({
+        status: "cancelled",
+        readiness: readyReadiness(),
+        selection: {
+          status: "unavailable",
+          reason: "cancelled",
+          message: "Pi model selection was cancelled.",
         },
       }),
-      code,
-    );
-  }
-  assert.equal(
-    await main([], {
-      ...options,
-      piCommand: { command: join(root, "missing"), argsPrefix: [] },
-    }),
-    1,
+    },
   );
-  assert.match(errors.join("\n"), /ENOENT/);
-  await writeFile(join(root, "patchmill.config.json"), '{"unknown":true}');
-  assert.equal(await main([], options), 1);
-  assert.match(errors.join("\n"), /unknown/);
-  assert.equal(await main(["--bad"], options), 1);
-});
 
-test("root dispatches auth and doctor safely without config and still rejects retired run", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "patchmill-dispatch-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  for (const command of ["auth", "doctor"]) {
-    const help = await runCommand(
-      process.execPath,
-      [join(process.cwd(), "bin/patchmill.ts"), command, "--help"],
-      { cwd: root },
-    );
-    assert.equal(help.code, 0, help.stderr);
-    const failure = await runCommand(
-      process.execPath,
-      [join(process.cwd(), "bin/patchmill.ts"), command],
-      { cwd: root },
-    );
-    assert.equal(failure.code, 1);
-    assert.match(failure.stderr, /Missing.*patchmill.config.json/);
-  }
-  const retired = await runCommand(
-    process.execPath,
-    [join(process.cwd(), "bin/patchmill.ts"), "run"],
-    { cwd: root },
-  );
-  assert.equal(retired.code, 1);
-  assert.match(retired.stderr, /Unknown command: run/);
+  assert.equal(exitCode, 1);
+  assert.doesNotMatch(stdout[0] ?? "", /patchmill triage/);
 });

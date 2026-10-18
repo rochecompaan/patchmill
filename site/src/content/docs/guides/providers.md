@@ -29,9 +29,10 @@ recognizes native draft state and `Draft:` title prefixes.
 
 ## Pi authentication
 
-`patchmill auth` opens interactive Pi with `PI_CODING_AGENT_DIR` set to the
-configured agent directory. Use Pi's `/login` and `/model` flows there.
-Patchmill keeps no second authentication or model record.
+`patchmill auth` asks you to choose a subscription or API key, then a provider
+and model. Pi's SDK saves the credentials in the configured agent directory.
+Patchmill saves the default model in Pi's settings, verifies the provider with a
+real model call, and returns to the shell. It does not open Pi chat.
 
 See [Pi and subagents](/guides/pi-and-subagents/) for local runtime settings.
 After setup, run `patchmill labels setup` and `patchmill doctor`. Doctor

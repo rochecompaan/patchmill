@@ -9,9 +9,15 @@ settings local. Do not commit that directory.
 
 ## Authentication and models
 
-Run `patchmill auth` to open Pi. Use `/login` and `/model` inside Pi to select
-credentials and a model. Pi owns its settings and provider state. Patchmill does
-not rewrite them through a separate authentication or model-selection flow.
+Run `patchmill auth` in an interactive terminal. Choose a subscription or API
+key, then a provider and model. The command verifies the provider with a real
+model call and returns to the shell. It does not open Pi chat.
+
+Pi's SDK saves credentials in `auth.json` inside the configured agent directory.
+Patchmill saves `defaultProvider` and `defaultModel` in Pi's `settings.json`,
+which preserves unrelated settings. There is no separate Patchmill credential
+store. The command respects `pi.agentDir` and does not change global Pi
+settings.
 
 Pi runtime settings live in `.patchmill/pi-agent/settings.json` by default. Use
 model IDs supported by the installed Pi provider catalog. For the current
