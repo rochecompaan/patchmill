@@ -10,6 +10,7 @@ import {
   runTriage,
   selectTriageCandidates,
   type TriageOptions,
+  type TriageProgressEvent,
 } from "./triage.ts";
 
 function issue(number: number, labels: string[] = []): Issue {
@@ -141,15 +142,20 @@ test("applies a validated result and launches isolated Pi with the configured en
   assert.match(prompt, /agent-ready/);
 });
 
-test("dry-run still invokes Pi and prints label and comment without Host writes", async (t) => {
+test("dry-run still invokes Pi and reports label and comment without Host writes", async (t) => {
   const f = await setup(t, [block()]);
   const before = f.host.state().issues;
-  assert.deepEqual(await f.run({ dryRun: true }), [
-    { issue: 9, label: "agent-ready", applied: false },
-  ]);
+  const progress: TriageProgressEvent[] = [];
+  assert.deepEqual(
+    await f.run({ dryRun: true, onProgress: (event) => progress.push(event) }),
+    [{ issue: 9, label: "agent-ready", applied: false }],
+  );
   assert.deepEqual(f.host.state().issues, before);
-  assert.match(f.stdout.join("\n"), /agent-ready/);
-  assert.match(f.stdout.join("\n"), /Looks clear\./);
+  const preview = progress.find((event) => event.type === "triaged");
+  assert.ok(preview);
+  assert.deepEqual(preview.finalLabels, ["agent-ready"]);
+  assert.equal(preview.comment, "Looks clear.");
+  assert.equal(preview.applied, false);
   assert.equal(
     f.host.state().calls.some((c) => /setLabels|commentIssue/.test(c)),
     false,

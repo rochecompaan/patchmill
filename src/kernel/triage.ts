@@ -18,10 +18,27 @@ export type TriageDeps = Pick<
   RunOnceDeps,
   "host" | "piCommand" | "repoRoot" | "now" | "output"
 >;
+export type TriageProgressEvent =
+  | { type: "selected"; total: number }
+  | {
+      type: "started";
+      issue: Pick<Issue, "number" | "title" | "url">;
+      logPath: string;
+    }
+  | {
+      type: "triaged";
+      previousLabels: string[];
+      finalLabels: string[];
+      comment: string;
+      applied: boolean;
+      completed: number;
+      total: number;
+    };
 export type TriageOptions = {
   issue?: number;
   dryRun?: boolean;
   signal?: AbortSignal;
+  onProgress?: (event: TriageProgressEvent) => void;
 };
 
 export function selectTriageCandidates(
@@ -96,6 +113,7 @@ export async function runTriage(
       }
     }
   }
+  options.onProgress?.({ type: "selected", total: candidates.length });
   const allowed = [
     config.labels.ready,
     config.labels.unsuitable,
@@ -135,6 +153,8 @@ export async function runTriage(
           trusted,
         }),
       );
+      const logPath = join(runDir, "session-1.log");
+      options.onProgress?.({ type: "started", issue, logPath });
       const session = await supervisePi({
         command: deps.piCommand,
         cwd: repoRoot,
@@ -142,7 +162,9 @@ export async function runTriage(
         sessionDir: join(runDir, "sessions", "1"),
         skillPath: skill.path,
         promptPath,
-        logPath: join(runDir, "session-1.log"),
+        logPath,
+        // Keep raw model output in the session log, not in the CLI display.
+        onOutput: () => {},
         extensionPaths: [],
         timeoutMs: config.pi.timeoutMinutes * 60_000,
         ...(options.signal ? { signal: options.signal } : {}),
@@ -167,18 +189,28 @@ export async function runTriage(
         continue;
       }
       const { label, comment } = parsed.value;
-      if (options.dryRun)
-        output.stdout(JSON.stringify({ issue: number, label, comment }));
-      else {
-        await host.setLabels(
-          number,
-          [label],
-          allowed.filter((value) => value !== label),
-        );
+      const remove = allowed.filter((value) => value !== label);
+      const finalLabels = [
+        ...new Set([
+          ...issue.labels.filter((value) => !remove.includes(value)),
+          label,
+        ]),
+      ];
+      if (!options.dryRun) {
+        await host.setLabels(number, [label], remove);
         if (comment !== "")
           await host.commentIssue(number, `${KERNEL_COMMENT}\n${comment}`);
       }
       outcomes.push({ issue: number, label, applied: !options.dryRun });
+      options.onProgress?.({
+        type: "triaged",
+        previousLabels: issue.labels,
+        finalLabels,
+        comment,
+        applied: !options.dryRun,
+        completed: outcomes.length,
+        total: candidates.length,
+      });
     } catch (error) {
       warn(number, error instanceof Error ? error.message : String(error));
     }
