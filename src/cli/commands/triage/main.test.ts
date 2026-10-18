@@ -83,6 +83,7 @@ test("assembles checked Host and bundled Pi, forwards flags and output", async (
         assert.equal(options.issue, 9);
         assert.equal(options.dryRun, true);
         assert.equal(options.signal?.aborted, false);
+        options.onProgress?.({ type: "selected", total: 1 });
         deps.output.stdout("queue: Looks clear.");
         return [{ issue: 9, label: "queue", applied: false }];
       },
@@ -90,7 +91,8 @@ test("assembles checked Host and bundled Pi, forwards flags and output", async (
     0,
   );
   assert.equal(entered, true);
-  assert.deepEqual(f.stdout, ["queue: Looks clear."]);
+  assert.ok(f.stdout.includes("queue: Looks clear."));
+  assert.match(f.stdout.join("\n"), /agent issue triage: dry-run/);
   assert.deepEqual(f.stderr, []);
 });
 
@@ -113,6 +115,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         fails ? 1 : 0,
       );
       assert.deepEqual(process.listeners(signal), before);
+      if (!fails)
+        assert.match(f.stdout.join("\n"), /agent issue triage: cancelled/);
     }
     assert.match(f.stderr.join("\n"), /triage failed/);
   });

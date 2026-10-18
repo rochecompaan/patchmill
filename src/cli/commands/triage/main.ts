@@ -4,6 +4,7 @@ import { runTriage, type TriageOptions } from "../../../kernel/triage.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
 import { resolveBundledPiCommand } from "../../pi-cli.ts";
+import { createTriageProgressReporter } from "./progress-output.ts";
 
 const HELP = `Usage: patchmill triage [--issue N] [--dry-run]
 Classify candidate issues. Use --issue to triage any issue.
@@ -63,12 +64,19 @@ export async function main(
       now: () => new Date(),
       output,
     };
+    const reporter = createTriageProgressReporter({
+      command: ["patchmill", "triage", ...args].join(" "),
+      dryRun: runOptions.dryRun ?? false,
+      writeLine: output.stdout,
+    });
     process.on("SIGINT", abort);
     process.on("SIGTERM", abort);
-    await (options.runTriage ?? runTriage)(config, deps, {
+    const outcomes = await (options.runTriage ?? runTriage)(config, deps, {
       ...runOptions,
       signal: controller.signal,
+      onProgress: reporter.onProgress,
     });
+    reporter.finish(outcomes.length, controller.signal.aborted);
     return 0;
   } catch (error) {
     output.stderr(error instanceof Error ? error.message : String(error));
