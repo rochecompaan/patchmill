@@ -48,8 +48,9 @@ names a directory with a `SKILL.md` file. Put repository procedures in skills
 and `AGENTS.md`, not extra configuration keys.
 
 `pi.agentDir` defaults to `.patchmill/pi-agent`. `pi.timeoutMinutes` defaults to
-90 for each session. Use Pi's `/login` and `/model` flows through
-`patchmill auth` for runtime choices. See
+90 for each session. Run `patchmill auth` to configure provider credentials and
+choose a default model in that directory. The command verifies the provider and
+returns to the shell without opening Pi chat. See
 [Skills configuration](/guides/skills-configuration/).
 
 ## Full defaults
