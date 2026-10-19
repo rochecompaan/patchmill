@@ -18,7 +18,7 @@ Unknown keys fail by name. See the
 | `.worktrees/`                       | One worktree per issue branch.                                            |
 | `docs/specs/` and `docs/plans/`     | Specs and plans committed on the issue branch.                            |
 | `.patchmill/runs/issue-N/lock`      | Permanent local OS lock with diagnostic JSON.                             |
-| `.patchmill/runs/issue-N/<run-id>/` | Prompt, session logs, sessions, and write-only result.                    |
+| `.patchmill/runs/issue-N/<run-id>/` | Prompt, session logs, sessions, and diagnostic result.                    |
 | `.patchmill/runs/triage/<run-id>/`  | Triage prompt, log, and sessions.                                         |
 
 `init` adds local Git excludes for worktrees, runs, and the agent directory.

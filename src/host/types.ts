@@ -36,6 +36,7 @@ export interface Host {
   setLabels(n: number, add: string[], remove: string[]): Promise<void>;
   commentIssue(n: number, body: string): Promise<void>;
   findPullRequestByHead(branch: string): Promise<PullRequest | undefined>;
+  updatePullRequestBody(n: number, body: string): Promise<void>;
 }
 export type RepositoryTarget = { owner: string; repo: string; slug: string };
 export interface RepositorySetupHost {

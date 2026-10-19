@@ -113,6 +113,14 @@ export class FakeHost implements Host {
     });
   }
 
+  async updatePullRequestBody(n: number, body: string) {
+    this.call(`updatePullRequestBody:${n}`, (state) => {
+      const pr = state.pullRequests.find((pr) => pr.number === n);
+      if (!pr) throw new Error(`Pull request ${n} was not found`);
+      pr.body = body;
+    });
+  }
+
   async findPullRequestByHead(branch: string) {
     return this.call(`findPullRequestByHead:${branch}`, (state) =>
       state.pullRequests.find((pr) => pr.headBranch === branch),

@@ -249,6 +249,16 @@ export class ForgejoHost implements Host, RepositorySetupHost {
       false,
     );
   }
+  async updatePullRequestBody(n: number, body: string): Promise<void> {
+    await this.scoped([
+      "api",
+      `/repos/{owner}/{repo}/pulls/${n}`,
+      "--method",
+      "PATCH",
+      "--field",
+      `body=${body}`,
+    ]);
+  }
   async findPullRequestByHead(
     branch: string,
   ): Promise<PullRequest | undefined> {

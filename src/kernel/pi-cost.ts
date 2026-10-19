@@ -6,6 +6,11 @@ export type PiUsage = {
   outputTokens: number;
   costUsd?: number;
 };
+export type PiUsageRecord = {
+  key?: string;
+  model: string;
+  usage: PiUsage;
+};
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -17,13 +22,63 @@ function amount(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-export async function sumSessionUsage(
+export function totalUsage(entries: PiUsage[]): PiUsage | undefined {
+  if (entries.length === 0) return undefined;
+  const inputTokens = entries.reduce(
+    (sum, entry) => sum + entry.inputTokens,
+    0,
+  );
+  const outputTokens = entries.reduce(
+    (sum, entry) => sum + entry.outputTokens,
+    0,
+  );
+  if (!amount(inputTokens) || !amount(outputTokens)) return undefined;
+  const cost = entries.every((entry) => entry.costUsd !== undefined)
+    ? entries.reduce((sum, entry) => sum + entry.costUsd!, 0)
+    : undefined;
+  return {
+    inputTokens,
+    outputTokens,
+    ...(amount(cost) ? { costUsd: cost } : {}),
+  };
+}
+
+function usageRecord(
+  container: Record<string, unknown> | undefined,
+  id: unknown,
+): PiUsageRecord | undefined {
+  const raw = object(container?.usage);
+  if (!raw || !amount(raw.input) || !amount(raw.output)) return undefined;
+  const cacheRead = raw.cacheRead ?? 0;
+  const cacheWrite = raw.cacheWrite ?? 0;
+  if (!amount(cacheRead) || !amount(cacheWrite)) return undefined;
+  const inputTokens = raw.input + cacheRead + cacheWrite;
+  if (!amount(inputTokens)) return undefined;
+  const cost = object(raw.cost)?.total;
+  const usage: PiUsage = {
+    inputTokens,
+    outputTokens: raw.output,
+    ...(amount(cost) ? { costUsd: cost } : {}),
+  };
+  const model =
+    typeof container?.model === "string" && container.model.trim()
+      ? container.model
+      : "Unknown model";
+  return {
+    model,
+    usage,
+    // Forked sessions can copy earlier assistant entries. No ID means no deduplication.
+    ...(typeof id === "string" && id
+      ? { key: JSON.stringify([id, model, usage]) }
+      : {}),
+  };
+}
+
+export async function readSessionUsage(
   sessionDir: string,
-): Promise<PiUsage | undefined> {
-  const total: PiUsage = { inputTokens: 0, outputTokens: 0 };
-  let cost = 0;
-  let completeCost = true;
-  let found = false;
+): Promise<PiUsageRecord[] | undefined> {
+  const records: PiUsageRecord[] = [];
+  const seen = new Set<string>();
   async function walk(dir: string): Promise<void> {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
@@ -34,15 +89,10 @@ export async function sumSessionUsage(
           if (!line.trim()) continue;
           const record = object(JSON.parse(line));
           for (const container of [record, object(record?.message)]) {
-            const usage = object(container?.usage);
-            if (!usage || !amount(usage.input) || !amount(usage.output))
-              continue;
-            found = true;
-            total.inputTokens += usage.input;
-            total.outputTokens += usage.output;
-            const value = object(usage.cost)?.total;
-            if (amount(value)) cost += value;
-            else completeCost = false;
+            const parsed = usageRecord(container, record?.id);
+            if (!parsed || (parsed.key && seen.has(parsed.key))) continue;
+            if (parsed.key) seen.add(parsed.key);
+            records.push(parsed);
           }
         }
       }
@@ -50,13 +100,18 @@ export async function sumSessionUsage(
   }
   try {
     await walk(sessionDir);
-    if (!found || !amount(total.inputTokens) || !amount(total.outputTokens))
-      return undefined;
-    if (completeCost && amount(cost)) total.costUsd = cost;
-    return total;
+    return records.length > 0 ? records : undefined;
   } catch {
     return undefined;
   }
+}
+
+export async function sumSessionUsage(
+  sessionDir: string,
+): Promise<PiUsage | undefined> {
+  return totalUsage(
+    (await readSessionUsage(sessionDir))?.map((r) => r.usage) ?? [],
+  );
 }
 
 export function costLine(usage: PiUsage | undefined): string {

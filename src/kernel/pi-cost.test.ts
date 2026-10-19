@@ -112,6 +112,33 @@ test("no usable usage is unavailable, while numeric zero is real usage", async (
   });
 });
 
+test("includes cached prompt tokens and counts copied assistant entries only once", async (t) => {
+  const dir = await sessions(t);
+  await fs.mkdir(join(dir, "subagent"));
+  const entry = JSON.stringify({
+    type: "message",
+    id: "shared-entry",
+    message: {
+      role: "assistant",
+      model: "model-a",
+      usage: {
+        input: 10,
+        cacheRead: 1000,
+        cacheWrite: 50,
+        output: 7,
+        cost: { total: 0.1 },
+      },
+    },
+  });
+  await fs.writeFile(join(dir, "parent.jsonl"), `${entry}\n`);
+  await fs.writeFile(join(dir, "subagent", "fork.jsonl"), `${entry}\n`);
+  assert.deepEqual(await sumSessionUsage(dir), {
+    inputTokens: 1060,
+    outputTokens: 7,
+    costUsd: 0.1,
+  });
+});
+
 test("formats grouped tokens and optional dollar cost deterministically", () => {
   assert.equal(costLine(undefined), "Cost: unavailable");
   assert.equal(
