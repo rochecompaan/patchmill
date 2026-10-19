@@ -25,6 +25,10 @@ not change the host. It writes local logs and sessions.
 
 Without `--issue`, candidates are open issues with no configured workflow label.
 An issue with `needs-info` is also eligible when its latest comment comes from a
-trusted author. `host.login` and `host.trustedAuthors` define those authors. Use
+trusted author. `host.login` and `host.trustedAuthors` define those authors.
+Patchmill processes eligible issues in ascending issue-number order. Use
 `--issue N` to request a fresh classification of a specific issue. There is no
 automatic blocker-resolution pass.
+
+Before applying the first valid result, Patchmill creates any missing configured
+workflow labels. Dry runs and invalid results do not create labels.
