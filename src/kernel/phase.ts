@@ -3,14 +3,18 @@ import type { Facts } from "./facts.ts";
 export type Phase = "planning" | "implementation";
 export type Derived =
   | { kind: "phase"; phase: Phase }
-  | { kind: "stop"; label: "done" | "specReview" };
+  | { kind: "stop"; label: "done" | "inProgress" | "needsInfo" };
 
-export function derivePhase(facts: Facts, gateRequired: boolean): Derived {
+export function derivePhase(facts: Facts): Derived {
+  if (facts.stage !== "implementation") {
+    if (facts.pullRequest?.state === "closed")
+      return { kind: "stop", label: "needsInfo" };
+    if (facts.pullRequest) return { kind: "stop", label: "inProgress" };
+    return { kind: "phase", phase: "planning" };
+  }
   if (facts.pullRequest?.state === "merged")
     return { kind: "stop", label: "done" };
-  if (facts.specPath === undefined) return { kind: "phase", phase: "planning" };
-  if (gateRequired && !facts.specApproved)
-    return { kind: "stop", label: "specReview" };
-  if (facts.planPath === undefined) return { kind: "phase", phase: "planning" };
+  if (facts.specPath === undefined || facts.planPath === undefined)
+    return { kind: "phase", phase: "planning" };
   return { kind: "phase", phase: "implementation" };
 }

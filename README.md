@@ -23,17 +23,20 @@ clone. The kernel holds an OS lock on a permanent file and swaps host labels. A
 narrow race between separate clones remains possible. The lock file and its
 parent directory must stay in place, even after a crash.
 
-Phase derivation reads git and the issue host. One issue branch and worktree
-hold the spec, plan, and implementation. The optional spec gate uses
-`spec-approved`. Logs and result files never decide what happens next.
+Phase derivation reads git and the issue host. Spec and plan gates are optional
+and default off. Each required gate uses a separate planning pull request. Only
+merging that pull request unlocks the next stage. Logs, result files, and
+approval labels never decide what happens next.
 
-Outcome verification checks facts after Pi finishes. Planning needs a pushed
-branch and a spec. Implementation needs an open, non-draft pull request whose
-head matches the branch and whose body closes the issue. `agent-done` means that
-this pull request exists, not that it merged.
+Outcome verification checks facts after Pi finishes. Planning needs the pushed
+branch and required documents. A gated stage also needs its planning pull
+request. Implementation needs an open, non-draft pull request whose head matches
+the branch and whose body closes the issue. `agent-done` means that this pull
+request exists, not that it merged.
 
 Stable names give humans and agents the same paths. Branches use
-`agent/issue-N-<slug>`. Specs use
+`agent/issue-N-<slug>` for implementation. Required gates use
+`agent/issue-N--spec` and `agent/issue-N--plan`. Specs use
 `docs/specs/YYYY-MM-DD-issue-N-<slug>-design.md`. Plans use
 `docs/plans/YYYY-MM-DD-issue-N-<slug>.md`. Worktrees live under `.worktrees`,
 with branch slashes replaced by hyphens.
@@ -58,14 +61,16 @@ runs a real provider smoke prompt, and returns to your shell without opening Pi
 chat. `doctor` includes a real model smoke prompt. Triage dry runs also call the
 model.
 
-At `spec-review`, review the pushed spec. To approve it, add `spec-approved` and
-`agent-ready` to the issue, then run `patchmill run-once --issue N`. To request
-changes, leave approval off, add review comments and `agent-ready`, then rerun.
-The next attempt revises the existing unapproved spec in one planning session
-and stops for review again. It does not implement that attempt.
+By default, planning writes the spec and plan on the implementation branch and
+continues to implementation. Set either workflow gate to `required: true` for a
+separate planning pull request. Review and merge that pull request, then run
+`patchmill run-once --issue N` again. Review approval alone does not unlock a
+gate. The issue stays `in-progress` while waiting, and no Pi session runs then.
 
-The same pull request carries the spec, plan, and code. The plan receives review
-with that pull request. The kernel never deletes the issue worktree.
+With both gates enabled, merge the spec PR, then the plan PR, before
+implementation. Each later branch starts from the fetched base with the merged
+documents. Ungated documents go into the next gated PR or the implementation PR.
+The kernel never deletes these worktrees.
 
 ## Commands
 
@@ -92,8 +97,6 @@ keys fail by name. `git.baseBranch: null` uses the remote default branch.
   "labels": {
     "ready": "agent-ready",
     "inProgress": "in-progress",
-    "specReview": "spec-review",
-    "specApproved": "spec-approved",
     "needsInfo": "needs-info",
     "done": "agent-done",
     "unsuitable": "agent-unsuitable",
@@ -112,29 +115,30 @@ keys fail by name. `git.baseBranch: null` uses the remote default branch.
     "implementation": ".patchmill/skills/patchmill-implementation"
   },
   "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
-  "workflow": { "specApproval": { "required": true } }
+  "workflow": {
+    "specApproval": { "required": false },
+    "planApproval": { "required": false }
+  }
 }
 ```
 
 `init` leaves valid existing configuration unchanged and rejects invalid
-configuration. There is no compatibility or migration path from earlier
-Patchmill versions. GitHub init can seed `host.login` from the detected user.
-For Forgejo, an empty login selects Tea's default profile. Only an explicit
-profile alias selects another profile. The detected username is not that alias.
-The authenticated username and `host.trustedAuthors` identify trusted comment
-authors. GitHub also trusts its configured `host.login`. A Tea profile alias
-does not grant author trust.
+configuration. Retired spec/plan review-label settings are accepted but ignored.
+New configuration omits them. Other removed keys remain invalid. GitHub init can
+seed `host.login` from the detected user. For Forgejo, an empty login selects
+Tea's default profile. Only an explicit profile alias selects another profile.
+The detected username is not that alias. The authenticated username and
+`host.trustedAuthors` identify trusted comment authors. GitHub also trusts its
+configured `host.login`. A Tea profile alias does not grant author trust.
 
 ## Label lifecycle
 
-| Label           | Meaning                                               | Set by                    | Removed by           |
-| --------------- | ----------------------------------------------------- | ------------------------- | -------------------- |
-| `agent-ready`   | Eligible for a Run attempt.                           | Human or triage           | Kernel on claim      |
-| `in-progress`   | A Run attempt holds this issue.                       | Kernel on claim           | Kernel on release    |
-| `spec-review`   | The spec is pushed. A human must review it.           | Kernel after verification | Kernel on next claim |
-| `spec-approved` | A human approved the spec.                            | Human                     | Human                |
-| `needs-info`    | The agent asked questions, or the Run attempt failed. | Kernel                    | Kernel on next claim |
-| `agent-done`    | A ready pull request that closes the issue exists.    | Kernel after verification | Human                |
+| Label         | Meaning                                               | Set by                    | Removed by              |
+| ------------- | ----------------------------------------------------- | ------------------------- | ----------------------- |
+| `agent-ready` | Eligible for a Run attempt.                           | Human or triage           | Kernel on claim         |
+| `in-progress` | Work is active or waiting for a planning PR merge.    | Kernel on claim           | Kernel on final release |
+| `needs-info`  | The agent asked questions, or the Run attempt failed. | Kernel                    | Kernel on next claim    |
+| `agent-done`  | A ready pull request that closes the issue exists.    | Kernel after verification | Human                   |
 
 Triage returns one of `agent-ready`, `agent-unsuitable`, `blocked`, or
 `needs-info` by default. The kernel applies labels and comments. Agents own git

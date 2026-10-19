@@ -12,8 +12,6 @@ Unknown keys fail by name. Copy only the values that your repository needs.
   "labels": {
     "ready": "agent-ready",
     "inProgress": "in-progress",
-    "specReview": "spec-review",
-    "specApproved": "spec-approved",
     "needsInfo": "needs-info",
     "done": "agent-done",
     "unsuitable": "agent-unsuitable",
@@ -32,7 +30,10 @@ Unknown keys fail by name. Copy only the values that your repository needs.
     "implementation": ".patchmill/skills/patchmill-implementation"
   },
   "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
-  "workflow": { "specApproval": { "required": true } }
+  "workflow": {
+    "specApproval": { "required": false },
+    "planApproval": { "required": false }
+  }
 }
 ```
 
@@ -40,6 +41,6 @@ For Forgejo, set `host.provider` to `forgejo-tea`. Leave `host.login` empty to
 use Tea's default profile, or set an explicit Tea profile alias. GitHub init can
 seed the detected username for comment trust, not account selection.
 
-`git.baseBranch: null` uses the remote default branch. The spec gate defaults to
-on. The three skill paths each name a directory with `SKILL.md`. See
+`git.baseBranch: null` uses the remote default branch. Both planning gates
+default off. The three skill paths each name a directory with `SKILL.md`. See
 [Configuration](/getting-started/configuration/) for these boundaries.

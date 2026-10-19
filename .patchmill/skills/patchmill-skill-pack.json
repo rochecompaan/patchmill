@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-10-17T08:56:12.095Z",
+  "installedAt": "2026-10-19T06:17:42.505Z",
   "sources": {
     "patchmill": "0.20.0",
     "superpowers": "7.0.0",
@@ -68,7 +68,7 @@
     },
     {
       "path": "patchmill-implementation/SKILL.md",
-      "sha256": "9768fa9b2213c3883929c77b33c1d08af8765350ea6f1bd6dbaf757910f7d246"
+      "sha256": "959fb1f4837237b3c2f13d65d4a71a96a2ae022bcc3a57ebb5e1d47dc067ef9f"
     },
     {
       "path": "patchmill-issue-triage/SKILL.md",
@@ -76,15 +76,15 @@
     },
     {
       "path": "patchmill-label/SKILL.md",
-      "sha256": "28cfa955b5f1cddcf85c2b547261443774c8eaca1eae9a813c47d98db21ebaca"
+      "sha256": "68f495575a2cc3695e5002049de44a03acc0b7a3ddf6f39df74fe16a016d04a7"
     },
     {
       "path": "patchmill-plan/SKILL.md",
-      "sha256": "2fd50e8278f496856e53f742ce8a96d87c45e5ead0cacadc70c75348cef76b43"
+      "sha256": "a3a5bfa010cac94693a0672f84189a5e869a73eedbd06db6e0109d62704e9b10"
     },
     {
       "path": "patchmill-planning/SKILL.md",
-      "sha256": "7f74e5cc601a33dd851e4ecd444cddc9267fcac13ce2290f6e45287e34fb9d4a"
+      "sha256": "69ad20d42772a829e80299a250e2495e3b980c35be54e9b56d0c79c513e8e18e"
     },
     {
       "path": "patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",

@@ -205,7 +205,18 @@ test("dry-run ambiguous branches does not claim or start Pi", async (t) => {
 for (const site of ["release labels", "comment"] as const) {
   test(`finalization ${site} error is recorded without retry and retains the lock inode`, async (t) => {
     const c = await setupRun(t);
-    await c.seed({ [spec]: "spec" });
+    c.config.workflow.specApproval.required = true;
+    await c.seed({ [spec]: "spec" }, "agent/issue-9--spec");
+    await c.mutate((s) => {
+      s.pullRequests.push({
+        number: 1,
+        url: "https://example.invalid/1",
+        state: "open",
+        draft: false,
+        body: "Refs #9",
+        headBranch: "agent/issue-9--spec",
+      });
+    });
     await c.mutate((s) => {
       s.issues[0]!.labels = [];
     });
@@ -226,7 +237,7 @@ for (const site of ["release labels", "comment"] as const) {
     assert.equal(outcome.status, "stopped");
     if (outcome.status === "stopped") {
       assert.equal(outcome.label, "needsInfo");
-      assert.match(outcome.summary, /Approval is required/);
+      assert.match(outcome.summary, /Waiting for it to be merged/);
       assert.ok(outcome.summary.includes(`${site} failed`));
     }
     assert.equal(swaps, 2);

@@ -22,9 +22,9 @@ import {
   formatPhaseStart,
   formatPhaseComplete,
 } from "./console.ts";
-import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
+import { closesIssue, verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
-import { KERNEL_COMMENT, specReviewComment } from "./comments.ts";
+import { KERNEL_COMMENT, planningGateComment } from "./comments.ts";
 import { newRunId } from "./names.ts";
 
 export type RunOnceOptions = {
@@ -60,25 +60,15 @@ export function selectIssue(
   labels: LabelsConfig,
   explicit?: number,
 ): Issue | undefined {
-  const eligible = issues.filter(
-    (i) => i.state === "open" && !i.labels.includes(labels.inProgress),
-  );
+  const eligible = issues.filter((i) => i.state === "open");
   if (explicit !== undefined)
     return eligible.find((i) => i.number === explicit);
   return eligible
-    .filter((i) => i.labels.includes(labels.ready))
+    .filter(
+      (i) =>
+        i.labels.includes(labels.ready) || i.labels.includes(labels.inProgress),
+    )
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
-}
-
-function initialDecision(
-  facts: Facts,
-  config: PatchmillConfig,
-  ready: boolean,
-): Derived {
-  const derived = derivePhase(facts, config.workflow.specApproval.required);
-  return ready && derived.kind === "stop" && derived.label === "specReview"
-    ? { kind: "phase", phase: "planning" }
-    : derived;
 }
 
 export async function runOneIssue(
@@ -108,17 +98,17 @@ export async function runOneIssue(
       : {
           status: "refused",
           issue: options.issue,
-          reason: "Issue is missing, closed, or already in progress.",
+          reason: "Issue is missing or closed.",
         };
   }
   const issueNumber = selected.number;
-  const ready = selected.labels.includes(config.labels.ready);
-  const collect = (issue: Issue) => collectFacts({ ...deps, config }, issue);
+  const collect = (issue: Issue, workspace?: Pick<Facts, "stage" | "branch">) =>
+    collectFacts({ ...deps, config }, issue, workspace);
   if (options.dryRun) {
     const result = await collect(selected);
     const derived =
       result.kind === "facts"
-        ? initialDecision(result.facts, config, ready)
+        ? derivePhase(result.facts)
         : "ambiguous-branches";
     output.stdout(
       formatRunResult({
@@ -187,44 +177,49 @@ export async function runOneIssue(
         }
         const facts = before.facts;
         displayFacts = facts;
-        const decision =
-          index === 0
-            ? initialDecision(facts, config, ready)
-            : derivePhase(facts, config.workflow.specApproval.required);
+        const decision = derivePhase(facts);
         if (decision.kind === "stop") {
           label = decision.label;
           summary =
             label === "done"
               ? "The pull request is merged."
-              : specReviewComment(facts);
+              : planningGateComment(facts);
+          const closing =
+            facts.pullRequest &&
+            closesIssue(
+              facts.pullRequest.body,
+              issueNumber,
+              await host.repository(),
+            );
+          if (label === "done" && !closing) {
+            label = "needsInfo";
+            summary = `The merged pull request does not close issue #${issueNumber}; it cannot prove implementation completion.`;
+          } else if (facts.stage !== "implementation" && closing) {
+            label = "needsInfo";
+            summary = `The planning pull request would close issue #${issueNumber}. Replace its closing reference with Refs #${issueNumber} before merging it.`;
+          }
           break;
         }
         const phase = decision.phase;
+        if (options.planOnly && phase === "implementation") {
+          summary = "planning complete";
+          break;
+        }
         const skill = {
           name: phase,
           path: resolve(repoRoot, config.skills[phase]),
         };
         const promptPath = join(runDir, "prompt.md");
-        const gate = config.workflow.specApproval.required;
         const envelope = renderRunEnvelope({
           repository: await host.repository(),
           issue,
           phase,
           facts,
           skill,
-          gateRequired: gate,
           timeoutMinutes: config.pi.timeoutMinutes,
           trusted: trustedAuthors(config, (await host.checkCli()).login),
         });
-        const revision =
-          index === 0 && ready && derivePhase(facts, gate).kind === "stop";
-        await fs.writeFile(
-          promptPath,
-          envelope +
-            (revision
-              ? `\nState: ${config.labels.specReview}. Approval label ${config.labels.specApproved}: absent. Revise the existing spec.\n`
-              : ""),
-        );
+        await fs.writeFile(promptPath, envelope);
         const sessionDir = join(runDir, "sessions", String(index + 1));
         const logPath = join(runDir, `session-${index + 1}.log`);
         output.stderr(formatPhaseStart(phase, index + 1));
@@ -260,7 +255,7 @@ export async function runOneIssue(
           status: result.ok ? result.result.status : "invalid",
         });
         issue = await host.viewIssue(issueNumber);
-        const after = await collect(issue);
+        const after = await collect(issue, facts);
         if (after.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${after.branches.join(", ")}`;
           break;
@@ -273,8 +268,7 @@ export async function runOneIssue(
           result,
           session,
           facts: after.facts,
-          gateRequired: gate,
-          revision,
+
           logPath,
           uncommitted: await git.hasUncommittedChanges(facts.worktree),
           unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
@@ -283,16 +277,20 @@ export async function runOneIssue(
           label = verified.label;
           summary = verified.comment;
           warnings = verified.warnings;
-          if (phase === "planning" && !after.facts.specPath)
-            summary += `\nExpected artifact: ${after.facts.expectedSpecPath}`;
+          if (phase === "planning") {
+            if (!after.facts.specPath)
+              summary += `\nExpected artifact: ${after.facts.expectedSpecPath}`;
+            else if (facts.stage !== "spec" && !after.facts.planPath)
+              summary += `\nExpected artifact: ${after.facts.expectedPlanPath}`;
+          }
           break;
         }
         if (options.planOnly && phase === "planning") {
-          label = gate ? "specReview" : "needsInfo";
-          summary = gate ? specReviewComment(after.facts) : "planning complete";
+          label = "needsInfo";
+          summary = "planning complete";
           break;
         }
-        const next = derivePhase(after.facts, gate);
+        const next = derivePhase(after.facts);
         if (next.kind === "phase" && next.phase === phase) {
           summary = `The phase did not advance. Expected artifact: ${phase === "planning" ? after.facts.expectedPlanPath : after.facts.expectedSpecPath}`;
           break;
@@ -348,8 +346,8 @@ export async function runOneIssue(
                 ? displayFacts?.pullRequest?.state === "merged"
                   ? "Already merged"
                   : "PR ready"
-                : label === "specReview"
-                  ? "Specification approval required"
+                : label === "inProgress"
+                  ? "Planning PR merge required"
                   : "Stopped",
             severity: label === "done" ? "success" : "warning",
             issue: selected,

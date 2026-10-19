@@ -100,7 +100,7 @@ test("zero remote branches creates today's paths on remote HEAD, not local HEAD"
     baseBranch: "main",
     expectedSpecPath: "custom/specs/2026-10-15-issue-9-x-design.md",
     expectedPlanPath: "custom/plans/2026-10-15-issue-9-x.md",
-    specApproved: false,
+    stage: "implementation",
   });
   assert.equal(
     await c.git(["rev-parse", "HEAD"], facts.worktree),
@@ -134,13 +134,12 @@ test("fetch discovers one differently slugged branch and its PR and artifacts", 
     headBranch: "agent/issue-9-old-title",
   };
   c.setPr(pr);
-  c.config.labels.specApproved = "custom-approved";
   const facts = await c.collect({ ...issue, labels: ["custom-approved"] });
   assert.equal(facts.branch, "agent/issue-9-old-title");
   assert.equal(facts.remoteBranchExists, true);
   assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-x-design.md");
   assert.equal(facts.planPath, "custom/plans/2026-10-15-issue-9-x.md");
-  assert.equal(facts.specApproved, true);
+  assert.equal(facts.stage, "implementation");
   assert.deepEqual(facts.pullRequest, pr);
   assert.equal(
     await c.git(["rev-parse", "HEAD"], facts.worktree),
@@ -218,11 +217,11 @@ test("only matching actual files count; multiple matches select greatest filenam
   assert.equal(facts.planPath, "custom/plans/2026-10-15-issue-9-z.md");
 });
 
-test("gate off satisfies approval and empty title reuses names without extra hyphens", async (t) => {
+test("ungated empty title reuses names without extra hyphens", async (t) => {
   const c = await setup(t);
   c.config.workflow.specApproval.required = false;
   const facts = await c.collect({ ...issue, title: "!!!" });
-  assert.equal(facts.specApproved, true);
+  assert.equal(facts.stage, "implementation");
   assert.equal(facts.branch, "agent/issue-9");
   assert.equal(
     facts.expectedSpecPath,

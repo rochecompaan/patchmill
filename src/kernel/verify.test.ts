@@ -11,7 +11,8 @@ const facts: Facts = {
   specPath: "docs/specs/example.md",
   expectedSpecPath: "docs/specs/example.md",
   expectedPlanPath: "docs/plans/example.md",
-  specApproved: false,
+  stage: "implementation",
+  planPath: "docs/plans/example.md",
   pullRequest: {
     number: 21,
     url: "https://example.test/pulls/21",
@@ -31,7 +32,6 @@ const input: VerifyInput = {
   },
   session: { exitCode: 0, timedOut: false, aborted: false },
   facts,
-  gateRequired: true,
   logPath: "/logs/session.log",
   uncommitted: false,
   unpushed: 0,
@@ -130,70 +130,61 @@ for (const status of ["needs-input", "failed"] as const) {
   });
 }
 
-for (const [gateRequired, specApproved, expected] of [
-  [true, false, "stop"],
-  [true, true, "advance"],
-  [false, false, "advance"],
-  [false, true, "advance"],
-] as const) {
-  test(`planning gate=${gateRequired} approval=${specApproved} yields ${expected}`, () => {
+for (const stage of ["spec", "plan", "implementation"] as const) {
+  test(`planning ${stage} requires its PR only for gated stages`, () => {
     const outcome = verifyOutcome({
       ...input,
       phase: "planning",
-      facts: { ...facts, specApproved, pullRequest: undefined },
-      gateRequired,
-      session: { ...input.session, exitCode: 1 },
-      uncommitted: true,
-      unpushed: 2,
+      facts: {
+        ...facts,
+        stage,
+        pullRequest:
+          stage === "implementation"
+            ? undefined
+            : { ...facts.pullRequest!, body: "Refs #12" },
+      },
     });
-    if (expected === "advance") {
+    if (stage === "implementation")
       assert.deepEqual(outcome, { kind: "advance" });
-    } else {
+    else {
       assert.equal(outcome.kind, "stop");
-      if (outcome.kind !== "stop") return;
-      assert.equal(outcome.label, "specReview");
-      assert.match(outcome.comment, /review/i);
-      assert.match(outcome.comment, /The work is ready\./);
-      assert.match(outcome.comment, /exit code: 1/i);
-      assert.deepEqual(outcome.warnings, [
-        "uncommitted changes in the worktree",
-        "unpushed commits",
-      ]);
+      if (outcome.kind === "stop") {
+        assert.equal(outcome.label, "inProgress");
+        assert.match(outcome.comment, /merged/);
+      }
     }
   });
-}
-
-for (const gateRequired of [true, false]) {
   for (const body of ["Closes #12", "Fixes owner/repo#12", "Resolves #12"]) {
-    test(`planning rejects issue-closing PR body with gate=${gateRequired}: ${body}`, () => {
+    test(`planning ${stage} rejects issue-closing PR: ${body}`, () => {
       const outcome = verifyOutcome({
         ...input,
         phase: "planning",
-        gateRequired,
         facts: {
           ...facts,
+          stage,
           pullRequest: { ...facts.pullRequest!, draft: true, body },
         },
       });
       assert.equal(outcome.kind, "stop");
-      if (outcome.kind !== "stop") return;
-      assert.equal(outcome.label, "needsInfo");
-      assert.match(outcome.comment, /planning.*close.*#12/i);
+      if (outcome.kind === "stop") {
+        assert.equal(outcome.label, "needsInfo");
+        assert.match(outcome.comment, /planning.*close.*#12/i);
+      }
     });
   }
 }
 
-test("planning can hand off a non-closing draft for specification review", () => {
+test("a gated planning claim without a PR needs input rather than advancing", () => {
   const outcome = verifyOutcome({
     ...input,
     phase: "planning",
-    facts: {
-      ...facts,
-      pullRequest: { ...facts.pullRequest!, draft: true, body: "Refs #12" },
-    },
+    facts: { ...facts, stage: "spec", pullRequest: undefined },
   });
   assert.equal(outcome.kind, "stop");
-  if (outcome.kind === "stop") assert.equal(outcome.label, "specReview");
+  if (outcome.kind === "stop") {
+    assert.equal(outcome.label, "needsInfo");
+    assert.match(outcome.comment, /No planning pull request/);
+  }
 });
 
 for (const [name, patch, diagnostic] of [

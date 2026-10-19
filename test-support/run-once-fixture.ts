@@ -82,7 +82,7 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
     now: () => new Date(2026, 9, 15, 12),
     output: { stdout: (s) => output.push(s), stderr: (s) => output.push(s) },
   };
-  const seed = async (files: Record<string, string>) => {
+  const seed = async (files: Record<string, string>, head = branch) => {
     const cwd = join(f.dir, "seed");
     for (const [p, text] of Object.entries(files)) {
       await fs.mkdir(join(cwd, p, ".."), { recursive: true });
@@ -90,7 +90,7 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
     }
     await git(["add", "."], cwd);
     await git(["commit", "-m", "Artifacts"], cwd);
-    await git(["push", "origin", `HEAD:${branch}`], cwd);
+    await git(["push", "origin", `HEAD:${head}`], cwd);
   };
   const mutate = (fn: (state: ReturnType<FakeHost["state"]>) => void) => {
     const state = host.state();

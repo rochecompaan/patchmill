@@ -7,6 +7,11 @@ export type KernelGit = {
   fetch(): Promise<void>;
   remoteDefaultBranch(): Promise<string | undefined>;
   remoteBranches(issue: number): Promise<string[]>;
+  baseArtifactsMatch(
+    worktree: string,
+    base: string,
+    paths: string[],
+  ): Promise<boolean>;
   ensureWorktree(input: {
     path: string;
     branch: string;
@@ -111,6 +116,23 @@ export function createKernelGit(
           undefined,
           worktree,
         ),
+      );
+    },
+    async baseArtifactsMatch(worktree, base, paths): Promise<boolean> {
+      const ref = `origin/${base}`;
+      const files = await git([
+        "ls-tree",
+        "-r",
+        "--name-only",
+        ref,
+        "--",
+        ...paths,
+      ]);
+      if (!paths.every((path) => files!.split("\n").includes(path)))
+        return false;
+      return (
+        (await git(["diff", "--quiet", ref, "--", ...paths], 1, worktree)) !==
+        undefined
       );
     },
     async remoteBranches(issue: number): Promise<string[]> {

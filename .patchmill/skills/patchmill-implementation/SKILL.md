@@ -51,7 +51,9 @@ than treating baseline failures as passing evidence.
 
 Review the final diff, commit the changes, and push the provided issue branch.
 Never push the base branch or force-push. Reuse the current pull request and
-preserve `Closes #N` in its body, with the actual issue number. If no pull
+replace the planning reference `Refs #N` with `Closes #N` in its body, with the
+actual issue number, only after implementation and validation succeed. Preserve
+an existing closing reference when revising a ready pull request. If no pull
 request exists, create one for the provided branch and Base with that closing
 reference. Use
 `gh pr create --head <branch> --base <base> --title <title> --body <body>` for

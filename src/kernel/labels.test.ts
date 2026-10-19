@@ -12,23 +12,12 @@ import {
 const labels: LabelsConfig = {
   ready: "queue",
   inProgress: "working",
-  specReview: "review",
-  specApproved: "approved",
   needsInfo: "question",
   done: "finished",
   unsuitable: "manual",
   blocked: "waiting",
 };
-const names = [
-  "queue",
-  "working",
-  "review",
-  "approved",
-  "question",
-  "finished",
-  "manual",
-  "waiting",
-];
+const names = ["queue", "working", "question", "finished", "manual", "waiting"];
 
 function fakeHost(existing: LabelDefinition[]) {
   const stored = structuredClone(existing);
@@ -55,14 +44,14 @@ function fakeHost(existing: LabelDefinition[]) {
   return { host, stored, lists: () => lists };
 }
 
-test("catalog maps all eight roles to configured names and keeps role metadata", () => {
+test("catalog maps all six roles to configured names and keeps role metadata", () => {
   const custom = labelCatalog(labels);
   assert.deepEqual(
     custom.map((label) => label.name),
     names,
   );
   const defaults = labelCatalog(DEFAULT_CONFIG.labels);
-  assert.equal(defaults.length, 8);
+  assert.equal(defaults.length, 6);
   assert.deepEqual(
     custom.map(({ color, description }) => ({ color, description })),
     defaults.map(({ color, description }) => ({ color, description })),
@@ -71,14 +60,13 @@ test("catalog maps all eight roles to configured names and keeps role metadata",
   assert.equal(labelCatalog(labels)[0]!.name, "queue");
 });
 
-test("ensureLabels lists once, creates only five missing names, and preserves existing metadata and unrelated labels", async () => {
+test("ensureLabels lists once, creates only four missing names, and preserves existing metadata and unrelated labels", async () => {
   const existing = ["queue", "approved", "finished", "unrelated"].map(
     (name) => ({ name, color: "123456", description: "Keep me" }),
   );
   const h = fakeHost(existing);
   assert.deepEqual(await ensureLabels(h.host, labels), [
     "working",
-    "review",
     "question",
     "manual",
     "waiting",
@@ -92,7 +80,7 @@ test("ensureLabels lists once, creates only five missing names, and preserves ex
     ),
   );
   assert.deepEqual(await ensureLabels(h.host, labels), []);
-  assert.equal(h.stored.length, 9);
+  assert.equal(h.stored.length, 8);
 });
 
 test("ensureLabels propagates list and create errors without continuing", async () => {
@@ -122,19 +110,19 @@ test("ensureLabels propagates list and create errors without continuing", async 
 test("claimSwap changes only the claim labels", () => {
   assert.deepEqual(claimSwap(labels), {
     add: ["working"],
-    remove: ["queue", "review", "question"],
+    remove: ["queue", "question"],
   });
 });
 
 for (const [outcome, name] of [
   ["done", "finished"],
   ["needsInfo", "question"],
-  ["specReview", "review"],
+  ["inProgress", "working"],
 ] as const) {
   test(`releaseSwap maps ${outcome} and removes only inProgress`, () => {
     assert.deepEqual(releaseSwap(labels, outcome), {
       add: [name],
-      remove: ["working"],
+      remove: outcome === "inProgress" ? [] : ["working"],
     });
   });
 }

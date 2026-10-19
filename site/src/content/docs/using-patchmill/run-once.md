@@ -4,9 +4,10 @@ description: Advance one issue from observed git and host facts.
 ---
 
 `patchmill run-once` advances one issue through planning and implementation. It
-uses one branch, one worktree, and one pull request per issue. Each phase gets a
-fresh Pi session. The kernel reads git and the issue host between sessions. It
-never reads a saved result to choose the next phase.
+uses a separate branch and pull request for each required planning gate, then an
+implementation branch and pull request. Each phase gets a fresh Pi session. The
+kernel reads git and the issue host between sessions. It never reads a saved
+result to choose the next phase.
 
 ```sh
 patchmill run-once
@@ -15,11 +16,12 @@ patchmill run-once --dry-run
 patchmill run-once --issue 123 --plan-only
 ```
 
-Without `--issue`, selection takes the oldest open issue with `agent-ready` and
-without `in-progress`. Explicit selection requires an open issue without
-`in-progress`, but does not require `agent-ready`. Dry run prints selection and
-the derived phase without claiming or running Pi. `--plan-only` stops after
-planning completes. It does not bypass the spec gate.
+Without `--issue`, selection takes the oldest open issue with `agent-ready` or
+`in-progress`. Explicit selection requires an open issue, but does not require
+`agent-ready`. The local issue lock still prevents concurrent attempts. Dry run
+prints selection and the derived phase without claiming or running Pi.
+`--plan-only` stops after planning completes and never starts implementation. It
+does not bypass either planning gate.
 
 ## Claim and release
 
@@ -44,29 +46,33 @@ a label reset as permission to delete an active worktree.
 
 ## Phase derivation
 
-After claiming, Patchmill fetches `origin` and looks for an issue branch. One
-matching remote branch is reused. Several matches stop with `needs-info`. A
-missing worktree is created from that branch, or from the base branch when no
-issue branch exists.
+After claiming, Patchmill fetches `origin` and inspects each required planning
+gate before implementation. Each gate has a stable head, independent of title
+edits. The kernel reuses a stage's workspace or creates it from the fetched
+base. Expected spec and plan branches are not ambiguous implementation branches.
+Several implementation branches stop with `needs-info`.
 
-| Observed fact                                           | Next action                                                  |
-| ------------------------------------------------------- | ------------------------------------------------------------ |
-| Pull request is merged                                  | Stop with `agent-done`.                                      |
-| Spec is absent                                          | Run `planning`.                                              |
-| Spec exists but required approval is absent             | Stop with `spec-review`, subject to the revision rule below. |
-| Spec is approved or the gate is off, but plan is absent | Run `planning` to write the plan.                            |
-| Spec and plan exist and approval is satisfied           | Run `implementation`.                                        |
+| Observed fact                                                       | Next action                                     |
+| ------------------------------------------------------------------- | ----------------------------------------------- |
+| Required planning PR is absent                                      | Run planning for that stage and publish its PR. |
+| Required planning PR is open                                        | Keep `in-progress` and stop without Pi.         |
+| Required planning PR is closed, not merged                          | Stop with `needs-info`.                         |
+| Required planning PR is merged and its artifacts are on the base    | Advance to the next required stage.             |
+| Merged planning artifacts are absent from, or differ from, the base | Stop with `needs-info`.                         |
+| No required planning gate remains, but a document is absent         | Run planning on the implementation branch.      |
+| No required gate remains and both documents exist                   | Run implementation.                             |
+| Implementation PR is merged and closes the issue                    | Stop with `agent-done`.                         |
 
-One exception applies if the issue carried `agent-ready` before claiming. When
-its existing spec lacks required approval, the attempt runs one planning session
-to revise that spec. A verified revision stops at `spec-review` again. It never
-enters implementation in that attempt. A merged pull request still takes
-precedence. Other results follow normal outcome checks.
+`workflow.specApproval.required` and `workflow.planApproval.required` both
+default off. With both on, merge the spec PR, then the plan PR, before
+implementation. Review approval or an approval label does not unlock either
+gate. Adding `agent-ready` cannot bypass an open required PR.
 
-At `spec-review`, add `spec-approved` and `agent-ready` to approve and resume.
-For changes, leave approval off and add review comments and `agent-ready`. The
-planning skill reads issue and draft pull request comments before revising. The
-plan receives review with the pull request, not a second approval gate.
+When a gate is off, its document goes into the next required planning PR. With
+no later gate, it goes into the implementation PR. Planning PR bodies use
+`Refs #N`, not closing keywords. Only the implementation PR completes the issue.
+Each later branch starts from the fetched base with earlier merged documents.
+The kernel never deletes merged planning branches or worktrees.
 
 ## Outcome checks
 
@@ -79,12 +85,12 @@ The agent ends with a fenced JSON block containing exactly these fields:
 `status` is `done`, `needs-input`, or `failed`. Questions go in `summary`. The
 kernel checks the world rather than trusting `done`:
 
-| Phase or result                                                       | Required fact or outcome                                                                                             |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Planning reports `done`                                               | Remote branch and spec exist. Stop for required spec approval, or derive the next phase.                             |
-| Implementation reports `done`                                         | Open, non-draft pull request has the issue branch as head and a body with `Closes #N`, `Fixes #N`, or `Resolves #N`. |
-| Verified implementation                                               | Set `agent-done`, without waiting for merge.                                                                         |
-| Unverified claim, `needs-input`, `failed`, missing result, or timeout | Set `needs-info` and report the reason.                                                                              |
+| Phase or result                                                       | Required fact or outcome                                                                                                                       |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planning reports `done`                                               | The remote branch and required artifacts exist. Gated stages also need their non-closing planning PR. Wait for merge or derive the next phase. |
+| Implementation reports `done`                                         | Open, non-draft pull request has the issue branch as head and a body with `Closes #N`, `Fixes #N`, or `Resolves #N`.                           |
+| Verified implementation                                               | Set `agent-done`, without waiting for merge.                                                                                                   |
+| Unverified claim, `needs-input`, `failed`, missing result, or timeout | Set `needs-info` and report the reason.                                                                                                        |
 
 Uncommitted changes or unpushed commits produce warnings. They do not invalidate
 a real ready pull request. The kernel posts one comment per stop with the
@@ -97,23 +103,24 @@ request. Patchmill does not merge or automatically retry failed attempts.
 
 ## Names and local output
 
-| Item       | Default rule                                                   |
-| ---------- | -------------------------------------------------------------- |
-| Branch     | `agent/issue-N-<title-slug>`, with at most 48 slug characters. |
-| Worktree   | `.worktrees/<branch-with-slashes-replaced-by-hyphens>`.        |
-| Spec       | `docs/specs/YYYY-MM-DD-issue-N-<slug>-design.md`.              |
-| Plan       | `docs/plans/YYYY-MM-DD-issue-N-<slug>.md`.                     |
-| Run output | `.patchmill/runs/issue-N/<run-id>/`.                           |
+| Item                  | Default rule                                                   |
+| --------------------- | -------------------------------------------------------------- |
+| Implementation branch | `agent/issue-N-<title-slug>`, with at most 48 slug characters. |
+| Required spec branch  | `agent/issue-N--spec`.                                         |
+| Required plan branch  | `agent/issue-N--plan`.                                         |
+| Worktree              | `.worktrees/<branch-with-slashes-replaced-by-hyphens>`.        |
+| Spec                  | `docs/specs/YYYY-MM-DD-issue-N-<slug>-design.md`.              |
+| Plan                  | `docs/plans/YYYY-MM-DD-issue-N-<slug>.md`.                     |
+| Run output            | `.patchmill/runs/issue-N/<run-id>/`.                           |
 
 Only the configured spec and plan naming patterns count as artifacts. A design
 file cannot also count as a plan, even when both directories are equal. Each
 attempt writes `prompt.md`, `pi.log`, `session-N.log`, `sessions/`, and
 `result.json`. The prompt is replaced for each phase in the attempt. Session
 logs stay separate. The aggregate `pi.log` contains stdout and stderr from all
-phases. Both streams also go to the console. `result.json` is a write-only
-record, never a resume input. Console output includes the final agent JSON when
-present, an outcome line, and a best-effort cost line. It is not a single
-machine-readable JSON stream.
+phases. Raw agent output stays in logs, not the console. `result.json` is a
+write-only record, never a resume input. The console shows phase progress, a
+readable final outcome, log paths, and best-effort cost.
 
 ## Supervision and cleanup
 
