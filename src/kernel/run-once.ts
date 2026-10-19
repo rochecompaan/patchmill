@@ -15,7 +15,13 @@ import { acquireLock, LockHeldError } from "./lock.ts";
 import { claimSwap, releaseSwap } from "./labels.ts";
 import { renderRunEnvelope } from "./envelope.ts";
 import { supervisePi } from "./pi-supervisor.ts";
-import { parseAgentResult, lastJsonBlock } from "./result.ts";
+import { parseAgentResult } from "./result.ts";
+import {
+  formatRunResult,
+  formatRunStart,
+  formatPhaseStart,
+  formatPhaseComplete,
+} from "./console.ts";
 import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { KERNEL_COMMENT, specReviewComment } from "./comments.ts";
@@ -92,7 +98,11 @@ export async function runOneIssue(
     return { status: "refused", issue: options.issue, reason: String(error) };
   }
   const selected = selectIssue(issues, config.labels, options.issue);
-  if (!selected)
+  if (!selected) {
+    if (options.issue === undefined)
+      output.stdout(
+        formatRunResult({ label: "No eligible issue", severity: "success" }),
+      );
     return options.issue === undefined
       ? { status: "no-work" }
       : {
@@ -100,6 +110,7 @@ export async function runOneIssue(
           issue: options.issue,
           reason: "Issue is missing, closed, or already in progress.",
         };
+  }
   const issueNumber = selected.number;
   const ready = selected.labels.includes(config.labels.ready);
   const collect = (issue: Issue) => collectFacts({ ...deps, config }, issue);
@@ -109,7 +120,15 @@ export async function runOneIssue(
       result.kind === "facts"
         ? initialDecision(result.facts, config, ready)
         : "ambiguous-branches";
-    output.stdout(JSON.stringify({ issue: issueNumber, derived }));
+    output.stdout(
+      formatRunResult({
+        label: "Dry run",
+        severity: "success",
+        issue: selected,
+        transition: derived,
+        ...(result.kind === "facts" ? { facts: result.facts } : {}),
+      }),
+    );
     return { status: "dry-run", issue: issueNumber, derived };
   }
   const issueDir = resolve(
@@ -142,7 +161,8 @@ export async function runOneIssue(
   let label: OutcomeLabel = "needsInfo";
   let summary = "The session limit was reached.";
   let warnings: string[] = [];
-  let finalBlock: string | undefined;
+  let displayFacts: Facts | undefined;
+  let totalOutputTokens = 0;
   let claimedElsewhere = false;
   try {
     try {
@@ -157,6 +177,7 @@ export async function runOneIssue(
         return { status: "claimed-elsewhere", issue: issueNumber };
       }
       await fs.mkdir(runDir, { recursive: true });
+      output.stderr(formatRunStart(issue));
       for (let index = 0; index < 3; index++) {
         issue = await host.viewIssue(issueNumber);
         const before = await collect(issue);
@@ -165,6 +186,7 @@ export async function runOneIssue(
           break;
         }
         const facts = before.facts;
+        displayFacts = facts;
         const decision =
           index === 0
             ? initialDecision(facts, config, ready)
@@ -205,6 +227,7 @@ export async function runOneIssue(
         );
         const sessionDir = join(runDir, "sessions", String(index + 1));
         const logPath = join(runDir, `session-${index + 1}.log`);
+        output.stderr(formatPhaseStart(phase, index + 1));
         const session = await supervisePi({
           command: deps.piCommand,
           cwd: facts.worktree,
@@ -216,10 +239,20 @@ export async function runOneIssue(
           aggregateLogPath: join(runDir, "pi.log"),
           extensionPaths: deps.extensionPaths,
           timeoutMs: config.pi.timeoutMinutes * 60_000,
+          // Keep the agent protocol in the logs, not the operator's terminal.
+          onOutput: () => {},
           ...(options.signal ? { signal: options.signal } : {}),
         });
         const result = parseAgentResult(session.stdout);
-        finalBlock = lastJsonBlock(session.stdout);
+        const phaseUsage = await sumSessionUsage(sessionDir);
+        totalOutputTokens += phaseUsage?.outputTokens ?? 0;
+        output.stderr(
+          formatPhaseComplete(
+            phaseUsage,
+            totalOutputTokens,
+            (now().getTime() - started.getTime()) / 1000,
+          ),
+        );
         sessions.push({
           phase,
           exitCode: session.exitCode,
@@ -232,6 +265,7 @@ export async function runOneIssue(
           summary = `Several issue branches exist: ${after.branches.join(", ")}`;
           break;
         }
+        displayFacts = after.facts;
         const verified = verifyOutcome({
           issue: issueNumber,
           repository: await host.repository(),
@@ -269,7 +303,8 @@ export async function runOneIssue(
       summary = error instanceof Error ? error.message : String(error);
     } finally {
       if (!claimedElsewhere) {
-        const cost = costLine(await sumSessionUsage(join(runDir, "sessions")));
+        const usage = await sumSessionUsage(join(runDir, "sessions"));
+        const cost = costLine(usage);
         const line = `Issue #${issueNumber}: ${config.labels[label]}`;
         try {
           const release = releaseSwap(config.labels, label);
@@ -306,10 +341,29 @@ export async function runOneIssue(
             ),
           );
         }
-        if (finalBlock !== undefined)
-          output.stdout(`\`\`\`json\n${finalBlock}\n\`\`\``);
-        output.stdout(`Issue #${issueNumber}: ${config.labels[label]}`);
-        output.stdout(cost);
+        output.stdout(
+          formatRunResult({
+            label:
+              label === "done"
+                ? displayFacts?.pullRequest?.state === "merged"
+                  ? "Already merged"
+                  : "PR ready"
+                : label === "specReview"
+                  ? "Specification approval required"
+                  : "Stopped",
+            severity: label === "done" ? "success" : "warning",
+            issue: selected,
+            ...(displayFacts ? { facts: displayFacts } : {}),
+            summary,
+            warnings,
+            outcomeLabel: config.labels[label],
+            logPath: join(runDir, "pi.log"),
+            sessionPath: join(runDir, "sessions"),
+            cost,
+            ...(usage ? { usage } : {}),
+            elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
+          }),
+        );
       }
     }
     return label === "done"

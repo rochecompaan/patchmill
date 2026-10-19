@@ -48,7 +48,31 @@ test("fresh planning pushes a spec and draft PR, then releases with one cost com
   assert.equal(await fs.readFile(c.lockPath, "utf8"), "");
   const lock = await acquireLock(c.lockPath);
   await lock.release();
-  assert.match(c.output.join("\n"), /```json/);
+  assert.match(
+    c.output.join("\n"),
+    /Final result:.*Specification approval required/,
+  );
+  assert.doesNotMatch(c.output.join("\n"), /```json/);
+});
+
+test("planning with an issue-closing PR is not offered for specification review", async (t) => {
+  const c = await setupRun(t, [
+    {
+      writeFiles: { [spec]: "design" },
+      commit: "Spec",
+      push: true,
+      pullRequest: { draft: true, body: "Closes #9" },
+      result: done,
+    },
+  ]);
+  const outcome = await c.run();
+  assert.equal(outcome.status, "stopped");
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
+  assert.match(
+    c.host.state().issues[0]!.comments[0]!.body,
+    /planning.*close.*#9/i,
+  );
+  assert.equal((await c.records()).result.sessions.length, 1);
 });
 
 test("approved spec runs planning then implementation to a verified ready PR", async (t) => {
