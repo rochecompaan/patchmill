@@ -97,7 +97,11 @@ for (const row of [
       assert.deepEqual(c.host.state().issues[0]!.labels, ["in-progress"]);
       const pull = c.host.state().pullRequests.at(-1)!;
       assert.equal(pull.headBranch, head);
-      assert.equal(pull.body, "Refs #9");
+      assert.equal(
+        pull.body.split("<!-- patchmill-run-cost:start -->")[0]!.trimEnd(),
+        "Refs #9",
+      );
+      assert.doesNotMatch(pull.body, /\b(?:closes|fixes|resolves) #9/i);
       const calls = await count(c);
       const waiting = await c.run();
       assert.equal(waiting.status, "stopped");

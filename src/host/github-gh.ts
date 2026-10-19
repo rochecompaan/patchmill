@@ -188,6 +188,11 @@ export class GitHubHost implements Host, RepositorySetupHost {
       stdin: body,
     });
   }
+  async updatePullRequestBody(n: number, body: string): Promise<void> {
+    await this.ghOk(["pr", "edit", String(n), "--body-file", "-"], {
+      stdin: body,
+    });
+  }
   async findPullRequestByHead(
     branch: string,
   ): Promise<PullRequest | undefined> {

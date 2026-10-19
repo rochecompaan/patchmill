@@ -119,8 +119,26 @@ attempt writes `prompt.md`, `pi.log`, `session-N.log`, `sessions/`, and
 `result.json`. The prompt is replaced for each phase in the attempt. Session
 logs stay separate. The aggregate `pi.log` contains stdout and stderr from all
 phases. Raw agent output stays in logs, not the console. `result.json` is a
-write-only record, never a resume input. The console shows phase progress, a
-readable final outcome, log paths, and best-effort cost.
+diagnostic record, never a resume input. Cost reporting reads its phase names,
+but phase selection never reads it. The console shows phase progress, a readable
+final outcome, log paths, and best-effort cost.
+
+## Cost reporting
+
+Patchmill adds a cost table to the current planning or implementation PR. It
+groups usage by phase and model across all retained local runs for the issue. An
+implementation PR includes costs from earlier specification and planning PRs.
+The console and issue comment continue to show the current attempt's cost.
+
+Prompt tokens include uncached input, cache reads, and cache writes. The table
+includes parent and subagent sessions. Copied assistant entries with the same ID
+and usage count once. Dollar estimates use Pi's recorded prices, not a billing
+statement. Missing prices leave dollar totals unavailable, not zero.
+
+Patchmill replaces only the section between its cost markers. The rest of the PR
+body stays unchanged. If usage cannot be read or publication fails, Patchmill
+records a warning without changing the run outcome or skipping label cleanup.
+Keep earlier run directories if later reports must include their costs.
 
 ## Supervision and cleanup
 

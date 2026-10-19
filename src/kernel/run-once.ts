@@ -24,6 +24,7 @@ import {
 } from "./console.ts";
 import { closesIssue, verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
+import { publishIssueCost } from "./pr-cost.ts";
 import { KERNEL_COMMENT, planningGateComment } from "./comments.ts";
 import { newRunId } from "./names.ts";
 
@@ -303,6 +304,20 @@ export async function runOneIssue(
       if (!claimedElsewhere) {
         const usage = await sumSessionUsage(join(runDir, "sessions"));
         const cost = costLine(usage);
+        if (displayFacts?.pullRequest) {
+          try {
+            await publishIssueCost({
+              host,
+              branch: displayFacts.branch,
+              issueDir,
+              current: { runId, sessions },
+            });
+          } catch (error) {
+            warnings.push(
+              `PR cost report unavailable: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
         const line = `Issue #${issueNumber}: ${config.labels[label]}`;
         try {
           const release = releaseSwap(config.labels, label);
