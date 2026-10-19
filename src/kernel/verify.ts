@@ -58,6 +58,14 @@ export function verifyOutcome(input: VerifyInput): Outcome {
     if (!facts.remoteBranchExists)
       missing.push("The remote branch does not exist.");
     if (!facts.specPath) missing.push("The spec path is missing.");
+    if (
+      facts.pullRequest?.state === "open" &&
+      closesIssue(facts.pullRequest.body, input.issue, input.repository)
+    ) {
+      missing.push(
+        `The planning pull request must not close #${input.issue}. Replace the closing reference with Refs #${input.issue} before specification review.`,
+      );
+    }
     if (missing.length > 0) {
       reason = `The claim was not verified. ${missing.join(" ")}`;
     } else if ((input.gateRequired && !facts.specApproved) || input.revision) {

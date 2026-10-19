@@ -163,6 +163,39 @@ for (const [gateRequired, specApproved, expected] of [
   });
 }
 
+for (const gateRequired of [true, false]) {
+  for (const body of ["Closes #12", "Fixes owner/repo#12", "Resolves #12"]) {
+    test(`planning rejects issue-closing PR body with gate=${gateRequired}: ${body}`, () => {
+      const outcome = verifyOutcome({
+        ...input,
+        phase: "planning",
+        gateRequired,
+        facts: {
+          ...facts,
+          pullRequest: { ...facts.pullRequest!, draft: true, body },
+        },
+      });
+      assert.equal(outcome.kind, "stop");
+      if (outcome.kind !== "stop") return;
+      assert.equal(outcome.label, "needsInfo");
+      assert.match(outcome.comment, /planning.*close.*#12/i);
+    });
+  }
+}
+
+test("planning can hand off a non-closing draft for specification review", () => {
+  const outcome = verifyOutcome({
+    ...input,
+    phase: "planning",
+    facts: {
+      ...facts,
+      pullRequest: { ...facts.pullRequest!, draft: true, body: "Refs #12" },
+    },
+  });
+  assert.equal(outcome.kind, "stop");
+  if (outcome.kind === "stop") assert.equal(outcome.label, "specReview");
+});
+
 for (const [name, patch, diagnostic] of [
   ["remote branch missing", { remoteBranchExists: false }, /remote branch/i],
   ["spec missing", { specPath: undefined }, /spec/i],

@@ -50,7 +50,14 @@ granted. Do not change approval labels or infer approval from your own review.
 ## Draft pull request
 
 Use the provided issue branch as the head and the envelope Base as the target.
-The body must contain `Closes #N`, with the actual issue number. For GitHub, use
+The body must contain `Refs #N`, with the actual issue number. Planning does not
+complete the issue. Keep closing keywords out of the pull request body and
+planning commit messages. When revising an existing draft, replace any closing
+reference with `Refs #N`. Keep the pull request draft; specification approval is
+recorded by the issue's approval label, not by merging the pull request. The
+implementation phase adds the closing reference when the work is ready.
+
+For GitHub, use
 `gh pr create --draft --head <branch> --base <base> --title <title> --body <body>`.
 For Forgejo, use
 `tea pulls create --head <branch> --base <base> --title 'WIP: <title>' --description <body>`.
