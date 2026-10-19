@@ -142,6 +142,86 @@ test("applies a validated result and launches isolated Pi with the configured en
   assert.match(prompt, /agent-ready/);
 });
 
+test("automatic triage processes eligible issues in ascending issue-number order regardless of host order", async (t) => {
+  const f = await setup(
+    t,
+    [block(), block(), block(), block()],
+    [
+      issue(12),
+      issue(3, ["agent-ready"]),
+      issue(2),
+      issue(10),
+      issue(1),
+      issue(4, ["needs-info"]),
+    ],
+  );
+  const started: number[] = [];
+  const outcomes = await f.run({
+    onProgress: (event) => {
+      if (event.type === "started") started.push(event.issue.number);
+    },
+  });
+  assert.deepEqual(started, [1, 2, 10, 12]);
+  assert.deepEqual(
+    outcomes.map((outcome) => outcome.issue),
+    [1, 2, 10, 12],
+  );
+  assert.deepEqual(f.stderr, []);
+});
+
+test("creates missing configured workflow labels once before applying triage results", async (t) => {
+  const f = await setup(
+    t,
+    [block("queue"), block("needs-info")],
+    [issue(9), issue(10)],
+  );
+  f.config.labels.ready = "queue";
+  writeFakeHostState(join(f.root, "host.json"), {
+    ...f.host.state(),
+    labels: ["bug", "needs-info"],
+  });
+  const set = f.host.setLabels.bind(f.host);
+  f.host.setLabels = async (n, add, remove) => {
+    const existing = f.host.state().labels;
+    const missing = [...add, ...remove].filter(
+      (label) => !existing.includes(label),
+    );
+    if (missing.length)
+      throw new Error(`Labels not found: ${missing.join(", ")}`);
+    await set(n, add, remove);
+  };
+  assert.deepEqual(await f.run(), [
+    { issue: 9, label: "queue", applied: true },
+    { issue: 10, label: "needs-info", applied: true },
+  ]);
+  assert.deepEqual(
+    f.host.state().issues.map((i) => i.labels),
+    [["queue"], ["needs-info"]],
+  );
+  assert.deepEqual(
+    new Set(f.host.state().labels),
+    new Set([
+      "bug",
+      "queue",
+      "needs-info",
+      "in-progress",
+      "agent-done",
+      "agent-unsuitable",
+      "blocked",
+    ]),
+  );
+  assert.equal(
+    f.host.state().calls.filter((call) => call === "listLabels").length,
+    1,
+  );
+  assert.equal(
+    f.host.state().calls.filter((call) => call.startsWith("createLabel:"))
+      .length,
+    5,
+  );
+  assert.deepEqual(f.stderr, []);
+});
+
 test("dry-run still invokes Pi and reports label and comment without Host writes", async (t) => {
   const f = await setup(t, [block()]);
   const before = f.host.state().issues;
@@ -157,7 +237,25 @@ test("dry-run still invokes Pi and reports label and comment without Host writes
   assert.equal(preview.comment, "Looks clear.");
   assert.equal(preview.applied, false);
   assert.equal(
-    f.host.state().calls.some((c) => /setLabels|commentIssue/.test(c)),
+    f.host
+      .state()
+      .calls.some((c) =>
+        /listLabels|createLabel|setLabels|commentIssue/.test(c),
+      ),
+    false,
+  );
+});
+
+test("invalid results do not create repository labels or change issues", async (t) => {
+  const f = await setup(t, ["no block"]);
+  const before = f.host.state();
+  assert.deepEqual(await f.run(), []);
+  assert.deepEqual(f.host.state().issues, before.issues);
+  assert.deepEqual(f.host.state().labels, before.labels);
+  assert.equal(
+    f.host
+      .state()
+      .calls.some((call) => /createLabel|setLabels|commentIssue/.test(call)),
     false,
   );
 });

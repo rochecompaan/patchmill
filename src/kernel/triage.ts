@@ -12,6 +12,7 @@ import { newRunId } from "./names.ts";
 import { supervisePi } from "./pi-supervisor.ts";
 import { KERNEL_COMMENT } from "./comments.ts";
 import { parseJsonBlock } from "./result.ts";
+import { ensureLabels } from "./labels.ts";
 
 export type TriageResult = { label: string; comment: string };
 export type TriageDeps = Pick<
@@ -122,7 +123,8 @@ export async function runTriage(
   ];
   const outcomes: Array<{ issue: number; label: string; applied: boolean }> =
     [];
-  for (const number of candidates) {
+  let labelsReady = false;
+  for (const number of candidates.sort((a, b) => a - b)) {
     if (options.signal?.aborted) break;
     try {
       const issue = await host.viewIssue(number);
@@ -197,6 +199,10 @@ export async function runTriage(
         ]),
       ];
       if (!options.dryRun) {
+        if (!labelsReady) {
+          await ensureLabels(host, config.labels);
+          labelsReady = true;
+        }
         await host.setLabels(number, [label], remove);
         if (comment !== "")
           await host.commentIssue(number, `${KERNEL_COMMENT}\n${comment}`);
