@@ -25,7 +25,6 @@ test("parseConfig overrides a nested value and retains other defaults", () => {
 
 for (const [path, raw] of [
   ["planning", { planning: {} }],
-  ["workflow.planApproval", { workflow: { planApproval: {} } }],
   ["pi.timeoutMinutes", { pi: { timeoutMinutes: "5" } }],
   ["host.provider", { host: { provider: "gitlab" } }],
   ["host.trustedAuthors", { host: { trustedAuthors: ["alice", 3] } }],

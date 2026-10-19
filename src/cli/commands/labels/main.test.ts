@@ -65,7 +65,6 @@ test("labels setup creates missing labels and prints each created name, then rep
   const h = await harness(t);
   assert.equal(await h.run(["setup"]), 0);
   assert.deepEqual(h.created, [
-    "spec-approved",
     "needs-info",
     "agent-done",
     "agent-unsuitable",

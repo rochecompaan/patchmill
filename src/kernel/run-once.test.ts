@@ -13,7 +13,7 @@ import { acquireLock } from "./lock.ts";
 import { selectIssue } from "./run-once.ts";
 
 // Missing claims, verification, or cleanup break these persisted observations.
-test("fresh planning pushes a spec and draft PR, then releases with one cost comment", async (t) => {
+test("gated planning publishes a spec PR and keeps in-progress with one cost comment", async (t) => {
   const c = await setupRun(t, [
     {
       writeFiles: { [spec]: "design" },
@@ -23,9 +23,10 @@ test("fresh planning pushes a spec and draft PR, then releases with one cost com
       result: done,
     },
   ]);
+  c.config.workflow.specApproval.required = true;
   assert.equal((await c.run()).status, "stopped");
   const issue = c.host.state().issues[0]!;
-  assert.deepEqual(issue.labels, ["spec-review"]);
+  assert.deepEqual(issue.labels, ["in-progress"]);
   assert.equal(issue.comments.length, 1);
   assert.match(issue.comments[0]!.body, /Login work complete/);
   assert.match(issue.comments[0]!.body, /Cost:.*0.05/);
@@ -34,7 +35,10 @@ test("fresh planning pushes a spec and draft PR, then releases with one cost com
     issue.comments[0]!.body.includes("https://example.invalid/pulls/1"),
   );
   assert.equal(c.host.state().pullRequests[0]!.draft, true);
-  assert.equal(await c.git(["show", `origin/${branch}:${spec}`]), "design");
+  assert.equal(
+    await c.git(["show", `origin/agent/issue-9--spec:${spec}`]),
+    "design",
+  );
   const record = await c.records();
   const runId = basename(record.dir);
   assert.match(runId, /^20261015-120000-[0-9a-f]{4}$/);
@@ -50,7 +54,7 @@ test("fresh planning pushes a spec and draft PR, then releases with one cost com
   await lock.release();
   assert.match(
     c.output.join("\n"),
-    /Final result:.*Specification approval required/,
+    /Final result:.*Planning PR merge required/,
   );
   assert.doesNotMatch(c.output.join("\n"), /```json/);
 });
@@ -75,7 +79,7 @@ test("planning with an issue-closing PR is not offered for specification review"
   assert.equal((await c.records()).result.sessions.length, 1);
 });
 
-test("approved spec runs planning then implementation to a verified ready PR", async (t) => {
+test("existing ungated spec runs planning then implementation to a verified ready PR", async (t) => {
   const c = await setupRun(t, [
     {
       writeFiles: { [plan]: "plan" },
@@ -96,12 +100,8 @@ test("approved spec runs planning then implementation to a verified ready PR", a
     },
   ]);
   await c.seed({ [spec]: "spec" });
-  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
   assert.equal((await c.run()).status, "completed");
-  assert.deepEqual(c.host.state().issues[0]!.labels, [
-    "spec-approved",
-    "agent-done",
-  ]);
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
   assert.equal(c.host.state().issues[0]!.comments.length, 1);
   assert.equal((await c.records()).result.sessions.length, 2);
   const dir = (await c.records()).dir;
@@ -119,53 +119,6 @@ test("approved spec runs planning then implementation to a verified ready PR", a
       (await fs.readFile(`${dir}/session-2.log`, "utf8")),
   );
   assert.equal(await c.git(["show", `origin/${branch}:login.ts`]), "code");
-});
-
-test("ready-driven revision preserves real approval and stops after one planning session", async (t) => {
-  const c = await setupRun(t, [
-    {
-      writeFiles: { [spec]: "revised" },
-      commit: "Revise",
-      push: true,
-      result: done,
-    },
-  ]);
-  c.config.labels.specApproved = "review-accepted";
-  await c.seed({ [spec]: "spec" });
-  assert.equal((await c.run()).status, "stopped");
-  const r = await c.records();
-  const prompt = await r.prompt();
-  assert.match(prompt, /planning/);
-  assert.ok(prompt.includes(spec));
-  assert.match(prompt, /spec-review/);
-  assert.match(prompt, /review-accepted.*absent/);
-  assert.match(prompt, /not approved/);
-  assert.deepEqual(c.host.state().issues[0]!.labels, ["spec-review"]);
-  assert.equal(r.result.sessions.length, 1);
-});
-
-test("explicit issue without ready stops at the normal spec gate without Pi", async (t) => {
-  const c = await setupRun(t);
-  await c.seed({ [spec]: "spec" });
-  await c.mutate((s) => {
-    s.issues[0]!.labels = [];
-  });
-  await c.mutate((s) =>
-    s.pullRequests.push({
-      number: 1,
-      url: "https://example.invalid/pulls/1",
-      state: "open",
-      draft: true,
-      body: "",
-      headBranch: branch,
-    }),
-  );
-  assert.equal((await c.run({ issue: 9 })).status, "stopped");
-  const comment = c.host.state().issues[0]!.comments[0]!.body;
-  assert.ok(comment.includes(spec));
-  assert.ok(comment.includes("https://example.invalid/pulls/1"));
-  assert.deepEqual(c.host.state().issues[0]!.labels, ["spec-review"]);
-  await assert.rejects(fs.stat(`${c.script}.counter`), { code: "ENOENT" });
 });
 
 test("merged PR wins over ready-driven revision", async (t) => {
@@ -189,13 +142,12 @@ test("merged PR wins over ready-driven revision", async (t) => {
 test("plan-only with gate off stops before non-advance and a second session", async (t) => {
   const c = await setupRun(t, [
     {
-      writeFiles: { [spec]: "spec" },
-      commit: "Spec",
+      writeFiles: { [spec]: "spec", [plan]: "plan" },
+      commit: "Planning",
       push: true,
       result: done,
     },
   ]);
-  c.config.workflow.specApproval.required = false;
   await c.run({ planOnly: true });
   assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
   assert.match(
@@ -205,7 +157,7 @@ test("plan-only with gate off stops before non-advance and a second session", as
   assert.equal(await fs.readFile(`${c.script}.counter`, "utf8"), "1");
 });
 
-test("dry-run describes the initial revision without claim, lock, comment, or Pi", async (t) => {
+test("dry-run describes missing plan without claim, lock, comment, or Pi", async (t) => {
   const c = await setupRun(t);
   await c.seed({ [spec]: "spec" });
   assert.deepEqual(await c.run({ dryRun: true }), {
@@ -220,7 +172,7 @@ test("dry-run describes the initial revision without claim, lock, comment, or Pi
   assert.match(c.output.join("\n"), /planning/);
 });
 
-test("selection chooses oldest eligible and explicit selection still requires open and unclaimed", async (t) => {
+test("selection resumes in-progress issues and explicit selection still requires open", async (t) => {
   const c = await setupRun(t);
   const base = c.host.state().issues[0]!;
   const issues = [
@@ -234,9 +186,10 @@ test("selection chooses oldest eligible and explicit selection still requires op
     base,
     { ...base, number: 3, state: "closed" as const },
   ];
-  assert.equal(selectIssue(issues, c.config.labels)?.number, 2);
+  assert.equal(selectIssue(issues, c.config.labels)?.number, 1);
+  assert.equal(selectIssue(issues, c.config.labels, 1)?.number, 1);
   assert.equal(selectIssue(issues, c.config.labels, 9)?.number, 9);
-  for (const n of [1, 3, 99])
+  for (const n of [3, 99])
     assert.equal(selectIssue(issues, c.config.labels, n), undefined);
   await c.mutate((s) => {
     s.issues = [];
@@ -245,32 +198,27 @@ test("selection chooses oldest eligible and explicit selection still requires op
   assert.equal((await c.run({ issue: 99 })).status, "refused");
 });
 
-test("configured labels control selection, claim, revision state and release", async (t) => {
+test("configured labels control selection, claim and planning wait", async (t) => {
   const c = await setupRun(t, [
     {
-      writeFiles: { [spec]: "revision" },
-      commit: "Revise",
+      writeFiles: { [spec]: "spec" },
+      commit: "Spec",
       push: true,
+      pullRequest: { body: "Refs #9" },
       result: done,
     },
   ]);
   c.config.labels.ready = "queue";
   c.config.labels.inProgress = "working";
-  c.config.labels.specReview = "design-review";
-  c.config.labels.specApproved = "accepted";
+  c.config.workflow.specApproval.required = true;
   await c.mutate((s) => {
     s.issues[0]!.labels = ["queue"];
   });
-  await c.seed({ [spec]: "spec" });
   await c.run();
-  assert.deepEqual(c.host.state().issues[0]!.labels, ["design-review"]);
-  assert.match(
-    await (await c.records()).prompt(),
-    /design-review.*accepted: absent/s,
-  );
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["working"]);
+  assert.match(await (await c.records()).prompt(), /Planning stage: spec/);
 });
-
-for (const state of ["closed", "in-progress"] as const) {
+for (const state of ["closed"] as const) {
   test(`explicit ${state} issue is refused before locks or mutation`, async (t) => {
     const c = await setupRun(t);
     await c.mutate((s) => {
@@ -293,7 +241,6 @@ for (const hasPlan of [false, true]) {
       "docs/2026-10-15-issue-9-add-login-design.md": "spec",
       ...(hasPlan ? { "docs/2026-10-15-issue-9-add-login.md": "plan" } : {}),
     });
-    await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
     const outcome = await c.run({ dryRun: true });
     assert.equal(outcome.status, "dry-run");
     if (outcome.status === "dry-run")
@@ -314,7 +261,6 @@ for (const shared of [false, true]) {
       }
       await c.mutate((s) => {
         s.issues[0]!.title = "Add design";
-        s.issues[0]!.labels.push("spec-approved");
       });
       await c.seed({
         [`${c.config.paths.specsDir}/2026-10-14-issue-9-add-design-design.md`]:
@@ -377,23 +323,6 @@ test("explicit issue is viewed independently of automatic enumeration", async (t
   );
 });
 
-test("approval revoked during planning prevents an implementation session", async (t) => {
-  const c = await setupRun(t, [
-    {
-      writeFiles: { [plan]: "plan" },
-      commit: "Plan",
-      push: true,
-      issuePatch: { labels: ["in-progress"] },
-      result: done,
-    },
-  ]);
-  await c.seed({ [spec]: "spec" });
-  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
-  await c.run();
-  assert.equal((await c.records()).result.sessions.length, 1);
-  assert.deepEqual(c.host.state().issues[0]!.labels, ["spec-review"]);
-});
-
 test("comments added during planning reach the implementation envelope", async (t) => {
   const c = await setupRun(t, [
     {
@@ -414,28 +343,8 @@ test("comments added during planning reach the implementation envelope", async (
     { result: { status: "needs-input", summary: "Need help" } },
   ]);
   await c.seed({ [spec]: "spec" });
-  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
   await c.run();
   assert.match(await (await c.records()).prompt(), /Fresh review comment/);
-});
-
-test("approval granted during ready revision still stops after its one session", async (t) => {
-  const c = await setupRun(t, [
-    {
-      writeFiles: { [spec]: "revision", [plan]: "plan" },
-      commit: "Revise",
-      push: true,
-      issuePatch: { labels: ["in-progress", "spec-approved"] },
-      result: done,
-    },
-  ]);
-  await c.seed({ [spec]: "spec" });
-  await c.run();
-  assert.equal((await c.records()).result.sessions.length, 1);
-  assert.deepEqual(c.host.state().issues[0]!.labels, [
-    "spec-approved",
-    "spec-review",
-  ]);
 });
 
 test("kernel run-report from the authenticated account does not reopen automatic triage", async (t) => {
@@ -455,12 +364,8 @@ test("a PR closing a foreign repository cannot set agent-done", async (t) => {
     { pullRequest: { draft: false, body: "Fixes other/repo#9" }, result: done },
   ]);
   await c.seed({ [spec]: "spec", [plan]: "plan" });
-  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
   assert.equal((await c.run()).status, "stopped");
-  assert.deepEqual(c.host.state().issues[0]!.labels, [
-    "spec-approved",
-    "needs-info",
-  ]);
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
 });
 
 for (const checkout of [["-b", "operator-branch"], ["main"], ["--detach"]]) {

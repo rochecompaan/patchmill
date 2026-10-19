@@ -34,15 +34,16 @@ test("live planning shows progress and one readable result while raw output stay
       result: done,
     },
   ]);
+  c.config.workflow.specApproval.required = true;
   await c.run();
   const text = c.output.join("\n");
   const { dir } = await c.records();
   assert.match(text, /issue #9 · Add login/);
   assert.match(text, /01 planning/);
   assert.match(text, /tokens: task.*total.*time elapsed:/);
-  assert.match(text, /Final result:.*Specification approval required/);
+  assert.match(text, /Final result:.*Planning PR merge required/);
   assert.match(text, /Issue:\s+#9/);
-  assert.match(text, /spec-review/);
+  assert.match(text, /in-progress/);
   assert.ok(text.includes(spec));
   assert.ok(text.includes("https://example.invalid/pulls/1"));
   const unwrapped = text.replace(/\n */g, "");

@@ -35,7 +35,7 @@ const facts: Facts = {
   remoteBranchExists: false,
   expectedSpecPath: "docs/specs/2026-10-15-issue-9-x-design.md",
   expectedPlanPath: "docs/plans/2026-10-15-issue-9-x.md",
-  specApproved: false,
+  stage: "spec",
 };
 const input: RunEnvelopeInput = {
   repository: { owner: "team", repo: "project", defaultBranch: "default" },
@@ -43,15 +43,12 @@ const input: RunEnvelopeInput = {
   facts,
   phase: "planning",
   skill: { name: "plan-work", path: "/skills/plan work/SKILL.md" },
-  gateRequired: true,
   timeoutMinutes: 37,
   trusted: ["maintainer"],
 };
 const labels = {
   ready: "custom-ready",
   inProgress: "custom-active",
-  specReview: "custom-review",
-  specApproved: "custom-approved",
   needsInfo: "custom-info",
   done: "custom-done",
   unsuitable: "custom-unsuitable",
@@ -81,7 +78,7 @@ test("run envelope substitutes context and ordered facts with expected artifact 
     "Spec: expected: docs/specs/2026-10-15-issue-9-x-design.md",
     "Plan: expected: docs/plans/2026-10-15-issue-9-x.md",
     "Pull request: none",
-    "Gate: required, not approved",
+    "Gate: required; publish the spec PR",
     "Time limit: 37 minutes",
   ];
   let previous = -1;
@@ -102,7 +99,7 @@ for (const state of ["open", "merged", "closed"] as const) {
         ...facts,
         specPath: "custom/spec.md",
         planPath: "custom/plan.md",
-        specApproved: true,
+        stage: "implementation",
         pullRequest: {
           number: 12,
           url: "https://example.invalid/pulls/12",
@@ -122,13 +119,16 @@ for (const state of ["open", "merged", "closed"] as const) {
         `Pull request: https://example.invalid/pulls/12 (${state})`,
       ),
     );
-    assert.match(text, /Gate: required, approved/);
+    assert.match(text, /Gate: not required/);
   });
 }
 
 test("disabled gate is distinct from approval", () => {
   assert.match(
-    renderRunEnvelope({ ...input, gateRequired: false }),
+    renderRunEnvelope({
+      ...input,
+      facts: { ...facts, stage: "implementation" },
+    }),
     /Gate: not required/,
   );
 });
@@ -243,12 +243,7 @@ test("triage substitutes only the four configured outcome labels and its two-fie
   ]) {
     assert.ok(text.includes(value));
   }
-  for (const value of [
-    labels.inProgress,
-    labels.specReview,
-    labels.specApproved,
-    labels.done,
-  ]) {
+  for (const value of [labels.inProgress, labels.done]) {
     assert.ok(!text.includes(value));
   }
   assert.deepEqual(JSON.parse(lastJsonBlock(text)!), {

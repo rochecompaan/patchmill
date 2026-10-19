@@ -12,11 +12,12 @@ with pinned Superpowers and SimpleEnglish skills. Planning, implementation,
 review, and visual evidence live in those instructions, not a second workflow
 state machine.
 
-## One issue branch
+## Planning merge gates
 
-A single branch and worktree hold each issue's spec, plan, and code. One pull
-request carries them to review. The optional spec gate waits for the
-`spec-approved` label. The plan receives review with the pull request.
+Spec and plan gates default off. With no gates, one branch and pull request
+carry the spec, plan, and code. Each enabled gate uses a separate planning pull
+request that a human must merge before the next stage. Review approval and issue
+labels do not unlock these gates. The issue stays `in-progress` while waiting.
 
 The kernel reads git and the host on every attempt. Local logs are outputs, not
 resume instructions. `agent-done` means that a ready pull request closes the

@@ -6,8 +6,6 @@ export const CONFIG_FILE = "patchmill.config.json";
 export type LabelsConfig = {
   ready: string;
   inProgress: string;
-  specReview: string;
-  specApproved: string;
   needsInfo: string;
   done: string;
   unsuitable: string;
@@ -25,15 +23,16 @@ export type PatchmillConfig = {
   git: { baseBranch: string | null };
   skills: { triage: string; planning: string; implementation: string };
   pi: { agentDir: string; timeoutMinutes: number };
-  workflow: { specApproval: { required: boolean } };
+  workflow: {
+    specApproval: { required: boolean };
+    planApproval: { required: boolean };
+  };
 };
 export const DEFAULT_CONFIG: PatchmillConfig = {
   host: { provider: "github-gh", login: "", trustedAuthors: [] },
   labels: {
     ready: "agent-ready",
     inProgress: "in-progress",
-    specReview: "spec-review",
-    specApproved: "spec-approved",
     needsInfo: "needs-info",
     done: "agent-done",
     unsuitable: "agent-unsuitable",
@@ -52,7 +51,10 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
     implementation: ".patchmill/skills/patchmill-implementation",
   },
   pi: { agentDir: ".patchmill/pi-agent", timeoutMinutes: 90 },
-  workflow: { specApproval: { required: true } },
+  workflow: {
+    specApproval: { required: false },
+    planApproval: { required: false },
+  },
 };
 export class ConfigError extends Error {}
 
@@ -63,8 +65,6 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "host.trustedAuthors", kind: "string[]" },
   { path: "labels.ready", kind: "string" },
   { path: "labels.inProgress", kind: "string" },
-  { path: "labels.specReview", kind: "string" },
-  { path: "labels.specApproved", kind: "string" },
   { path: "labels.needsInfo", kind: "string" },
   { path: "labels.done", kind: "string" },
   { path: "labels.unsuitable", kind: "string" },
@@ -80,6 +80,7 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "pi.agentDir", kind: "string" },
   { path: "pi.timeoutMinutes", kind: "number" },
   { path: "workflow.specApproval.required", kind: "boolean" },
+  { path: "workflow.planApproval.required", kind: "boolean" },
 ];
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -109,6 +110,14 @@ export function parseConfig(raw: unknown): PatchmillConfig {
       const path = prefix ? `${prefix}.${key}` : key;
       if (key.includes("."))
         throw new ConfigError(`Unknown config key: ${path}`);
+      // Accept retired generated settings on upgrade, without retaining or using them.
+      if (
+        /^labels\.(specReview|specApproved|planReview|planApproved)$/.test(path)
+      ) {
+        if (typeof value !== "string")
+          throw new ConfigError(`Invalid type for ${path}`);
+        continue;
+      }
       const leaf = schema.find((entry) => entry.path === path);
       if (leaf) {
         if (!matches(value, leaf.kind))

@@ -5,7 +5,8 @@ description: Install Patchmill and advance an issue.
 
 Use a repository with an `origin` remote and an authenticated `gh` or `tea` CLI.
 See [Providers](/guides/providers/) before initialization. Patchmill has no
-migration path from earlier configuration or workflow state.
+general migration path from earlier configuration or workflow state. Retired
+review-label settings are accepted but ignored.
 
 ## Install and initialize
 
@@ -44,16 +45,18 @@ Triage dry run calls Pi and writes local logs, but does not change host labels
 or comments. Run-once dry run prints the selected issue and derived phase
 without claiming it or running Pi.
 
-At `spec-review`, review the pushed spec on the issue branch. To approve it, add
-`spec-approved` and `agent-ready` to the issue. Then run:
+Planning gates default off. To require a separate spec or plan review before
+implementation, enable its workflow gate in the configuration. Review and merge
+each planning pull request. The issue stays `in-progress` while waiting. After
+each merge, run:
 
 ```sh
 patchmill run-once --issue N
 ```
 
-To request a revision, leave approval off and add review comments and
-`agent-ready`. The next attempt revises the existing spec and stops for review
-again. Approval is never inferred from the agent's own review.
+Review approval alone does not unlock a gate. An open planning pull request
+keeps the workflow paused without running Pi. With both gates off, planning
+writes both documents on the implementation branch and continues directly.
 
 After implementation, `agent-done` identifies a ready pull request that closes
 the issue. Review and merge it through the host. Patchmill does not merge or

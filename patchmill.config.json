@@ -7,8 +7,6 @@
   "labels": {
     "ready": "agent-ready",
     "inProgress": "in-progress",
-    "specReview": "spec-review",
-    "specApproved": "spec-approved",
     "needsInfo": "needs-info",
     "done": "agent-done",
     "unsuitable": "agent-unsuitable",
@@ -35,6 +33,9 @@
   "workflow": {
     "specApproval": {
       "required": true
+    },
+    "planApproval": {
+      "required": false
     }
   }
 }

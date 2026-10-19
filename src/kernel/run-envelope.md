@@ -10,6 +10,7 @@ Facts:
 - Spec: {{spec}}
 - Plan: {{plan}}
 - Pull request: {{pullRequest}}
+- Planning stage: {{stage}}
 - Gate: {{gate}}
 - Time limit: {{timeoutMinutes}} minutes
 

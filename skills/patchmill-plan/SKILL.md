@@ -20,15 +20,16 @@ the repository root. Read the configured provider, base branch, artifact
 directories, and worktree and run directories. Inspect the issue, its comments,
 its pull request, Git branches, and worktrees.
 
-Reuse the one issue branch and worktree across specification, planning, and
-implementation. The kernel convention is `agent/issue-N-<title-slug>` with
-slashes replaced by hyphens in the worktree directory name. Use an existing
-matching branch rather than deriving a new name from an edited title. If
-multiple issue branches or uncertain ownership exist, stop and ask instead of
-creating a competing workspace. If a new workspace is needed, read sibling
-`using-git-worktrees` and preserve the one-issue convention. Do not delete or
-replace the permanent issue lock or its parent directory. An empty lock file or
-diagnostic PID does not establish that the issue is inactive.
+Inspect required gates and their pull requests before selecting a workspace. The
+kernel uses `agent/issue-N--spec` and `agent/issue-N--plan` for required gates,
+and `agent/issue-N-<title-slug>` for implementation. Worktree names replace
+slashes with hyphens. Reuse the workspace for the earliest unmerged required
+gate. Otherwise, reuse the implementation workspace. Planning branches for other
+stages are not competing implementation branches. If several branches match the
+same stage or ownership is uncertain, stop and ask. If a new workspace is
+needed, read sibling `using-git-worktrees` and use the matching stage name. Do
+not delete or replace the permanent issue lock or its parent directory. An empty
+lock file or diagnostic PID does not establish that the issue is inactive.
 
 ## Write local artifacts
 
@@ -40,8 +41,10 @@ writing-style, and Testing Value Gate guidance. Follow its required
 document work. Do not perform its kernel publication steps from this interactive
 skill. Use the configured artifact directories and any exact paths already
 supplied by the operator. Keep existing approval gates. Do not treat local
-self-review as specification approval. If a required specification lacks
-approval, revise it and stop before writing the plan.
+self-review or approval labels as a merged planning gate. If the required
+specification PR is not merged, revise only the spec and stop before the plan.
+An open plan PR also blocks implementation. Do not publish or merge from this
+interactive skill.
 
 ## Handoff
 

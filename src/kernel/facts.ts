@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
-  branchName,
   isPlanFile,
   isSpecFile,
   planFileName,
@@ -11,8 +10,10 @@ import {
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue, PullRequest } from "../host/types.ts";
 import type { KernelGit } from "./git.ts";
+import { planningWorkspace, type WorkflowStage } from "./planning-workspace.ts";
 
 export type Facts = {
+  stage: WorkflowStage;
   branch: string;
   remoteBranchExists: boolean;
   worktree: string;
@@ -21,7 +22,6 @@ export type Facts = {
   planPath?: string;
   expectedSpecPath: string;
   expectedPlanPath: string;
-  specApproved: boolean;
   pullRequest?: PullRequest;
 };
 export type FactsResult =
@@ -68,6 +68,7 @@ export async function collectFacts(
     now: () => Date;
   },
   issue: Issue,
+  selected?: Pick<Facts, "stage" | "branch">,
 ): Promise<FactsResult> {
   const { git, host, config, repoRoot, now } = deps;
   await git.fetch();
@@ -76,9 +77,16 @@ export async function collectFacts(
     (await git.remoteDefaultBranch()) ??
     (await host.repository()).defaultBranch;
   const branches = await git.remoteBranches(issue.number);
-  if (branches.length > 1) return { kind: "ambiguous-branches", branches };
-  const branch = branches[0] ?? branchName(issue.number, issue.title);
-  const remoteBranchExists = branches.length === 1;
+  const selection = await planningWorkspace(
+    host,
+    config.workflow,
+    issue,
+    branches,
+    selected,
+  );
+  if (selection.kind === "ambiguous-branches") return selection;
+  const { stage, branch, pullRequest, merged } = selection.workspace;
+  const remoteBranchExists = branches.includes(branch);
   const worktree = resolve(
     repoRoot,
     config.paths.worktreeDir,
@@ -113,10 +121,22 @@ export async function collectFacts(
     const plan = await fs.stat(join(worktree, planPath));
     if (spec.dev === plan.dev && spec.ino === plan.ino) planPath = undefined;
   }
-  const pullRequest = await host.findPullRequestByHead(branch);
+  if (merged.length > 0) {
+    const required = merged.includes("plan")
+      ? [specPath, planPath]
+      : [specPath];
+    if (
+      !required.every((path) => path !== undefined) ||
+      !(await git.baseArtifactsMatch(worktree, baseBranch, required))
+    )
+      throw new Error(
+        `A merged planning PR's artifact is missing from, or differs from, base ${baseBranch}. Reconcile the merged documents before continuing.`,
+      );
+  }
   return {
     kind: "facts",
     facts: {
+      stage,
       branch,
       remoteBranchExists,
       worktree,
@@ -125,9 +145,6 @@ export async function collectFacts(
       ...(planPath === undefined ? {} : { planPath }),
       expectedSpecPath: expectedPath(config.paths.specsDir, specName),
       expectedPlanPath: expectedPath(config.paths.plansDir, planName),
-      specApproved:
-        !config.workflow.specApproval.required ||
-        issue.labels.includes(config.labels.specApproved),
       ...(pullRequest === undefined ? {} : { pullRequest }),
     },
   };

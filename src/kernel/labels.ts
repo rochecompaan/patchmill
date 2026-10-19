@@ -15,16 +15,6 @@ export function labelCatalog(labels: LabelsConfig): LabelDefinition[] {
       description: "Issue is currently being processed by automation",
     },
     {
-      name: labels.specReview,
-      color: "#5319e7",
-      description: "Awaiting specification review",
-    },
-    {
-      name: labels.specApproved,
-      color: "#0e8a16",
-      description: "Specification approved for automation",
-    },
-    {
       name: labels.needsInfo,
       color: "#8957e5",
       description:
@@ -69,7 +59,7 @@ export function claimSwap(labels: LabelsConfig): {
 } {
   return {
     add: [labels.inProgress],
-    remove: [labels.ready, labels.specReview, labels.needsInfo],
+    remove: [labels.ready, labels.needsInfo],
   };
 }
 
@@ -77,5 +67,8 @@ export function releaseSwap(
   labels: LabelsConfig,
   outcome: OutcomeLabel,
 ): { add: string[]; remove: string[] } {
-  return { add: [labels[outcome]], remove: [labels.inProgress] };
+  return {
+    add: [labels[outcome]],
+    remove: outcome === "inProgress" ? [] : [labels.inProgress],
+  };
 }

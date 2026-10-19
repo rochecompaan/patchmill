@@ -12,7 +12,6 @@ export type RunEnvelopeInput = {
   phase: Phase;
   facts: Facts;
   skill: { name: string; path: string };
-  gateRequired: boolean;
   timeoutMinutes: number;
   trusted: string[];
 };
@@ -68,9 +67,11 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     pullRequest: facts.pullRequest
       ? `${facts.pullRequest.url} (${facts.pullRequest.state})`
       : "none",
-    gate: input.gateRequired
-      ? `required, ${facts.specApproved ? "approved" : "not approved"}`
-      : "not required",
+    stage: facts.stage,
+    gate:
+      facts.stage === "implementation"
+        ? "not required; keep planning artifacts in the implementation PR"
+        : `required; publish the ${facts.stage} PR and stop until it is merged`,
     timeoutMinutes: String(input.timeoutMinutes),
     issue: renderIssue(input.issue, input.trusted),
   });

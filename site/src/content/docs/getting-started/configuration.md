@@ -1,12 +1,13 @@
 ---
 title: Configuration
-description: Configure the host, paths, skills, timeout, and spec gate.
+description: Configure the host, paths, skills, timeout, and planning gates.
 ---
 
 Patchmill reads `patchmill.config.json` from the repository root. Run
 `patchmill init --provider github-gh` to create it when missing. Every supported
 key has a default. Unknown keys fail loading by name. There are no aliases or
-earlier-version readers.
+earlier-version readers. Retired spec/plan review-label settings are accepted
+but ignored. New configuration omits them.
 
 ## Host and trust
 
@@ -24,22 +25,26 @@ authors. GitHub also trusts its nonempty configured `host.login`. A Tea profile
 alias does not grant trust. Duplicate identities count once. Issue content and
 comments remain untrusted instructions, even from those authors.
 
-## Spec gate
+## Planning gates
 
-`workflow.specApproval.required` defaults to `true`. A pushed spec stops at
-`spec-review` until a human adds `spec-approved` and `agent-ready`. For
-revisions, leave approval off, add review comments and `agent-ready`, then
-rerun. One planning session revises the existing spec and stops for review
-again. The plan receives review with the pull request, not a separate approval
-gate.
+`workflow.specApproval.required` and `workflow.planApproval.required` each
+default to `false`. Set either to `true` to require a separate planning pull
+request for that stage. Only merging that pull request into the base unlocks the
+next stage. Review approval alone does not unlock it.
+
+The issue stays `in-progress` while waiting. A later run resumes under the same
+issue lock. Ungated documents go into the next required planning pull request,
+or the implementation pull request when no later gate is required. With both
+gates off, planning writes both documents and continues to implementation.
 
 ## Paths and git
 
 `paths` contains `specsDir`, `plansDir`, `worktreeDir`, and `runsDir`. The
 defaults are `docs/specs`, `docs/plans`, `.worktrees`, and `.patchmill/runs`.
-One branch and worktree serve each issue. `git.baseBranch: null` uses the remote
-default branch. A string selects an explicit base branch. The remote is
-`origin`.
+Required planning gates use separate branches and worktrees. Each later branch
+starts from the fetched base after earlier planning PRs merge.
+`git.baseBranch: null` uses the remote default branch. A string selects an
+explicit base branch. The remote is `origin`.
 
 ## Skills and Pi
 
@@ -61,8 +66,6 @@ returns to the shell without opening Pi chat. See
   "labels": {
     "ready": "agent-ready",
     "inProgress": "in-progress",
-    "specReview": "spec-review",
-    "specApproved": "spec-approved",
     "needsInfo": "needs-info",
     "done": "agent-done",
     "unsuitable": "agent-unsuitable",
@@ -81,7 +84,10 @@ returns to the shell without opening Pi chat. See
     "implementation": ".patchmill/skills/patchmill-implementation"
   },
   "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
-  "workflow": { "specApproval": { "required": true } }
+  "workflow": {
+    "specApproval": { "required": false },
+    "planApproval": { "required": false }
+  }
 }
 ```
 

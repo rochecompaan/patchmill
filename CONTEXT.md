@@ -5,11 +5,19 @@ safety, policy, and human-control boundaries.
 
 ## Language
 
-**Spec gate**: The requirement for human spec approval through the
-`spec-approved` label. _Avoid_: Planning review gate, plan approval
+**Spec gate**: A required pause until a human merges the specification pull
+request. Review approval alone does not unlock it. _Avoid_: Approval label
 
-**Issue branch**: The single branch and worktree for one issue across planning
-and implementation. _Avoid_: Phase workspace
+**Plan gate**: A required pause until a human merges the implementation-plan
+pull request. Review approval alone does not unlock it. _Avoid_: Approval label
+
+**Planning pull request**: A pull request for documents that must merge before
+the next required stage. It does not complete the issue. _Avoid_: Implementation
+PR
+
+**Issue branch**: The implementation branch for one issue. Ungated planning
+documents accompany its code. Required planning gates use separate branches.
+_Avoid_: One branch for every stage
 
 **Run-once workflow**: The atomic processing of one selected issue from claim
 through its terminal or resumable outcome. _Avoid_: Run loop, coordinator
