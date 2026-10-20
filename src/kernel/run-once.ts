@@ -53,8 +53,16 @@ export type RunOnceOutcome =
     }
   | { status: "claimed-elsewhere"; issue: number }
   | { status: "refused"; issue: number; reason: string }
-  | { status: "stopped"; issue: number; label: OutcomeLabel; summary: string }
-  | { status: "completed"; issue: number };
+  | ({
+      status: "stopped";
+      issue: number;
+      label: OutcomeLabel;
+      summary: string;
+    } & Publication)
+  | ({ status: "completed"; issue: number } & Publication);
+
+// Label and comment failures never change the verified outcome.
+type Publication = { publicationErrors?: string[] };
 
 export function selectIssue(
   issues: Issue[],
@@ -154,7 +162,6 @@ export async function runOneIssue(
   let warnings: string[] = [];
   let displayFacts: Facts | undefined;
   let totalOutputTokens = 0;
-  let claimedElsewhere = false;
   try {
     try {
       const claim = claimSwap(config.labels);
@@ -163,10 +170,8 @@ export async function runOneIssue(
       if (
         issue.state !== "open" ||
         !issue.labels.includes(config.labels.inProgress)
-      ) {
-        claimedElsewhere = true;
+      )
         return { status: "claimed-elsewhere", issue: issueNumber };
-      }
       await fs.mkdir(runDir, { recursive: true });
       output.stderr(formatRunStart(issue));
       for (let index = 0; index < 3; index++) {
@@ -299,90 +304,106 @@ export async function runOneIssue(
       }
     } catch (error) {
       label = "needsInfo";
-      summary = error instanceof Error ? error.message : String(error);
-    } finally {
-      if (!claimedElsewhere) {
-        const usage = await sumSessionUsage(join(runDir, "sessions"));
-        const cost = costLine(usage);
-        if (displayFacts?.pullRequest) {
-          try {
-            await publishIssueCost({
-              host,
-              branch: displayFacts.branch,
-              issueDir,
-              current: { runId, sessions },
-            });
-          } catch (error) {
-            warnings.push(
-              `PR cost report unavailable: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        }
-        const line = `Issue #${issueNumber}: ${config.labels[label]}`;
-        try {
-          const release = releaseSwap(config.labels, label);
-          await host.setLabels(issueNumber, release.add, release.remove);
-          await host.commentIssue(
-            issueNumber,
-            [KERNEL_COMMENT, line, summary, cost, ...warnings].join("\n\n"),
-          );
-        } catch (error) {
-          label = "needsInfo";
-          const message =
-            error instanceof Error ? error.message : String(error);
-          summary += `\nFinalization failed: ${message}. Remote labels or comment are uncertain.`;
-          output.stderr(message);
-        } finally {
-          const outcome: RunOnceOutcome =
-            label === "done"
-              ? { status: "completed", issue: issueNumber }
-              : { status: "stopped", issue: issueNumber, label, summary };
-          await fs.mkdir(runDir, { recursive: true });
-          await fs.writeFile(
-            join(runDir, "result.json"),
-            JSON.stringify(
-              {
-                runId,
-                issue: issueNumber,
-                startedAt,
-                finishedAt: now().toISOString(),
-                outcome,
-                sessions,
-              },
-              null,
-              2,
-            ),
-          );
-        }
-        output.stdout(
-          formatRunResult({
-            label:
-              label === "done"
-                ? displayFacts?.pullRequest?.state === "merged"
-                  ? "Already merged"
-                  : "PR ready"
-                : label === "inProgress"
-                  ? "Planning PR merge required"
-                  : "Stopped",
-            severity: label === "done" ? "success" : "warning",
-            issue: selected,
-            ...(displayFacts ? { facts: displayFacts } : {}),
-            summary,
-            warnings,
-            outcomeLabel: config.labels[label],
-            logPath: join(runDir, "pi.log"),
-            sessionPath: join(runDir, "sessions"),
-            cost,
-            ...(usage ? { usage } : {}),
-            elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
-          }),
-        );
+      summary = errorMessage(error);
+    }
+    const usage = await sumSessionUsage(join(runDir, "sessions"));
+    const cost = costLine(usage);
+    if (displayFacts?.pullRequest) {
+      try {
+        await publishIssueCost({
+          host,
+          branch: displayFacts.branch,
+          issueDir,
+          current: { runId, sessions },
+        });
+      } catch (error) {
+        warnings.push(`PR cost report unavailable: ${errorMessage(error)}`);
       }
     }
-    return label === "done"
-      ? { status: "completed", issue: issueNumber }
-      : { status: "stopped", issue: issueNumber, label, summary };
+    const publicationErrors: string[] = [];
+    const publish = async (failure: string, effect: () => Promise<void>) => {
+      try {
+        await effect();
+      } catch (error) {
+        publicationErrors.push(`${failure}: ${errorMessage(error)}`);
+      }
+    };
+    const release = releaseSwap(config.labels, label);
+    await publish("Label update failed", () =>
+      host.setLabels(issueNumber, release.add, release.remove),
+    );
+    await publish("Comment failed", () =>
+      host.commentIssue(
+        issueNumber,
+        [
+          KERNEL_COMMENT,
+          `Issue #${issueNumber}: ${config.labels[label]}`,
+          summary,
+          cost,
+          ...warnings,
+          ...publicationErrors,
+        ].join("\n\n"),
+      ),
+    );
+    const publication = publicationErrors.length ? { publicationErrors } : {};
+    const outcome: RunOnceOutcome =
+      label === "done"
+        ? { status: "completed", issue: issueNumber, ...publication }
+        : {
+            status: "stopped",
+            issue: issueNumber,
+            label,
+            summary,
+            ...publication,
+          };
+    await fs.mkdir(runDir, { recursive: true });
+    await fs.writeFile(
+      join(runDir, "result.json"),
+      JSON.stringify(
+        {
+          runId,
+          issue: issueNumber,
+          startedAt,
+          finishedAt: now().toISOString(),
+          outcome,
+          sessions,
+        },
+        null,
+        2,
+      ),
+    );
+    output.stdout(
+      formatRunResult({
+        label:
+          outcome.status === "completed"
+            ? displayFacts?.pullRequest?.state === "merged"
+              ? "Already merged"
+              : "PR ready"
+            : label === "inProgress"
+              ? "Planning PR merge required"
+              : "Stopped",
+        severity:
+          outcome.status === "completed" && !publicationErrors.length
+            ? "success"
+            : "warning",
+        issue: selected,
+        ...(displayFacts ? { facts: displayFacts } : {}),
+        summary,
+        warnings: [...warnings, ...publicationErrors],
+        outcomeLabel: config.labels[label],
+        logPath: join(runDir, "pi.log"),
+        sessionPath: join(runDir, "sessions"),
+        cost,
+        ...(usage ? { usage } : {}),
+        elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
+      }),
+    );
+    return outcome;
   } finally {
     await lock.release();
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

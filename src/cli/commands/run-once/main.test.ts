@@ -112,9 +112,22 @@ const outcomes: [RunOnceOutcome, number][] = [
   [{ status: "no-work" }, 0],
   [{ status: "refused", issue: 9, reason: "already claimed" }, 1],
   [{ status: "claimed-elsewhere", issue: 9 }, 1],
+  [{ status: "completed", issue: 9, publicationErrors: ["Comment failed"] }, 1],
+  [
+    {
+      status: "stopped",
+      issue: 9,
+      label: "inProgress",
+      summary: "Waiting for merge",
+      publicationErrors: ["Label update failed"],
+    },
+    1,
+  ],
 ];
 for (const [outcome, expected] of outcomes) {
-  test(`maps ${outcome.status} to exit ${expected}`, async (t) => {
+  const errors =
+    "publicationErrors" in outcome ? " with publication errors" : "";
+  test(`maps ${outcome.status}${errors} to exit ${expected}`, async (t) => {
     const f = await harness(t);
     assert.equal(
       await main([], { ...f.options, runOneIssue: async () => outcome }),

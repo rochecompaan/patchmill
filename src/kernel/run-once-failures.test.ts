@@ -158,10 +158,13 @@ test("claimed errors become needs-info and cleanup host errors cannot leak owner
   await c.mutate((s) => {
     s.issues[0]!.labels = ["agent-ready"];
   });
-  const outcome = await c.run();
-  assert.equal(outcome.status, "stopped");
-  if (outcome.status === "stopped")
-    assert.match(outcome.summary, /fetch failed.*comment failed/s);
+  assert.deepEqual(await c.run(), {
+    status: "stopped",
+    issue: 9,
+    label: "needsInfo",
+    summary: "fetch failed",
+    publicationErrors: ["Comment failed: comment failed"],
+  });
   const lock = await acquireLock(c.lockPath);
   await lock.release();
 });
@@ -202,6 +205,34 @@ test("dry-run ambiguous branches does not claim or start Pi", async (t) => {
   await assert.rejects(fs.stat(c.lockPath), { code: "ENOENT" });
 });
 
+test("a completion comment failure keeps the verified completed outcome", async (t) => {
+  const c = await setupRun(t);
+  await c.seed({ [spec]: "spec" });
+  await c.mutate((s) =>
+    s.pullRequests.push({
+      number: 1,
+      url: "https://example.invalid/1",
+      state: "merged",
+      draft: false,
+      body: "Closes #9",
+      headBranch: "agent/issue-9-add-login",
+    }),
+  );
+  c.host.commentIssue = async () => {
+    throw new Error("comment failed");
+  };
+  const outcome = await c.run();
+  assert.deepEqual(outcome, {
+    status: "completed",
+    issue: 9,
+    publicationErrors: ["Comment failed: comment failed"],
+  });
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
+  assert.deepEqual((await c.records()).result.outcome, outcome);
+  assert.match(c.output.join("\n"), /Already merged/);
+  assert.match(c.output.join("\n"), /Comment failed: comment failed/);
+});
+
 for (const site of ["release labels", "comment"] as const) {
   test(`finalization ${site} error is recorded without retry and retains the lock inode`, async (t) => {
     const c = await setupRun(t);
@@ -236,12 +267,18 @@ for (const site of ["release labels", "comment"] as const) {
     const outcome = await c.run({ issue: 9 });
     assert.equal(outcome.status, "stopped");
     if (outcome.status === "stopped") {
-      assert.equal(outcome.label, "needsInfo");
+      assert.equal(outcome.label, "inProgress");
       assert.match(outcome.summary, /Waiting for it to be merged/);
-      assert.ok(outcome.summary.includes(`${site} failed`));
+      assert.ok(!outcome.summary.includes("failed"));
+      assert.deepEqual(outcome.publicationErrors, [
+        ...(site === "release labels"
+          ? ["Label update failed: release labels failed"]
+          : []),
+        "Comment failed: comment failed",
+      ]);
     }
     assert.equal(swaps, 2);
-    assert.equal(comments, site === "comment" ? 1 : 0);
+    assert.equal(comments, 1);
     assert.deepEqual((await c.records()).result.outcome, outcome);
     assert.match(c.output.join("\n"), new RegExp(`${site} failed`));
     const inode = (await fs.stat(c.lockPath)).ino;

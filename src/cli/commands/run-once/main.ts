@@ -77,8 +77,10 @@ export async function main(
     if (outcome.status === "refused") output.stderr(outcome.reason);
     if (outcome.status === "claimed-elsewhere")
       output.stderr(`Issue #${outcome.issue} was claimed elsewhere.`);
+    // Publication errors leave remote labels or comments for an operator to fix.
     return outcome.status === "refused" ||
-      outcome.status === "claimed-elsewhere"
+      outcome.status === "claimed-elsewhere" ||
+      "publicationErrors" in outcome
       ? 1
       : 0;
   } catch (error) {

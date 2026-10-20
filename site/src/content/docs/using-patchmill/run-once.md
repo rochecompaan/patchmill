@@ -97,6 +97,10 @@ a real ready pull request. The kernel posts one comment per stop with the
 outcome, summary, best-effort cost, and warnings. The agent never changes issue
 labels or posts issue comments.
 
+If the final label update or comment fails, the verified outcome still stands.
+Patchmill records each failure next to the outcome in `result.json` and the
+console, then exits with code 1. Fix the issue's labels or comment by hand.
+
 To address an open ready pull request's review, add `agent-ready` and rerun. The
 implementation skill reads its comments and revises the same branch and pull
 request. Patchmill does not merge or automatically retry failed attempts.
