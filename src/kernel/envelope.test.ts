@@ -106,7 +106,9 @@ for (const state of ["open", "merged", "closed"] as const) {
           state,
           draft: false,
           body: "Not part of the issue",
+          headRepository: "fixture/repo",
           headBranch: facts.branch,
+          baseBranch: "main",
         },
       },
     });

@@ -45,8 +45,12 @@ if (step.pullRequest) {
   const headBranch = stdout.trim();
   // Read after git finishes so host changes made during that command survive.
   const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  const headRepository =
+    state.pushRepository ??
+    `${state.repository.owner}/${state.repository.repo}`;
   const existing = state.pullRequests.find(
-    (pr) => pr.headBranch === headBranch,
+    (pr) =>
+      pr.headBranch === headBranch && pr.headRepository === headRepository,
   );
   if (existing) {
     Object.assign(existing, step.pullRequest, { headBranch });
@@ -59,6 +63,8 @@ if (step.pullRequest) {
       state: "open",
       draft: true,
       body: "",
+      headRepository,
+      baseBranch: state.repository.defaultBranch,
       ...step.pullRequest,
       headBranch,
     });

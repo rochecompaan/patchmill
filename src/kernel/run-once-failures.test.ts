@@ -215,7 +215,9 @@ test("a completion comment failure keeps the verified completed outcome", async 
       state: "merged",
       draft: false,
       body: "Closes #9",
+      headRepository: "fixture/repo",
       headBranch: "agent/issue-9-add-login",
+      baseBranch: "main",
     }),
   );
   c.host.commentIssue = async () => {
@@ -245,7 +247,9 @@ for (const site of ["release labels", "comment"] as const) {
         state: "open",
         draft: false,
         body: "Refs #9",
+        headRepository: "fixture/repo",
         headBranch: "agent/issue-9--spec",
+        baseBranch: "main",
       });
     });
     await c.mutate((s) => {

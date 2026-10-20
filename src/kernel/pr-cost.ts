@@ -5,6 +5,7 @@ import {
   type IssueCostReport,
 } from "./issue-cost.ts";
 import type { PiUsage } from "./pi-cost.ts";
+import { findPullRequest } from "./pull-request.ts";
 
 const START = "<!-- patchmill-run-cost:start -->";
 const END = "<!-- patchmill-run-cost:end -->";
@@ -80,18 +81,19 @@ export function upsertRunCostSection(
 export async function publishIssueCost(options: {
   host: Host;
   branch: string;
+  baseBranch: string;
   issueDir: string;
   current?: CostRun;
 }): Promise<void> {
   const report = await readIssueCostReport(options.issueDir, options.current);
   if (!report) return;
   // Read again at publication time, rather than overwriting with collected facts.
-  const pr = await options.host.findPullRequestByHead(options.branch);
+  const pr = await findPullRequest(
+    options.host,
+    options.branch,
+    options.baseBranch,
+  );
   if (!pr) return;
-  if (pr.headBranch !== options.branch)
-    throw new Error(
-      "Cost report pull request head does not match the issue branch",
-    );
   const next = upsertRunCostSection(pr.body, report);
   if (next !== pr.body)
     await options.host.updatePullRequestBody(pr.number, next);

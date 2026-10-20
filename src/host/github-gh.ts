@@ -14,6 +14,7 @@ import type {
   RepositorySetupHost,
   RepositoryTarget,
 } from "./types.ts";
+import { originRepository } from "./origin.ts";
 
 type RawIssue = Omit<Issue, "labels" | "author" | "comments" | "state"> & {
   labels: { name: string }[];
@@ -21,9 +22,13 @@ type RawIssue = Omit<Issue, "labels" | "author" | "comments" | "state"> & {
   state: string;
   comments?: { author: { login: string }; body: string; createdAt: string }[];
 };
-type RawPullRequest = Omit<PullRequest, "draft" | "headBranch" | "state"> & {
+type RawPullRequest = Pick<PullRequest, "number" | "url" | "body"> & {
   isDraft: boolean;
   headRefName: string;
+  // gh reports null for both once the head repository is deleted.
+  headRepository: { name: string } | null;
+  headRepositoryOwner: { login: string } | null;
+  baseRefName: string;
   state: string;
 };
 type RawRepository = {
@@ -54,7 +59,12 @@ const mapPullRequest = (raw: RawPullRequest): PullRequest => ({
   state: raw.state.toLowerCase() as PullRequest["state"],
   draft: raw.isDraft,
   body: raw.body,
+  headRepository:
+    raw.headRepository && raw.headRepositoryOwner
+      ? `${raw.headRepositoryOwner.login}/${raw.headRepository.name}`
+      : null,
   headBranch: raw.headRefName,
+  baseBranch: raw.baseRefName,
 });
 const mapRepository = (raw: RawRepository): Repository => {
   const slash = raw.nameWithOwner.indexOf("/");
@@ -193,9 +203,11 @@ export class GitHubHost implements Host, RepositorySetupHost {
       stdin: body,
     });
   }
-  async findPullRequestByHead(
-    branch: string,
-  ): Promise<PullRequest | undefined> {
+  async pushRepository(): Promise<string> {
+    return originRepository(this.runner, this.repoRoot);
+  }
+  async listPullRequests(branch: string): Promise<PullRequest[]> {
+    // --head cannot name a fork, so same-named branches from every fork appear.
     const result = await this.ghOk([
       "pr",
       "list",
@@ -204,17 +216,13 @@ export class GitHubHost implements Host, RepositorySetupHost {
       "--state",
       "all",
       "--limit",
-      "20",
+      "100",
       "--json",
-      "number,url,state,isDraft,body,headRefName",
+      "number,url,state,isDraft,body,headRefName,headRepository,headRepositoryOwner,baseRefName",
     ]);
-    const entries = (
-      parseJson(result.stdout, "gh pr list") as RawPullRequest[]
-    ).filter((entry) => entry.headRefName === branch);
-    const selected = ["OPEN", "MERGED", "CLOSED"]
-      .map((state) => entries.find((entry) => entry.state === state))
-      .find((entry) => entry !== undefined);
-    return selected ? mapPullRequest(selected) : undefined;
+    return (parseJson(result.stdout, "gh pr list") as RawPullRequest[])
+      .filter((entry) => entry.headRefName === branch)
+      .map(mapPullRequest);
   }
   async getRepository(
     target: RepositoryTarget,

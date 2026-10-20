@@ -52,8 +52,8 @@ async function setup(t: TestContext) {
       repo: "repo",
       defaultBranch: "host-base",
     }),
-    findPullRequestByHead: async (branch) =>
-      pr?.headBranch === branch ? pr : undefined,
+    pushRepository: async () => "fixture/repo",
+    listPullRequests: async (branch) => (pr?.headBranch === branch ? [pr] : []),
   };
   const config = structuredClone(DEFAULT_CONFIG);
   config.paths.specsDir = "custom/specs";
@@ -131,7 +131,9 @@ test("fetch discovers one differently slugged branch and its PR and artifacts", 
     state: "open",
     draft: true,
     body: "PR body",
+    headRepository: "fixture/repo",
     headBranch: "agent/issue-9-old-title",
+    baseBranch: "main",
   };
   c.setPr(pr);
   const facts = await c.provision({ ...issue, labels: ["custom-approved"] });
@@ -288,7 +290,7 @@ test("fetch, host and non-missing filesystem errors stay visible", async (t) => 
   await assert.rejects(c.provision(), { code: "ENOTDIR" });
   await fs.unlink(join(facts.worktree, "custom/specs"));
   const failure = new Error("host failure");
-  c.deps.host.findPullRequestByHead = async () => {
+  c.deps.host.listPullRequests = async () => {
     throw failure;
   };
   await assert.rejects(c.provision(), (error) => error === failure);

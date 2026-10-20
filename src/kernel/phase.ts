@@ -1,4 +1,5 @@
 import type { Facts } from "./facts.ts";
+import { wrongTarget } from "./pull-request.ts";
 
 export type Phase = "planning" | "implementation";
 export type Derived =
@@ -6,6 +7,8 @@ export type Derived =
   | { kind: "stop"; label: "done" | "inProgress" | "needsInfo" };
 
 export function derivePhase(facts: Facts): Derived {
+  if (facts.pullRequest && wrongTarget(facts.pullRequest, facts.baseBranch))
+    return { kind: "stop", label: "needsInfo" };
   if (facts.stage !== "implementation") {
     if (facts.pullRequest?.state === "closed")
       return { kind: "stop", label: "needsInfo" };

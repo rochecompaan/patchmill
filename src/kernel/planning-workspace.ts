@@ -1,6 +1,7 @@
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue, PullRequest } from "../host/types.ts";
 import { branchName } from "./names.ts";
+import { findPullRequest, wrongTarget } from "./pull-request.ts";
 
 export type WorkflowStage = "spec" | "plan" | "implementation";
 export type PlanningWorkspace = {
@@ -14,13 +15,17 @@ export type WorkspaceResult =
   | { kind: "ambiguous-branches"; branches: string[] };
 
 /** Gate heads are stable across title edits and deletion of merged branches. */
-export async function planningWorkspace(
-  host: Host,
-  workflow: PatchmillConfig["workflow"],
-  issue: Issue,
-  branches: string[],
-  selected?: Pick<PlanningWorkspace, "stage" | "branch">,
-): Promise<WorkspaceResult> {
+export async function planningWorkspace(input: {
+  host: Host;
+  workflow: PatchmillConfig["workflow"];
+  issue: Issue;
+  branches: string[];
+  baseBranch: string;
+  selected?: Pick<PlanningWorkspace, "stage" | "branch"> | undefined;
+}): Promise<WorkspaceResult> {
+  const { host, workflow, issue, branches, baseBranch, selected } = input;
+  const pullRequest = (branch: string) =>
+    findPullRequest(host, branch, baseBranch);
   const specBranch = `agent/issue-${issue.number}--spec`;
   const planBranch = `agent/issue-${issue.number}--plan`;
   const implementation = branches.filter(
@@ -43,21 +48,19 @@ export async function planningWorkspace(
     return workspace(
       selected.stage,
       selected.branch,
-      await host.findPullRequestByHead(selected.branch),
+      await pullRequest(selected.branch),
     );
   for (const [stage, required, branch] of [
     ["spec", workflow.specApproval.required, specBranch],
     ["plan", workflow.planApproval.required, planBranch],
   ] as const) {
     if (!required) continue;
-    const pr = await host.findPullRequestByHead(branch);
-    if (pr?.state !== "merged") return workspace(stage, branch, pr);
+    const pr = await pullRequest(branch);
+    // A merge into another branch stays at this gate; derivePhase reports it.
+    if (pr?.state !== "merged" || wrongTarget(pr, baseBranch))
+      return workspace(stage, branch, pr);
     merged.push(stage);
   }
   const branch = implementation[0] ?? branchName(issue.number, issue.title);
-  return workspace(
-    "implementation",
-    branch,
-    await host.findPullRequestByHead(branch),
-  );
+  return workspace("implementation", branch, await pullRequest(branch));
 }

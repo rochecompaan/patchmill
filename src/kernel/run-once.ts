@@ -313,6 +313,7 @@ export async function runOneIssue(
         await publishIssueCost({
           host,
           branch: displayFacts.branch,
+          baseBranch: displayFacts.baseBranch,
           issueDir,
           current: { runId, sessions },
         });

@@ -5,36 +5,65 @@ import { CommandFailedError } from "../process/command.ts";
 import { createHostForProvider } from "./factory.ts";
 import { GitHubHost } from "./github-gh.ts";
 
-const closed = {
+const fork = {
   number: 1,
   url: "https://example/1",
-  state: "CLOSED",
+  state: "MERGED",
   isDraft: false,
-  body: "closed",
+  body: "fork",
   headRefName: "agent/issue-3-x",
+  headRepository: { name: "repo" },
+  headRepositoryOwner: { login: "outsider" },
+  baseRefName: "release",
 };
-const open = {
+const deleted = {
+  ...fork,
   number: 2,
   url: "https://example/2",
   state: "OPEN",
   isDraft: true,
-  body: "open",
-  headRefName: "agent/issue-3-x",
+  body: "deleted",
+  headRepository: null,
+  headRepositoryOwner: null,
+  baseRefName: "main",
 };
 
-test("findPullRequestByHead prefers the open draft and uses repo cwd", async () => {
+test("listPullRequests maps head repository and base branch from repo cwd", async () => {
   const runner = recordingRunner([
-    { match: /gh pr list/, result: { stdout: JSON.stringify([closed, open]) } },
+    {
+      match: /gh pr list/,
+      result: {
+        stdout: JSON.stringify([
+          fork,
+          deleted,
+          { ...fork, headRefName: "other" },
+        ]),
+      },
+    },
   ]);
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
-  assert.deepEqual(await host.findPullRequestByHead("agent/issue-3-x"), {
-    number: 2,
-    url: "https://example/2",
-    state: "open",
-    draft: true,
-    body: "open",
-    headBranch: "agent/issue-3-x",
-  });
+  assert.deepEqual(await host.listPullRequests("agent/issue-3-x"), [
+    {
+      number: 1,
+      url: "https://example/1",
+      state: "merged",
+      draft: false,
+      body: "fork",
+      headRepository: "outsider/repo",
+      headBranch: "agent/issue-3-x",
+      baseBranch: "release",
+    },
+    {
+      number: 2,
+      url: "https://example/2",
+      state: "open",
+      draft: true,
+      body: "deleted",
+      headRepository: null,
+      headBranch: "agent/issue-3-x",
+      baseBranch: "main",
+    },
+  ]);
   assert.deepEqual(runner.calls, [
     [
       "gh",
@@ -45,44 +74,37 @@ test("findPullRequestByHead prefers the open draft and uses repo cwd", async () 
       "--state",
       "all",
       "--limit",
-      "20",
+      "100",
       "--json",
-      "number,url,state,isDraft,body,headRefName",
+      "number,url,state,isDraft,body,headRefName,headRepository,headRepositoryOwner,baseRefName",
     ],
   ]);
   assert.equal(runner.options[0]?.cwd, "/repo");
 });
 
-test("findPullRequestByHead ignores other heads and prefers merged to closed", async () => {
-  const runner = recordingRunner([
-    {
-      match: /gh pr list/,
-      result: {
-        stdout: JSON.stringify([
-          closed,
-          { ...closed, number: 3, state: "MERGED" },
-          { ...open, headRefName: "other" },
-        ]),
-      },
-    },
-  ]);
-  const host = new GitHubHost({ runner, repoRoot: "/repo" });
-  assert.deepEqual(await host.findPullRequestByHead("agent/issue-3-x"), {
-    number: 3,
-    url: "https://example/1",
-    state: "merged",
-    draft: false,
-    body: "closed",
-    headBranch: "agent/issue-3-x",
-  });
-});
-
-test("findPullRequestByHead returns undefined for an empty list", async () => {
+test("listPullRequests returns nothing for an empty list", async () => {
   const runner = recordingRunner([
     { match: /gh pr list/, result: { stdout: "[]" } },
   ]);
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
-  assert.equal(await host.findPullRequestByHead("agent/issue-3-x"), undefined);
+  assert.deepEqual(await host.listPullRequests("agent/issue-3-x"), []);
+});
+
+test("pushRepository reads origin, including SSH host aliases", async () => {
+  for (const origin of [
+    "git@github.com:Owner/repo.git",
+    "github-work:owner/repo.git",
+  ]) {
+    const runner = recordingRunner([
+      {
+        match: /^git remote get-url origin$/,
+        result: { stdout: `${origin}\n` },
+      },
+    ]);
+    const host = new GitHubHost({ runner, repoRoot: "/repo" });
+    assert.match(await host.pushRepository(), /^owner\/repo$/i);
+    assert.equal(runner.options[0]?.cwd, "/repo");
+  }
 });
 
 test("setLabels omits an empty remove list", async () => {

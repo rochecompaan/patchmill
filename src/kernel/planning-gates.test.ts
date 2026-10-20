@@ -207,7 +207,9 @@ for (const head of [specBranch, planBranch]) {
         state: "closed",
         draft: false,
         body: "Refs #9",
+        headRepository: "fixture/repo",
         headBranch: head,
+        baseBranch: "main",
       });
     });
     const r = await c.run();
@@ -231,7 +233,9 @@ for (const head of [specBranch, planBranch]) {
         state: "merged",
         draft: false,
         body: "Refs #9",
+        headRepository: "fixture/repo",
         headBranch: head,
+        baseBranch: "main",
       });
     });
     const r = await c.run();
@@ -240,6 +244,32 @@ for (const head of [specBranch, planBranch]) {
     assert.match(
       c.host.state().issues[0]!.comments.at(-1)!.body,
       /merged.*artifact.*base/i,
+    );
+    assert.equal(await count(c), 0);
+  });
+
+  test(`${head}: a planning PR merged into another branch does not pass its gate`, async (t) => {
+    const c = await setupRun(t);
+    gates(c, head === specBranch, head === planBranch);
+    await c.seed({ [spec]: "spec", [plan]: "plan" }, head);
+    await c.mutate((s) => {
+      s.pullRequests.push({
+        number: 1,
+        url: "https://example.invalid/1",
+        state: "open",
+        draft: false,
+        body: "Refs #9",
+        headRepository: "fixture/repo",
+        headBranch: head,
+        baseBranch: "release",
+      });
+    });
+    await merge(c, head);
+    assert.equal((await c.run()).status, "stopped");
+    assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
+    assert.match(
+      c.host.state().issues[0]!.comments.at(-1)!.body,
+      /merged into release, not main/,
     );
     assert.equal(await count(c), 0);
   });
@@ -257,7 +287,9 @@ for (const head of [specBranch, planBranch]) {
         state: "open",
         draft: false,
         body: "Closes #9",
+        headRepository: "fixture/repo",
         headBranch: head,
+        baseBranch: "main",
       });
     });
     await c.run();
@@ -266,6 +298,21 @@ for (const head of [specBranch, planBranch]) {
     assert.equal(await count(c), 0);
   });
 }
+
+test("a new commit on an open spec branch keeps its PR at the gate", async (t) => {
+  const c = await setupRun(t, [planning({ [spec]: "spec" })]);
+  gates(c, true, false);
+  await c.run();
+  const [pull] = c.host.state().pullRequests;
+  const cwd = join(c.dir, "seed");
+  await c.git(["fetch", "origin", specBranch], cwd);
+  await c.git(["checkout", "--detach", "FETCH_HEAD"], cwd);
+  await c.seed({ [spec]: "revised spec" }, specBranch);
+  assert.equal((await c.run()).status, "stopped");
+  assert.deepEqual(c.host.state().pullRequests, [pull]);
+  assert.match(c.host.state().issues[0]!.comments.at(-1)!.body, /merge/i);
+  assert.equal(await count(c), 1);
+});
 
 test("approval labels and agent-ready cannot bypass an open spec PR", async (t) => {
   const c = await setupRun(t, [planning({ [spec]: "spec" })]);
@@ -299,7 +346,9 @@ test("a merged non-closing legacy planning PR is not implementation completion",
       state: "merged",
       draft: false,
       body: "Refs #9",
+      headRepository: "fixture/repo",
       headBranch: branch,
+      baseBranch: "main",
     });
   });
   assert.equal((await c.run()).status, "stopped");

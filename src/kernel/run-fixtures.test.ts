@@ -113,11 +113,14 @@ test("fake Pi creates and updates a current-branch PR while preserving host chan
         },
       },
     );
-  assert.equal(await host.findPullRequestByHead(branch), undefined);
+  assert.deepEqual(await host.listPullRequests(branch), []);
   await run();
-  const draft = await host.findPullRequestByHead(branch);
+  const [draft] = await host.listPullRequests(branch);
   assert.ok(draft);
+  assert.equal(await host.pushRepository(), "fixture/repo");
+  assert.equal(draft.headRepository, "fixture/repo");
   assert.equal(draft.headBranch, branch);
+  assert.equal(draft.baseBranch, "main");
   assert.equal(draft.state, "open");
   assert.equal(draft.draft, true);
   assert.equal(draft.body, "Design for #9");
@@ -134,12 +137,10 @@ test("fake Pi creates and updates a current-branch PR while preserving host chan
   state.pullRequests.push(unrelated);
   fs.writeFileSync(stateFile, JSON.stringify(state));
   await run();
-  assert.deepEqual(await host.findPullRequestByHead(branch), {
-    ...draft,
-    draft: false,
-    body: "Closes #9",
-  });
-  assert.deepEqual(await host.findPullRequestByHead("other"), unrelated);
+  assert.deepEqual(await host.listPullRequests(branch), [
+    { ...draft, draft: false, body: "Closes #9" },
+  ]);
+  assert.deepEqual(await host.listPullRequests("other"), [unrelated]);
   assert.equal(host.state().pullRequests.length, 2);
   assert.deepEqual((await host.viewIssue(9)).labels, ["keep", "in-progress"]);
   assert.equal((await host.viewIssue(9)).comments[0].body, "Keep this comment");

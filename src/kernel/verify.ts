@@ -3,6 +3,7 @@ import { planningGateComment } from "./comments.ts";
 import type { Facts } from "./facts.ts";
 import type { Phase } from "./phase.ts";
 import type { PiSession } from "./pi-supervisor.ts";
+import { wrongTarget } from "./pull-request.ts";
 import type { ParsedResult } from "./result.ts";
 
 export type OutcomeLabel = "done" | "needsInfo" | "inProgress";
@@ -64,9 +65,9 @@ export function verifyOutcome(input: VerifyInput): Outcome {
       else {
         if (facts.pullRequest.state === "closed")
           missing.push("The planning pull request is closed, not merged.");
-        if (facts.pullRequest.headBranch !== facts.branch)
+        if (wrongTarget(facts.pullRequest, facts.baseBranch))
           missing.push(
-            "The planning pull request head does not match the branch.",
+            `The planning pull request targets ${facts.pullRequest.baseBranch}, not ${facts.baseBranch}.`,
           );
       }
     }
@@ -95,9 +96,9 @@ export function verifyOutcome(input: VerifyInput): Outcome {
       if (pr.state !== "open")
         missing.push(`The pull request is ${pr.state}, not open.`);
       if (pr.draft) missing.push("The pull request is a draft.");
-      if (pr.headBranch !== facts.branch) {
+      if (wrongTarget(pr, facts.baseBranch)) {
         missing.push(
-          `The pull request head does not match branch ${facts.branch}.`,
+          `The pull request targets ${pr.baseBranch}, not ${facts.baseBranch}.`,
         );
       }
       if (!closesIssue(pr.body, input.issue, input.repository)) {

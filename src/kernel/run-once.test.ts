@@ -131,13 +131,94 @@ test("merged PR wins over ready-driven revision", async (t) => {
       state: "merged",
       draft: false,
       body: "Closes #9",
+      headRepository: "fixture/repo",
       headBranch: branch,
+      baseBranch: "main",
     }),
   );
   assert.equal((await c.run()).status, "completed");
   assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
   await assert.rejects(fs.stat(`${c.script}.counter`), { code: "ENOENT" });
 });
+
+for (const state of ["open", "merged"] as const) {
+  test(`a same-named ${state} PR from another repository cannot finish the issue`, async (t) => {
+    const c = await setupRun(t, [
+      {
+        writeFiles: { "login.ts": "code" },
+        commit: "Code",
+        push: true,
+        result: done,
+      },
+    ]);
+    await c.seed({ [spec]: "spec", [plan]: "plan" });
+    await c.mutate((s) =>
+      s.pullRequests.push({
+        number: 1,
+        url: "https://example.invalid/1",
+        state,
+        draft: false,
+        body: "Closes #9",
+        headRepository: "outsider/repo",
+        headBranch: branch,
+        baseBranch: "unrelated-release",
+      }),
+    );
+    assert.equal((await c.run()).status, "stopped");
+    assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
+    assert.match(
+      c.host.state().issues[0]!.comments.at(-1)!.body,
+      /no pull request/i,
+    );
+    assert.equal(await fs.readFile(`${c.script}.counter`, "utf8"), "1");
+  });
+}
+
+test("a merged PR from an origin fork finishes the issue", async (t) => {
+  const c = await setupRun(t);
+  await c.seed({ [spec]: "spec", [plan]: "plan" });
+  await c.mutate((s) => {
+    s.pushRepository = "me/repo";
+    s.pullRequests.push({
+      number: 1,
+      url: "https://example.invalid/1",
+      state: "merged",
+      draft: false,
+      body: "Closes #9",
+      headRepository: "me/repo",
+      headBranch: branch,
+      baseBranch: "main",
+    });
+  });
+  assert.equal((await c.run()).status, "completed");
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
+});
+
+for (const state of ["open", "merged"] as const) {
+  test(`${state} PR into another branch needs a person before Pi`, async (t) => {
+    const c = await setupRun(t);
+    await c.seed({ [spec]: "spec", [plan]: "plan" });
+    await c.mutate((s) =>
+      s.pullRequests.push({
+        number: 1,
+        url: "https://example.invalid/1",
+        state,
+        draft: false,
+        body: "Closes #9",
+        headRepository: "fixture/repo",
+        headBranch: branch,
+        baseBranch: "release",
+      }),
+    );
+    assert.equal((await c.run()).status, "stopped");
+    assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
+    assert.match(
+      c.host.state().issues[0]!.comments.at(-1)!.body,
+      state === "open" ? /targets release, not main/ : /merged into release/,
+    );
+    await assert.rejects(fs.stat(`${c.script}.counter`), { code: "ENOENT" });
+  });
+}
 
 test("plan-only with gate off stops before non-advance and a second session", async (t) => {
   const c = await setupRun(t, [

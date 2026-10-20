@@ -88,13 +88,14 @@ async function selectWorkspace(
     (await git.remoteDefaultBranch()) ??
     (await host.repository()).defaultBranch;
   const branches = await git.remoteBranches(issue.number);
-  const selection = await planningWorkspace(
+  const selection = await planningWorkspace({
     host,
-    config.workflow,
+    workflow: config.workflow,
     issue,
     branches,
+    baseBranch,
     selected,
-  );
+  });
   if (selection.kind === "ambiguous-branches") return selection;
   const { branch } = selection.workspace;
   return {

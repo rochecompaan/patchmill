@@ -10,6 +10,7 @@ import type {
   RepositorySetupHost,
   RepositoryTarget,
 } from "./types.ts";
+import { originRepository } from "./origin.ts";
 
 type RawIssue = {
   number: number;
@@ -31,7 +32,8 @@ type RawPull = {
   draft?: boolean;
   title: string;
   body: string | null;
-  head: { ref: string };
+  head: { ref: string; repo: { full_name: string } | null };
+  base: { ref: string };
 };
 function json<T>(stdout: string): T {
   try {
@@ -62,7 +64,9 @@ function mapPull(raw: RawPull): PullRequest {
       raw.draft === true ||
       /^(?:\[?(?:draft|wip)\]?\s*[:\-\s])/i.test(raw.title),
     body: raw.body ?? "",
+    headRepository: raw.head.repo?.full_name ?? null,
     headBranch: raw.head.ref,
+    baseBranch: raw.base.ref,
   };
 }
 
@@ -91,29 +95,7 @@ export class ForgejoHost implements Host, RepositorySetupHost {
     return result;
   }
   private async slug(target?: RepositoryTarget): Promise<string> {
-    if (target) return target.slug;
-    const args = ["remote", "get-url", "origin"];
-    const result = await this.runner("git", args, { cwd: this.repoRoot });
-    if (result.code !== 0) throw new CommandFailedError("git", args, result);
-    const origin = result.stdout.trim();
-    let path: string | undefined;
-    if (/^(?:https?|ssh):\/\//u.test(origin)) {
-      try {
-        const url = new URL(origin);
-        if (url.hostname && !url.search && !url.hash)
-          path = url.pathname.slice(1);
-      } catch {
-        /* Report the same origin error for every unsupported URL. */
-      }
-    } else path = /^[^@\s]+@[^:\s/]+:([^\s]+)$/u.exec(origin)?.[1];
-    path = path?.replace(/\.git$/u, "");
-    if (
-      !path ||
-      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(path) ||
-      path.split("/").some((part) => part === "." || part === "..")
-    )
-      throw new Error(`Cannot parse origin as owner/repo: ${origin}`);
-    return path;
+    return target?.slug ?? originRepository(this.runner, this.repoRoot);
   }
   private async scoped(args: string[], target?: RepositoryTarget) {
     return this.run([...args, "--repo", await this.slug(target)]);
@@ -271,17 +253,13 @@ export class ForgejoHost implements Host, RepositorySetupHost {
       `body=${body}`,
     ]);
   }
-  async findPullRequestByHead(
-    branch: string,
-  ): Promise<PullRequest | undefined> {
-    const pulls = (
-      await this.pages<RawPull>("/repos/{owner}/{repo}/pulls?state=all")
-    )
+  async pushRepository(): Promise<string> {
+    return originRepository(this.runner, this.repoRoot);
+  }
+  async listPullRequests(branch: string): Promise<PullRequest[]> {
+    return (await this.pages<RawPull>("/repos/{owner}/{repo}/pulls?state=all"))
       .filter((raw) => raw.head.ref === branch)
       .map(mapPull);
-    return ["open", "merged", "closed"]
-      .map((state) => pulls.find((pr) => pr.state === state))
-      .find((pr) => pr !== undefined);
   }
   async getRepository(
     target: RepositoryTarget,

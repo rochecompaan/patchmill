@@ -32,7 +32,8 @@ function fakeHost(existing: LabelDefinition[]) {
     viewIssue: unexpected,
     setLabels: unexpected,
     commentIssue: unexpected,
-    findPullRequestByHead: unexpected,
+    pushRepository: unexpected,
+    listPullRequests: unexpected,
     listLabels: async () => {
       lists++;
       return stored.map((label) => label.name);

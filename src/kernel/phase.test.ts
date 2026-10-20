@@ -20,7 +20,9 @@ const pr = {
   state: "merged" as const,
   draft: false,
   body: "",
+  headRepository: "fixture/repo",
   headBranch: base.branch,
+  baseBranch: "main",
 };
 const rows: { name: string; facts: Partial<Facts>; want: Derived }[] = [
   {

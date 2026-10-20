@@ -19,7 +19,9 @@ const facts: Facts = {
     state: "open",
     draft: false,
     body: "Fixes #12",
+    headRepository: "fixture/repo",
     headBranch: "agent/issue-12-example",
+    baseBranch: "main",
   },
 };
 const input: VerifyInput = {
@@ -190,6 +192,18 @@ test("a gated planning claim without a PR needs input rather than advancing", ()
 for (const [name, patch, diagnostic] of [
   ["remote branch missing", { remoteBranchExists: false }, /remote branch/i],
   ["spec missing", { specPath: undefined }, /spec/i],
+  [
+    "its PR targets another branch",
+    {
+      stage: "spec",
+      pullRequest: {
+        ...facts.pullRequest!,
+        body: "Refs #12",
+        baseBranch: "release",
+      },
+    },
+    /planning pull request targets release, not main/,
+  ],
 ] satisfies [string, Partial<Facts>, RegExp][]) {
   test(`planning cannot advance or request review when ${name}`, () => {
     const outcome = verifyOutcome({
@@ -212,9 +226,9 @@ for (const [name, pullRequest, diagnostic] of [
   ["closed PR", { ...facts.pullRequest!, state: "closed" }, /closed/i],
   ["merged PR", { ...facts.pullRequest!, state: "merged" }, /merged/i],
   [
-    "wrong head",
-    { ...facts.pullRequest!, headBranch: "other-branch" },
-    /head.*branch/i,
+    "a PR into another branch",
+    { ...facts.pullRequest!, baseBranch: "release" },
+    /targets release, not main/,
   ],
   ["wrong issue", { ...facts.pullRequest!, body: "Closes #123" }, /clos.*#12/i],
   ["empty body", { ...facts.pullRequest!, body: "" }, /clos.*#12/i],

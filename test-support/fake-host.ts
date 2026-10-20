@@ -9,6 +9,8 @@ import type {
 
 export type FakeHostState = {
   repository: Repository;
+  /** owner/repo of origin; defaults to the repository, unlike a fork clone. */
+  pushRepository?: string;
   issues: Issue[];
   labels: string[];
   pullRequests: PullRequest[];
@@ -121,9 +123,18 @@ export class FakeHost implements Host {
     });
   }
 
-  async findPullRequestByHead(branch: string) {
-    return this.call(`findPullRequestByHead:${branch}`, (state) =>
-      state.pullRequests.find((pr) => pr.headBranch === branch),
+  async pushRepository() {
+    return this.call(
+      "pushRepository",
+      (state) =>
+        state.pushRepository ??
+        `${state.repository.owner}/${state.repository.repo}`,
+    );
+  }
+
+  async listPullRequests(branch: string) {
+    return this.call(`listPullRequests:${branch}`, (state) =>
+      state.pullRequests.filter((pr) => pr.headBranch === branch),
     );
   }
 }

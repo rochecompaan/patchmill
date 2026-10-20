@@ -17,7 +17,10 @@ export type PullRequest = {
   state: "open" | "merged" | "closed";
   draft: boolean;
   body: string;
+  /** owner/repo the head branch lives in; null once that repository is deleted. */
+  headRepository: string | null;
   headBranch: string;
+  baseBranch: string;
 };
 export type LabelDefinition = {
   name: string;
@@ -35,7 +38,13 @@ export interface Host {
   createLabel(label: LabelDefinition): Promise<void>;
   setLabels(n: number, add: string[], remove: string[]): Promise<void>;
   commentIssue(n: number, body: string): Promise<void>;
-  findPullRequestByHead(branch: string): Promise<PullRequest | undefined>;
+  /** owner/repo that origin points at, where issue branches are pushed. */
+  pushRepository(): Promise<string>;
+  /**
+   * Pull requests into this repository whose head branch is named `branch`,
+   * from any head repository. Use the kernel's findPullRequest to pick one.
+   */
+  listPullRequests(branch: string): Promise<PullRequest[]>;
   updatePullRequestBody(n: number, body: string): Promise<void>;
 }
 export type RepositoryTarget = { owner: string; repo: string; slug: string };

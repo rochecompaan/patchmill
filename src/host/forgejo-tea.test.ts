@@ -80,7 +80,7 @@ for (const login of ["name", ""]) {
     await host.createLabel(label);
     await host.commentIssue(3, "hello");
     await host.setLabels(3, ["bug"], ["old"]);
-    await host.findPullRequestByHead("topic");
+    await host.listPullRequests("topic");
     for (const [i, call] of runner.calls.entries()) {
       assert.equal(runner.options[i]?.cwd, "/repo");
       if (call[0] !== "tea") continue;
@@ -258,35 +258,43 @@ const pr = {
   merged: false,
   body: "body",
   title: "Change",
-  head: { ref: "topic" },
+  head: { ref: "topic", repo: { full_name: "outsider/repo" } },
+  base: { ref: "release" },
 };
-for (const [entries, state, draft] of [
+for (const [raw, state, draft, headRepository] of [
+  [{ ...pr, state: "open", draft: true }, "open", true, "outsider/repo"],
+  [{ ...pr, merged: true }, "merged", false, "outsider/repo"],
   [
-    [pr, { ...pr, merged: true }, { ...pr, state: "open", draft: true }],
-    "open",
+    { ...pr, title: "WIP: Change", head: { ref: "topic", repo: null } },
+    "closed",
     true,
+    null,
   ],
-  [[pr, { ...pr, merged: true }], "merged", false],
-  [[{ ...pr, title: "WIP: Change" }], "closed", true],
 ] as const) {
-  test(`PR selection prefers ${state} and maps draft`, async () => {
+  test(`listPullRequests maps ${state}, draft, head repository, and base`, async () => {
     const { host } = fixture(
-      JSON.stringify([
-        { ...pr, state: "open", head: { ref: "other" } },
-        ...entries,
-      ]),
+      JSON.stringify([{ ...pr, state: "open", head: { ref: "other" } }, raw]),
     );
-    assert.deepEqual(await host.findPullRequestByHead("topic"), {
-      number: 1,
-      url: "https://host/pr/1",
-      state,
-      draft,
-      body: "body",
-      headBranch: "topic",
-    });
-    assert.equal(await host.findPullRequestByHead("missing"), undefined);
+    assert.deepEqual(await host.listPullRequests("topic"), [
+      {
+        number: 1,
+        url: "https://host/pr/1",
+        state,
+        draft,
+        body: "body",
+        headRepository,
+        headBranch: "topic",
+        baseBranch: "release",
+      },
+    ]);
+    assert.deepEqual(await host.listPullRequests("missing"), []);
   });
 }
+
+test("pushRepository is origin's owner/repo", async () => {
+  const { host } = fixture("[]", "", "forgejo-alias:owner/repo.git");
+  assert.equal(await host.pushRepository(), "owner/repo");
+});
 
 test("setup operations use explicit target without origin and valid unscoped repo commands", async () => {
   const { host, runner } = fixture(
@@ -430,7 +438,7 @@ test("failed issue, comment, label, PR and origin commands retain operational di
     () => host.viewIssue(3),
     () => host.commentIssue(3, "body"),
     () => host.setLabels(3, ["bug"], []),
-    () => host.findPullRequestByHead("topic"),
+    () => host.listPullRequests("topic"),
   ]) {
     await assert.rejects(operation(), (error) => {
       assert.ok(error instanceof CommandFailedError);
