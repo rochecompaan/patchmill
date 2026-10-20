@@ -3,21 +3,32 @@ import { resolve } from "node:path";
 import { CommandFailedError, type CommandRunner } from "../process/command.ts";
 import { isIssueBranch } from "./names.ts";
 
+export type WorktreeInput = {
+  path: string;
+  branch: string;
+  base: string;
+  remoteExists: boolean;
+};
+/** Where the issue workspace lives now, or the ref provisioning would check out. */
+export type WorkspaceSource =
+  | { kind: "worktree" }
+  | { kind: "local-branch"; ref: string }
+  | { kind: "remote-ref"; ref: string };
+
 export type KernelGit = {
   fetch(): Promise<void>;
   remoteDefaultBranch(): Promise<string | undefined>;
   remoteBranches(issue: number): Promise<string[]>;
+  /** Regular file names directly inside a directory of a ref's tree. */
+  treeFiles(ref: string, directory: string): Promise<string[]>;
   baseArtifactsMatch(
-    worktree: string,
+    source: { worktree: string } | { ref: string },
     base: string,
     paths: string[],
   ): Promise<boolean>;
-  ensureWorktree(input: {
-    path: string;
-    branch: string;
-    base: string;
-    remoteExists: boolean;
-  }): Promise<"created" | "existing">;
+  /** Read-only; ensureWorktree checks out exactly this source. */
+  workspaceSource(input: WorktreeInput): Promise<WorkspaceSource>;
+  ensureWorktree(input: WorktreeInput): Promise<"created" | "existing">;
   hasUncommittedChanges(worktree: string): Promise<boolean>;
   unpushedCommits(
     worktree: string,
@@ -35,26 +46,18 @@ export function createKernelGit(
     if (result.code !== 0) throw new CommandFailedError("git", args, result);
     return result.stdout.trim();
   };
-  return {
-    async fetch(): Promise<void> {
-      await git(["fetch", "--prune", "origin"]);
-    },
-    async remoteDefaultBranch(): Promise<string | undefined> {
-      const ref = await git(
-        ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-        1,
-      );
-      return ref?.replace(/^refs\/remotes\/origin\//, "");
-    },
-    async ensureWorktree(input) {
-      await git(["worktree", "prune"]);
-      const path = resolve(repoRoot, input.path);
-      const canonicalPath = await fs
-        .realpath(path)
-        .catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return path;
-          throw error;
-        });
+  const workspaceSource = async (
+    input: WorktreeInput,
+  ): Promise<WorkspaceSource> => {
+    const path = resolve(repoRoot, input.path);
+    const entries = await fs
+      .readdir(path)
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      });
+    if (entries !== undefined) {
+      const canonicalPath = await fs.realpath(path);
       const registered = await git(["worktree", "list", "--porcelain", "-z"]);
       const record = registered!
         .split("\0\0")
@@ -66,37 +69,57 @@ export function createKernelGit(
           throw new Error(
             `Worktree ${input.path}: expected branch ${input.branch}.`,
           );
-        return "existing";
+        return { kind: "worktree" };
       }
-      try {
-        await fs.rmdir(path);
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code === "ENOTEMPTY" || code === "EEXIST") {
-          throw new Error(
-            `Unregistered worktree path is not empty: ${input.path}`,
-            { cause: error },
-          );
-        }
-        if (code !== "ENOENT") throw error;
-      }
-      const local = await git(
-        ["show-ref", "--verify", "--quiet", `refs/heads/${input.branch}`],
+      if (entries.length > 0)
+        throw new Error(
+          `Unregistered worktree path is not empty: ${input.path}`,
+        );
+    }
+    const local = `refs/heads/${input.branch}`;
+    if (
+      (await git(["show-ref", "--verify", "--quiet", local], 1)) !== undefined
+    )
+      return { kind: "local-branch", ref: local };
+    return {
+      kind: "remote-ref",
+      ref: `origin/${input.remoteExists ? input.branch : input.base}`,
+    };
+  };
+  return {
+    async fetch(): Promise<void> {
+      await git(["fetch", "--prune", "origin"]);
+    },
+    async remoteDefaultBranch(): Promise<string | undefined> {
+      const ref = await git(
+        ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
         1,
       );
-      if (local !== undefined) {
-        await git(["worktree", "add", path, input.branch]);
-      } else {
-        await git([
-          "worktree",
-          "add",
-          ...(input.remoteExists ? ["--track"] : []),
-          "-b",
-          input.branch,
-          path,
-          `origin/${input.remoteExists ? input.branch : input.base}`,
-        ]);
-      }
+      return ref?.replace(/^refs\/remotes\/origin\//, "");
+    },
+    workspaceSource,
+    async ensureWorktree(input) {
+      await git(["worktree", "prune"]);
+      const source = await workspaceSource(input);
+      if (source.kind === "worktree") return "existing";
+      const path = resolve(repoRoot, input.path);
+      // workspaceSource has rejected anything but a missing or empty directory.
+      await fs.rmdir(path).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      await git(
+        source.kind === "local-branch"
+          ? ["worktree", "add", path, input.branch]
+          : [
+              "worktree",
+              "add",
+              ...(input.remoteExists ? ["--track"] : []),
+              "-b",
+              input.branch,
+              path,
+              source.ref,
+            ],
+      );
       return "created";
     },
     async hasUncommittedChanges(worktree: string): Promise<boolean> {
@@ -118,7 +141,22 @@ export function createKernelGit(
         ),
       );
     },
-    async baseArtifactsMatch(worktree, base, paths): Promise<boolean> {
+    async treeFiles(ref, directory): Promise<string[]> {
+      const prefix = directory === "" ? "" : `${directory}/`;
+      const entries = await git([
+        "ls-tree",
+        "-z",
+        "--full-tree",
+        ref,
+        "--",
+        ...(prefix ? [prefix] : []),
+      ]);
+      return entries!
+        .split("\0")
+        .filter((entry) => /^100(644|755) blob /.test(entry))
+        .map((entry) => entry.slice(entry.indexOf("\t") + 1 + prefix.length));
+    },
+    async baseArtifactsMatch(source, base, paths): Promise<boolean> {
       const ref = `origin/${base}`;
       const files = await git([
         "ls-tree",
@@ -130,9 +168,14 @@ export function createKernelGit(
       ]);
       if (!paths.every((path) => files!.split("\n").includes(path)))
         return false;
+      const [target, cwd] =
+        "ref" in source ? [[source.ref], repoRoot] : [[], source.worktree];
       return (
-        (await git(["diff", "--quiet", ref, "--", ...paths], 1, worktree)) !==
-        undefined
+        (await git(
+          ["diff", "--quiet", ref, ...target, "--", ...paths],
+          1,
+          cwd,
+        )) !== undefined
       );
     },
     async remoteBranches(issue: number): Promise<string[]> {

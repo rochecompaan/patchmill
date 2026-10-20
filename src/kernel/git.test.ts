@@ -163,11 +163,12 @@ test("rejects a nonempty unregistered directory without removing its contents", 
   const { kernel, input, path } = await worktreeSetup(t);
   await fs.mkdir(path);
   await fs.writeFile(join(path, "keep.txt"), "valuable");
-  await assert.rejects(kernel.ensureWorktree(input), (error: unknown) => {
-    assert.ok(error instanceof Error);
-    assert.ok(error.message.includes(path));
-    return true;
-  });
+  for (const inspect of [kernel.workspaceSource, kernel.ensureWorktree])
+    await assert.rejects(inspect(input), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes(path));
+      return true;
+    });
   assert.equal(await fs.readFile(join(path, "keep.txt"), "utf8"), "valuable");
 });
 
@@ -224,6 +225,7 @@ for (const checkout of [["-b", "unrelated"], ["main"], ["--detach"]]) {
     await git(["checkout", ...checkout], path);
     await fs.writeFile(join(path, "keep.txt"), "operator work");
     const head = await git(["rev-parse", "HEAD"], path);
+    await assert.rejects(kernel.workspaceSource(input), /expected branch/i);
     await assert.rejects(kernel.ensureWorktree(input), /expected branch/i);
     assert.equal(await git(["rev-parse", "HEAD"], path), head);
     assert.equal(
@@ -232,3 +234,95 @@ for (const checkout of [["-b", "unrelated"], ["main"], ["--detach"]]) {
     );
   });
 }
+
+for (const expected of [
+  "base",
+  "remote",
+  "local",
+  "worktree",
+  "empty",
+] as const) {
+  test(`workspace source for ${expected} is read-only and matches provisioning`, async (t) => {
+    const context = await worktreeSetup(t, expected === "remote");
+    const { kernel, git, input, path, repoRoot } = context;
+    if (expected === "local") await git(["branch", branch, "origin/main"]);
+    if (expected === "worktree") await kernel.ensureWorktree(input);
+    if (expected === "empty") await fs.mkdir(path);
+    const state = () =>
+      Promise.all([
+        git(["for-each-ref", "--format=%(refname)", "refs/heads/"]),
+        git(["worktree", "list", "--porcelain"]),
+        fs.readdir(context.dir),
+      ]);
+    const before = await state();
+    const source = await kernel.workspaceSource(input);
+    assert.deepEqual(await state(), before);
+    assert.deepEqual(
+      source,
+      expected === "worktree"
+        ? { kind: "worktree" }
+        : expected === "local"
+          ? { kind: "local-branch", ref: `refs/heads/${branch}` }
+          : expected === "remote"
+            ? { kind: "remote-ref", ref: `origin/${branch}` }
+            : { kind: "remote-ref", ref: "origin/main" },
+    );
+    if (source.kind === "worktree") return;
+    const commit = await git(["rev-parse", source.ref], repoRoot);
+    assert.equal(await kernel.ensureWorktree(input), "created");
+    assert.equal(await git(["rev-parse", "HEAD"], path), commit);
+  });
+}
+
+test("tree files list only regular files directly inside a directory", async (t) => {
+  const { kernel, git, dir } = await setup(t);
+  const seed = join(dir, "seed");
+  await fs.mkdir(join(seed, "docs/nested"), { recursive: true });
+  await fs.writeFile(join(seed, "docs/b.md"), "b");
+  await fs.writeFile(join(seed, "docs/a.md"), "a");
+  await fs.writeFile(join(seed, "docs/nested/c.md"), "c");
+  await fs.symlink("a.md", join(seed, "docs/link.md"));
+  await fs.symlink("nested", join(seed, "docs/alias"));
+  await git(["add", "."], seed);
+  await git(["commit", "-m", "Docs"], seed);
+  await git(["push", "origin", "main"], seed);
+  await kernel.fetch();
+  assert.deepEqual((await kernel.treeFiles("origin/main", "docs")).sort(), [
+    "a.md",
+    "b.md",
+  ]);
+  assert.deepEqual(await kernel.treeFiles("origin/main", ""), ["README.md"]);
+  assert.deepEqual(await kernel.treeFiles("origin/main", "missing"), []);
+});
+
+test("base artifact comparison reads a ref as well as a worktree", async (t) => {
+  const { kernel, git, dir, input, path } = await worktreeSetup(t, true);
+  const seed = join(dir, "seed");
+  await fs.writeFile(join(seed, "spec.md"), "spec");
+  await git(["add", "spec.md"], seed);
+  await git(["commit", "-m", "Spec"], seed);
+  await git(["push", "origin", "HEAD:main", `HEAD:${branch}`], seed);
+  await kernel.fetch();
+  const ref = { ref: `origin/${branch}` };
+  assert.equal(await kernel.baseArtifactsMatch(ref, "main", ["spec.md"]), true);
+  assert.equal(await kernel.baseArtifactsMatch(ref, "main", ["no.md"]), false);
+  await fs.writeFile(join(seed, "spec.md"), "changed");
+  await git(["commit", "-am", "Change"], seed);
+  await git(["push", "origin", `HEAD:${branch}`], seed);
+  await kernel.fetch();
+  assert.equal(
+    await kernel.baseArtifactsMatch(ref, "main", ["spec.md"]),
+    false,
+  );
+  await kernel.ensureWorktree(input);
+  const worktree = { worktree: path };
+  assert.equal(
+    await kernel.baseArtifactsMatch(worktree, "main", ["spec.md"]),
+    false,
+  );
+  await fs.writeFile(join(path, "spec.md"), "spec");
+  assert.equal(
+    await kernel.baseArtifactsMatch(worktree, "main", ["spec.md"]),
+    true,
+  );
+});

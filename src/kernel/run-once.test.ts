@@ -157,7 +157,7 @@ test("plan-only with gate off stops before non-advance and a second session", as
   assert.equal(await fs.readFile(`${c.script}.counter`, "utf8"), "1");
 });
 
-test("dry-run describes missing plan without claim, lock, comment, or Pi", async (t) => {
+test("dry-run describes missing plan without claim, lock, comment, Pi, branch, or worktree", async (t) => {
   const c = await setupRun(t);
   await c.seed({ [spec]: "spec" });
   assert.deepEqual(await c.run({ dryRun: true }), {
@@ -169,6 +169,15 @@ test("dry-run describes missing plan without claim, lock, comment, or Pi", async
   assert.equal(c.host.state().issues[0]!.comments.length, 0);
   await assert.rejects(fs.stat(c.lockPath), { code: "ENOENT" });
   await assert.rejects(fs.stat(`${c.script}.counter`), { code: "ENOENT" });
+  await assert.rejects(fs.stat(c.worktree), { code: "ENOENT" });
+  assert.equal(
+    await c.git(["for-each-ref", "--format=%(refname)", "refs/heads/agent/"]),
+    "",
+  );
+  assert.equal(
+    (await c.git(["worktree", "list", "--porcelain"])).split("\n\n").length,
+    1,
+  );
   assert.match(c.output.join("\n"), /planning/);
 });
 
@@ -340,7 +349,13 @@ for (const checkout of [["-b", "operator-branch"], ["main"], ["--detach"]]) {
   test(`wrong worktree ${checkout.join(" ")} refuses Pi at the run boundary`, async (t) => {
     const c = await setupRun(t);
     await c.seed({ [spec]: "spec" });
-    await c.run({ dryRun: true });
+    await c.deps.git.fetch();
+    await c.deps.git.ensureWorktree({
+      path: c.worktree,
+      branch,
+      base: "main",
+      remoteExists: true,
+    });
     if (checkout[0] === "main") await c.git(["checkout", "--detach"]);
     await c.git(["checkout", ...checkout], c.worktree);
     await fs.writeFile(`${c.worktree}/operator.txt`, "keep");

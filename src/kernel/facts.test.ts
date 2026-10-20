@@ -10,7 +10,7 @@ import {
   runCommand,
   type CommandRunner,
 } from "../process/command.ts";
-import { collectFacts } from "./facts.ts";
+import { collectFacts, provisionWorkspace } from "./facts.ts";
 import { createKernelGit } from "./git.ts";
 
 const issue: Issue = {
@@ -70,8 +70,8 @@ async function setup(t: TestContext) {
       return new Date(2026, 9, 15, 23, 59);
     },
   };
-  const collect = async (input = issue) => {
-    const result = await collectFacts(deps, input);
+  const provision = async (input = issue) => {
+    const result = await provisionWorkspace(deps, input);
     assert.equal(result.kind, "facts");
     if (result.kind !== "facts") throw new Error("Expected facts");
     return result.facts;
@@ -81,7 +81,7 @@ async function setup(t: TestContext) {
     git,
     deps,
     config,
-    collect,
+    provision,
     setPr: (value: PullRequest) => {
       pr = value;
     },
@@ -92,7 +92,7 @@ async function setup(t: TestContext) {
 test("zero remote branches creates today's paths on remote HEAD, not local HEAD", async (t) => {
   const c = await setup(t);
   await c.git(["commit", "--allow-empty", "-m", "Local divergence"]);
-  const facts = await c.collect();
+  const facts = await c.provision();
   assert.deepEqual(facts, {
     branch: "agent/issue-9-x",
     remoteBranchExists: false,
@@ -134,7 +134,7 @@ test("fetch discovers one differently slugged branch and its PR and artifacts", 
     headBranch: "agent/issue-9-old-title",
   };
   c.setPr(pr);
-  const facts = await c.collect({ ...issue, labels: ["custom-approved"] });
+  const facts = await c.provision({ ...issue, labels: ["custom-approved"] });
   assert.equal(facts.branch, "agent/issue-9-old-title");
   assert.equal(facts.remoteBranchExists, true);
   assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-design.md");
@@ -145,6 +145,65 @@ test("fetch discovers one differently slugged branch and its PR and artifacts", 
     await c.git(["rev-parse", "HEAD"], facts.worktree),
     await c.git(["rev-parse", "origin/agent/issue-9-old-title"]),
   );
+});
+
+for (const source of ["base", "remote", "local", "worktree"] as const) {
+  test(`observation reads ${source} artifacts without creating a branch or worktree`, async (t) => {
+    const c = await setup(t);
+    const seed = join(c.dir, "seed");
+    const spec = "custom/specs/2026-10-15-issue-9-design.md";
+    const head = {
+      base: "main",
+      remote: "agent/issue-9-x",
+      local: "scratch",
+      worktree: undefined,
+    }[source];
+    if (head) {
+      await fs.mkdir(join(seed, "custom/specs"), { recursive: true });
+      await fs.writeFile(join(seed, spec), "spec");
+      await c.git(["add", "."], seed);
+      await c.git(["commit", "-m", "Spec"], seed);
+      await c.git(["push", "origin", `HEAD:${head}`], seed);
+    }
+    if (source === "local") {
+      await c.git(["fetch", "origin"]);
+      await c.git(["branch", "agent/issue-9-x", "origin/scratch"]);
+    }
+    if (source === "worktree") {
+      const { worktree } = await c.provision();
+      await fs.mkdir(join(worktree, "custom/specs"), { recursive: true });
+      await fs.writeFile(join(worktree, spec), "uncommitted spec");
+    }
+    const state = () =>
+      Promise.all([
+        c.git(["for-each-ref", "--format=%(refname)", "refs/heads/"]),
+        c.git(["worktree", "list", "--porcelain"]),
+        fs.readdir(c.repoRoot),
+      ]);
+    const before = await state();
+    const result = await collectFacts(c.deps, issue);
+    assert.deepEqual(await state(), before);
+    assert.equal(result.kind, "facts");
+    if (result.kind !== "facts") return;
+    assert.equal(result.facts.branch, "agent/issue-9-x");
+    assert.equal(result.facts.remoteBranchExists, source === "remote");
+    assert.equal(
+      result.facts.worktree,
+      join(c.repoRoot, "trees/agent-issue-9-x"),
+    );
+    assert.equal(result.facts.specPath, spec);
+    assert.equal(result.facts.planPath, undefined);
+  });
+}
+
+test("observation keeps worktree containment and branch checks", async (t) => {
+  const c = await setup(t);
+  c.config.paths.specsDir = "../outside";
+  await assert.rejects(collectFacts(c.deps, issue), /outside.*worktree/i);
+  c.config.paths.specsDir = "custom/specs";
+  const { worktree } = await c.provision();
+  await c.git(["checkout", "-b", "unrelated"], worktree);
+  await assert.rejects(collectFacts(c.deps, issue), /expected branch/i);
 });
 
 test("multiple remote branches are ambiguous without creating a worktree", async (t) => {
@@ -179,7 +238,7 @@ for (const source of ["configured", "host"] as const) {
       c.deps.host.repository = async () => {
         throw new Error("Should not query host");
       };
-    const facts = await c.collect();
+    const facts = await c.provision();
     assert.equal(facts.baseBranch, base);
     assert.equal(
       await c.git(["rev-parse", "HEAD"], facts.worktree),
@@ -190,7 +249,7 @@ for (const source of ["configured", "host"] as const) {
 
 test("only matching actual files count; multiple matches select the newest date", async (t) => {
   const c = await setup(t);
-  const initial = await c.collect();
+  const initial = await c.provision();
   const specs = join(initial.worktree, "custom/specs");
   const plans = join(initial.worktree, "custom/plans");
   await fs.mkdir(specs, { recursive: true });
@@ -202,13 +261,13 @@ test("only matching actual files count; multiple matches select the newest date"
   await fs.writeFile(join(plans, "2026-12-31-issue-90-plan.md"), "other");
   await fs.mkdir(join(specs, "2026-12-31-issue-9-design.md"));
   await fs.mkdir(join(plans, "2026-12-31-issue-9-plan.md"));
-  assert.equal((await c.collect()).specPath, undefined);
-  assert.equal((await c.collect()).planPath, undefined);
+  assert.equal((await c.provision()).specPath, undefined);
+  assert.equal((await c.provision()).planPath, undefined);
   for (const date of ["2026-10-15", "2025-12-31", "2026-10-14"]) {
     await fs.writeFile(join(specs, `${date}-issue-9-design.md`), "spec");
     await fs.writeFile(join(plans, `${date}-issue-9-plan.md`), "plan");
   }
-  const facts = await c.collect();
+  const facts = await c.provision();
   assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-design.md");
   assert.equal(facts.planPath, "custom/plans/2026-10-15-issue-9-plan.md");
 });
@@ -216,25 +275,25 @@ test("only matching actual files count; multiple matches select the newest date"
 test("ungated empty title keeps the branch name without extra hyphens", async (t) => {
   const c = await setup(t);
   c.config.workflow.specApproval.required = false;
-  const facts = await c.collect({ ...issue, title: "!!!" });
+  const facts = await c.provision({ ...issue, title: "!!!" });
   assert.equal(facts.stage, "implementation");
   assert.equal(facts.branch, "agent/issue-9");
 });
 
 test("fetch, host and non-missing filesystem errors stay visible", async (t) => {
   const c = await setup(t);
-  const facts = await c.collect();
+  const facts = await c.provision();
   await fs.mkdir(join(facts.worktree, "custom"), { recursive: true });
   await fs.writeFile(join(facts.worktree, "custom/specs"), "not a directory");
-  await assert.rejects(c.collect(), { code: "ENOTDIR" });
+  await assert.rejects(c.provision(), { code: "ENOTDIR" });
   await fs.unlink(join(facts.worktree, "custom/specs"));
   const failure = new Error("host failure");
   c.deps.host.findPullRequestByHead = async () => {
     throw failure;
   };
-  await assert.rejects(c.collect(), (error) => error === failure);
+  await assert.rejects(c.provision(), (error) => error === failure);
   await fs.rename(join(c.repoRoot, ".git"), join(c.repoRoot, "saved-git"));
-  await assert.rejects(c.collect(), CommandFailedError);
+  await assert.rejects(c.provision(), CommandFailedError);
 });
 
 for (const key of ["specsDir", "plansDir"] as const) {
@@ -246,7 +305,7 @@ for (const key of ["specsDir", "plansDir"] as const) {
   ] as const) {
     test(`${key} rejects ${mode} outside the selected worktree`, async (t) => {
       const c = await setup(t);
-      const { worktree } = await c.collect();
+      const { worktree } = await c.provision();
       // The sibling shares the complete root prefix: string-prefix checks are unsafe.
       const outside = `${worktree}-outside`;
       await fs.mkdir(outside);
@@ -266,14 +325,14 @@ for (const key of ["specsDir", "plansDir"] as const) {
         await fs.symlink(outside, join(worktree, "outside-link"), "dir");
         c.config.paths[key] = "outside-link";
       }
-      await assert.rejects(c.collect(), /outside.*worktree/i);
+      await assert.rejects(c.provision(), /outside.*worktree/i);
     });
   }
 }
 
 test("in-tree absolute directories and symlink aliases retain relative artifact paths", async (t) => {
   const c = await setup(t);
-  const { worktree } = await c.collect();
+  const { worktree } = await c.provision();
   await fs.mkdir(join(worktree, "artifacts"));
   await fs.writeFile(
     join(worktree, "artifacts/2026-10-15-issue-9-design.md"),
@@ -286,7 +345,7 @@ test("in-tree absolute directories and symlink aliases retain relative artifact 
   await fs.symlink(join(worktree, "artifacts"), join(worktree, "alias"), "dir");
   c.config.paths.specsDir = join(worktree, "artifacts");
   c.config.paths.plansDir = "alias";
-  const facts = await c.collect();
+  const facts = await c.provision();
   assert.equal(facts.specPath, "artifacts/2026-10-15-issue-9-design.md");
   assert.equal(facts.planPath, "alias/2026-10-15-issue-9-plan.md");
   assert.equal(
@@ -296,7 +355,7 @@ test("in-tree absolute directories and symlink aliases retain relative artifact 
   assert.equal(facts.expectedPlanPath, "alias/2026-10-15-issue-9-plan.md");
   c.config.paths.specsDir = join(worktree, "missing/specs");
   c.config.paths.plansDir = "missing/plans";
-  const missing = await c.collect();
+  const missing = await c.provision();
   assert.equal(missing.specPath, undefined);
   assert.equal(missing.planPath, undefined);
   assert.equal(
@@ -311,7 +370,7 @@ test("in-tree absolute directories and symlink aliases retain relative artifact 
 
 test("canonical checks normalize a worktree reached through a root alias", async (t) => {
   const c = await setup(t);
-  const initial = await c.collect();
+  const initial = await c.provision();
   await fs.mkdir(join(initial.worktree, "custom/specs"), { recursive: true });
   await fs.writeFile(
     join(initial.worktree, "custom/specs/2026-10-15-issue-9-design.md"),
@@ -320,7 +379,7 @@ test("canonical checks normalize a worktree reached through a root alias", async
   const alias = join(c.dir, "repo-alias");
   await fs.symlink(c.repoRoot, alias, "dir");
   c.deps.repoRoot = alias;
-  const facts = await c.collect();
+  const facts = await c.provision();
   assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-design.md");
   assert.equal(
     await fs.realpath(facts.worktree),
@@ -335,7 +394,7 @@ test("issue title edits never change artifact roles in a shared directory", asyn
     join(c.dir, "seed"),
   );
   c.config.paths.plansDir = c.config.paths.specsDir;
-  const { worktree } = await c.collect({ ...issue, title: "Add design" });
+  const { worktree } = await c.provision({ ...issue, title: "Add design" });
   await fs.mkdir(join(worktree, "custom/specs"), { recursive: true });
   await fs.writeFile(
     join(worktree, "custom/specs/2026-10-14-issue-9-design.md"),
@@ -346,7 +405,7 @@ test("issue title edits never change artifact roles in a shared directory", asyn
     "plan",
   );
   for (const title of ["Add design", "Add better design", "Plan"]) {
-    const facts = await c.collect({ ...issue, title });
+    const facts = await c.provision({ ...issue, title });
     assert.equal(facts.worktree, worktree);
     assert.equal(facts.specPath, "custom/specs/2026-10-14-issue-9-design.md");
     assert.equal(facts.planPath, "custom/specs/2026-10-14-issue-9-plan.md");
@@ -356,7 +415,7 @@ test("issue title edits never change artifact roles in a shared directory", asyn
 for (const alias of [false, true]) {
   test(`hardlinked canonical spec and plan never supply both facts: directoryAlias=${alias}`, async (t) => {
     const c = await setup(t);
-    const { worktree } = await c.collect();
+    const { worktree } = await c.provision();
     await fs.mkdir(join(worktree, "custom/specs"), { recursive: true });
     if (alias) {
       await fs.symlink(
@@ -374,13 +433,13 @@ for (const alias of [false, true]) {
     );
     await fs.writeFile(spec, "one physical artifact");
     await fs.link(spec, plan);
-    const facts = await c.collect();
+    const facts = await c.provision();
     assert.equal(facts.specPath, "custom/specs/2026-10-14-issue-9-design.md");
     assert.equal(facts.planPath, undefined);
     await fs.unlink(plan);
     await fs.writeFile(plan, "distinct plan");
     assert.equal(
-      (await c.collect()).planPath,
+      (await c.provision()).planPath,
       `${c.config.paths.plansDir}/2026-10-14-issue-9-plan.md`,
     );
   });

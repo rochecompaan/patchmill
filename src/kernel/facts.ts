@@ -27,52 +27,61 @@ export type FactsResult =
   | { kind: "facts"; facts: Facts }
   | { kind: "ambiguous-branches"; branches: string[] };
 
-function assertContained(root: string, path: string): void {
-  const delta = relative(root, path);
-  if (delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta))
-    throw new Error(`Artifact directory outside the worktree: ${path}`);
-}
+type Deps = {
+  git: KernelGit;
+  host: Host;
+  config: PatchmillConfig;
+  repoRoot: string;
+  now: () => Date;
+};
+type Workspace = Pick<
+  Facts,
+  | "stage"
+  | "branch"
+  | "remoteBranchExists"
+  | "worktree"
+  | "baseBranch"
+  | "pullRequest"
+> & { merged: ("spec" | "plan")[] };
+type WorkspaceResult =
+  | { kind: "workspace"; workspace: Workspace }
+  | { kind: "ambiguous-branches"; branches: string[] };
+// Artifacts come from the worktree when it exists, otherwise from the ref
+// provisioning would check out, so observing never creates either.
+type ArtifactSource = {
+  find(directory: string, kind: ArtifactKind): Promise<string | undefined>;
+  sameFile(a: string, b: string): Promise<boolean>;
+  matchBase(base: string, paths: string[]): Promise<boolean>;
+};
 
-async function findArtifact(
-  worktree: string,
-  directory: string,
-  kind: ArtifactKind,
-  issue: number,
-): Promise<string | undefined> {
-  const path = resolve(worktree, directory);
-  assertContained(worktree, path);
-  const root = await fs.realpath(worktree);
-  try {
-    assertContained(root, await fs.realpath(path));
-    const entries = await fs.readdir(path, { withFileTypes: true });
-    const name = entries
-      .filter(
-        (entry) => entry.isFile() && isArtifactFile(kind, issue, entry.name),
-      )
-      .map((entry) => entry.name)
-      .sort()
-      .at(-1);
-    return name === undefined
-      ? undefined
-      : relative(worktree, join(path, name));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-}
-
+/** Observes facts without creating branches or worktrees. */
 export async function collectFacts(
-  deps: {
-    git: KernelGit;
-    host: Host;
-    config: PatchmillConfig;
-    repoRoot: string;
-    now: () => Date;
-  },
+  deps: Deps,
   issue: Issue,
   selected?: Pick<Facts, "stage" | "branch">,
 ): Promise<FactsResult> {
-  const { git, host, config, repoRoot, now } = deps;
+  const selection = await selectWorkspace(deps, issue, selected);
+  if (selection.kind === "ambiguous-branches") return selection;
+  return observe(deps, issue, selection.workspace);
+}
+
+/** Creates the selected worktree, then observes it. Hold the issue lock. */
+export async function provisionWorkspace(
+  deps: Deps,
+  issue: Issue,
+): Promise<FactsResult> {
+  const selection = await selectWorkspace(deps, issue);
+  if (selection.kind === "ambiguous-branches") return selection;
+  await deps.git.ensureWorktree(worktreeInput(selection.workspace));
+  return observe(deps, issue, selection.workspace);
+}
+
+async function selectWorkspace(
+  deps: Deps,
+  issue: Issue,
+  selected?: Pick<Facts, "stage" | "branch">,
+): Promise<WorkspaceResult> {
+  const { git, host, config, repoRoot } = deps;
   await git.fetch();
   const baseBranch =
     config.git.baseBranch ??
@@ -87,50 +96,61 @@ export async function collectFacts(
     selected,
   );
   if (selection.kind === "ambiguous-branches") return selection;
-  const { stage, branch, pullRequest, merged } = selection.workspace;
-  const remoteBranchExists = branches.includes(branch);
-  const worktree = resolve(
-    repoRoot,
-    config.paths.worktreeDir,
-    worktreeDirName(branch),
-  );
-  await git.ensureWorktree({
-    path: worktree,
-    branch,
-    base: baseBranch,
-    remoteExists: remoteBranchExists,
-  });
+  const { branch } = selection.workspace;
+  return {
+    kind: "workspace",
+    workspace: {
+      ...selection.workspace,
+      remoteBranchExists: branches.includes(branch),
+      worktree: resolve(
+        repoRoot,
+        config.paths.worktreeDir,
+        worktreeDirName(branch),
+      ),
+      baseBranch,
+    },
+  };
+}
+
+function worktreeInput(workspace: Workspace) {
+  return {
+    path: workspace.worktree,
+    branch: workspace.branch,
+    base: workspace.baseBranch,
+    remoteExists: workspace.remoteBranchExists,
+  };
+}
+
+async function observe(
+  deps: Deps,
+  issue: Issue,
+  workspace: Workspace,
+): Promise<FactsResult> {
+  const { git, config, now } = deps;
+  const { merged, worktree, baseBranch, pullRequest, ...rest } = workspace;
+  const source = await git.workspaceSource(worktreeInput(workspace));
+  const artifacts =
+    source.kind === "worktree"
+      ? worktreeArtifacts(git, worktree, issue.number)
+      : refArtifacts(git, worktree, source.ref, issue.number);
   const today = now();
   const expectedPath = (directory: string, kind: ArtifactKind) =>
     relative(
       worktree,
       resolve(worktree, directory, artifactFileName(kind, today, issue.number)),
     );
-  const specPath = await findArtifact(
-    worktree,
-    config.paths.specsDir,
-    "spec",
-    issue.number,
-  );
-  let planPath = await findArtifact(
-    worktree,
-    config.paths.plansDir,
-    "plan",
-    issue.number,
-  );
+  const specPath = await artifacts.find(config.paths.specsDir, "spec");
+  let planPath = await artifacts.find(config.paths.plansDir, "plan");
   // A hardlink would otherwise let one document satisfy both gates.
-  if (specPath && planPath) {
-    const spec = await fs.stat(join(worktree, specPath));
-    const plan = await fs.stat(join(worktree, planPath));
-    if (spec.dev === plan.dev && spec.ino === plan.ino) planPath = undefined;
-  }
+  if (specPath && planPath && (await artifacts.sameFile(specPath, planPath)))
+    planPath = undefined;
   if (merged.length > 0) {
     const required = merged.includes("plan")
       ? [specPath, planPath]
       : [specPath];
     if (
       !required.every((path) => path !== undefined) ||
-      !(await git.baseArtifactsMatch(worktree, baseBranch, required))
+      !(await artifacts.matchBase(baseBranch, required))
     )
       throw new Error(
         `A merged planning PR's artifact is missing from, or differs from, base ${baseBranch}. Reconcile the merged documents before continuing.`,
@@ -139,9 +159,7 @@ export async function collectFacts(
   return {
     kind: "facts",
     facts: {
-      stage,
-      branch,
-      remoteBranchExists,
+      ...rest,
       worktree,
       baseBranch,
       ...(specPath === undefined ? {} : { specPath }),
@@ -150,5 +168,80 @@ export async function collectFacts(
       expectedPlanPath: expectedPath(config.paths.plansDir, "plan"),
       ...(pullRequest === undefined ? {} : { pullRequest }),
     },
+  };
+}
+
+function assertContained(root: string, path: string): void {
+  const delta = relative(root, path);
+  if (delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta))
+    throw new Error(`Artifact directory outside the worktree: ${path}`);
+}
+
+function newest(
+  names: string[],
+  kind: ArtifactKind,
+  issue: number,
+): string | undefined {
+  return names
+    .filter((name) => isArtifactFile(kind, issue, name))
+    .sort()
+    .at(-1);
+}
+
+function worktreeArtifacts(
+  git: KernelGit,
+  worktree: string,
+  issue: number,
+): ArtifactSource {
+  return {
+    async find(directory, kind) {
+      const path = resolve(worktree, directory);
+      assertContained(worktree, path);
+      const root = await fs.realpath(worktree);
+      try {
+        assertContained(root, await fs.realpath(path));
+        const entries = await fs.readdir(path, { withFileTypes: true });
+        const name = newest(
+          entries.filter((entry) => entry.isFile()).map((entry) => entry.name),
+          kind,
+          issue,
+        );
+        return name === undefined
+          ? undefined
+          : relative(worktree, join(path, name));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT")
+          return undefined;
+        throw error;
+      }
+    },
+    async sameFile(a, b) {
+      const [first, second] = await Promise.all(
+        [a, b].map((path) => fs.stat(join(worktree, path))),
+      );
+      return first!.dev === second!.dev && first!.ino === second!.ino;
+    },
+    matchBase: (base, paths) =>
+      git.baseArtifactsMatch({ worktree }, base, paths),
+  };
+}
+
+function refArtifacts(
+  git: KernelGit,
+  worktree: string,
+  ref: string,
+  issue: number,
+): ArtifactSource {
+  return {
+    async find(directory, kind) {
+      const path = resolve(worktree, directory);
+      assertContained(worktree, path);
+      const tree = relative(worktree, path);
+      const name = newest(await git.treeFiles(ref, tree), kind, issue);
+      return name === undefined ? undefined : join(tree, name);
+    },
+    // Git trees cannot hardlink two paths to one file.
+    sameFile: async () => false,
+    matchBase: (base, paths) => git.baseArtifactsMatch({ ref }, base, paths),
   };
 }

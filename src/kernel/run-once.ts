@@ -9,7 +9,7 @@ import type { Host, Issue } from "../host/types.ts";
 import type { CommandRunner } from "../process/command.ts";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { KernelGit } from "./git.ts";
-import { collectFacts, type Facts } from "./facts.ts";
+import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
 import { claimSwap, releaseSwap } from "./labels.ts";
@@ -176,7 +176,7 @@ export async function runOneIssue(
       output.stderr(formatRunStart(issue));
       for (let index = 0; index < 3; index++) {
         issue = await host.viewIssue(issueNumber);
-        const before = await collect(issue);
+        const before = await provisionWorkspace({ ...deps, config }, issue);
         if (before.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${before.branches.join(", ")}`;
           break;
