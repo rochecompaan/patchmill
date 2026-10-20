@@ -98,8 +98,8 @@ test("zero remote branches creates today's paths on remote HEAD, not local HEAD"
     remoteBranchExists: false,
     worktree: join(c.repoRoot, "trees/agent-issue-9-x"),
     baseBranch: "main",
-    expectedSpecPath: "custom/specs/2026-10-15-issue-9-x-design.md",
-    expectedPlanPath: "custom/plans/2026-10-15-issue-9-x.md",
+    expectedSpecPath: "custom/specs/2026-10-15-issue-9-design.md",
+    expectedPlanPath: "custom/plans/2026-10-15-issue-9-plan.md",
     stage: "implementation",
   });
   assert.equal(
@@ -115,11 +115,11 @@ test("fetch discovers one differently slugged branch and its PR and artifacts", 
   await fs.mkdir(join(seed, "custom/specs"), { recursive: true });
   await fs.mkdir(join(seed, "custom/plans"), { recursive: true });
   await fs.writeFile(
-    join(seed, "custom/specs/2026-10-15-issue-9-x-design.md"),
+    join(seed, "custom/specs/2026-10-15-issue-9-design.md"),
     "spec",
   );
   await fs.writeFile(
-    join(seed, "custom/plans/2026-10-15-issue-9-x.md"),
+    join(seed, "custom/plans/2026-10-15-issue-9-plan.md"),
     "plan",
   );
   await c.git(["add", "."], seed);
@@ -137,8 +137,8 @@ test("fetch discovers one differently slugged branch and its PR and artifacts", 
   const facts = await c.collect({ ...issue, labels: ["custom-approved"] });
   assert.equal(facts.branch, "agent/issue-9-old-title");
   assert.equal(facts.remoteBranchExists, true);
-  assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-x-design.md");
-  assert.equal(facts.planPath, "custom/plans/2026-10-15-issue-9-x.md");
+  assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-design.md");
+  assert.equal(facts.planPath, "custom/plans/2026-10-15-issue-9-plan.md");
   assert.equal(facts.stage, "implementation");
   assert.deepEqual(facts.pullRequest, pr);
   assert.equal(
@@ -188,7 +188,7 @@ for (const source of ["configured", "host"] as const) {
   });
 }
 
-test("only matching actual files count; multiple matches select greatest filename", async (t) => {
+test("only matching actual files count; multiple matches select the newest date", async (t) => {
   const c = await setup(t);
   const initial = await c.collect();
   const specs = join(initial.worktree, "custom/specs");
@@ -196,38 +196,29 @@ test("only matching actual files count; multiple matches select greatest filenam
   await fs.mkdir(specs, { recursive: true });
   await fs.mkdir(plans, { recursive: true });
   await fs.writeFile(join(specs, "notes-issue-9.md"), "unrelated");
-  await fs.mkdir(join(specs, "2026-12-31-issue-9-directory-design.md"));
-  await fs.mkdir(join(plans, "2026-12-31-issue-9-directory.md"));
+  await fs.writeFile(join(specs, "2026-12-31-issue-9-x-design.md"), "legacy");
+  await fs.writeFile(join(plans, "2026-12-31-issue-9-x.md"), "legacy");
+  await fs.writeFile(join(specs, "2026-12-31-issue-90-design.md"), "other");
+  await fs.writeFile(join(plans, "2026-12-31-issue-90-plan.md"), "other");
+  await fs.mkdir(join(specs, "2026-12-31-issue-9-design.md"));
+  await fs.mkdir(join(plans, "2026-12-31-issue-9-plan.md"));
   assert.equal((await c.collect()).specPath, undefined);
   assert.equal((await c.collect()).planPath, undefined);
-  for (const name of [
-    "2026-10-15-issue-9-z-design.md",
-    "2026-10-14-issue-9-x-design.md",
-    "2026-10-15-issue-9-a-design.md",
-  ])
-    await fs.writeFile(join(specs, name), "spec");
-  for (const name of [
-    "2026-10-15-issue-9-z.md",
-    "2026-10-14-issue-9-x.md",
-    "2026-10-15-issue-9-a.md",
-  ])
-    await fs.writeFile(join(plans, name), "plan");
+  for (const date of ["2026-10-15", "2025-12-31", "2026-10-14"]) {
+    await fs.writeFile(join(specs, `${date}-issue-9-design.md`), "spec");
+    await fs.writeFile(join(plans, `${date}-issue-9-plan.md`), "plan");
+  }
   const facts = await c.collect();
-  assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-z-design.md");
-  assert.equal(facts.planPath, "custom/plans/2026-10-15-issue-9-z.md");
+  assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-design.md");
+  assert.equal(facts.planPath, "custom/plans/2026-10-15-issue-9-plan.md");
 });
 
-test("ungated empty title reuses names without extra hyphens", async (t) => {
+test("ungated empty title keeps the branch name without extra hyphens", async (t) => {
   const c = await setup(t);
   c.config.workflow.specApproval.required = false;
   const facts = await c.collect({ ...issue, title: "!!!" });
   assert.equal(facts.stage, "implementation");
   assert.equal(facts.branch, "agent/issue-9");
-  assert.equal(
-    facts.expectedSpecPath,
-    "custom/specs/2026-10-15-issue-9-design.md",
-  );
-  assert.equal(facts.expectedPlanPath, "custom/plans/2026-10-15-issue-9.md");
 });
 
 test("fetch, host and non-missing filesystem errors stay visible", async (t) => {
@@ -260,11 +251,11 @@ for (const key of ["specsDir", "plansDir"] as const) {
       const outside = `${worktree}-outside`;
       await fs.mkdir(outside);
       await fs.writeFile(
-        join(outside, "2026-10-15-issue-9-x-design.md"),
+        join(outside, "2026-10-15-issue-9-design.md"),
         "outside spec",
       );
       await fs.writeFile(
-        join(outside, "2026-10-15-issue-9-x.md"),
+        join(outside, "2026-10-15-issue-9-plan.md"),
         "outside plan",
       );
       if (mode === "traversal")
@@ -285,24 +276,24 @@ test("in-tree absolute directories and symlink aliases retain relative artifact 
   const { worktree } = await c.collect();
   await fs.mkdir(join(worktree, "artifacts"));
   await fs.writeFile(
-    join(worktree, "artifacts/2026-10-15-issue-9-x-design.md"),
+    join(worktree, "artifacts/2026-10-15-issue-9-design.md"),
     "spec",
   );
   await fs.writeFile(
-    join(worktree, "artifacts/2026-10-15-issue-9-x.md"),
+    join(worktree, "artifacts/2026-10-15-issue-9-plan.md"),
     "plan",
   );
   await fs.symlink(join(worktree, "artifacts"), join(worktree, "alias"), "dir");
   c.config.paths.specsDir = join(worktree, "artifacts");
   c.config.paths.plansDir = "alias";
   const facts = await c.collect();
-  assert.equal(facts.specPath, "artifacts/2026-10-15-issue-9-x-design.md");
-  assert.equal(facts.planPath, "alias/2026-10-15-issue-9-x.md");
+  assert.equal(facts.specPath, "artifacts/2026-10-15-issue-9-design.md");
+  assert.equal(facts.planPath, "alias/2026-10-15-issue-9-plan.md");
   assert.equal(
     facts.expectedSpecPath,
-    "artifacts/2026-10-15-issue-9-x-design.md",
+    "artifacts/2026-10-15-issue-9-design.md",
   );
-  assert.equal(facts.expectedPlanPath, "alias/2026-10-15-issue-9-x.md");
+  assert.equal(facts.expectedPlanPath, "alias/2026-10-15-issue-9-plan.md");
   c.config.paths.specsDir = join(worktree, "missing/specs");
   c.config.paths.plansDir = "missing/plans";
   const missing = await c.collect();
@@ -310,11 +301,11 @@ test("in-tree absolute directories and symlink aliases retain relative artifact 
   assert.equal(missing.planPath, undefined);
   assert.equal(
     missing.expectedSpecPath,
-    "missing/specs/2026-10-15-issue-9-x-design.md",
+    "missing/specs/2026-10-15-issue-9-design.md",
   );
   assert.equal(
     missing.expectedPlanPath,
-    "missing/plans/2026-10-15-issue-9-x.md",
+    "missing/plans/2026-10-15-issue-9-plan.md",
   );
 });
 
@@ -323,40 +314,49 @@ test("canonical checks normalize a worktree reached through a root alias", async
   const initial = await c.collect();
   await fs.mkdir(join(initial.worktree, "custom/specs"), { recursive: true });
   await fs.writeFile(
-    join(initial.worktree, "custom/specs/2026-10-15-issue-9-x-design.md"),
+    join(initial.worktree, "custom/specs/2026-10-15-issue-9-design.md"),
     "spec",
   );
   const alias = join(c.dir, "repo-alias");
   await fs.symlink(c.repoRoot, alias, "dir");
   c.deps.repoRoot = alias;
   const facts = await c.collect();
-  assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-x-design.md");
+  assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-design.md");
   assert.equal(
     await fs.realpath(facts.worktree),
     await fs.realpath(initial.worktree),
   );
 });
 
-test("a canonical design-suffix plan alone is not evidence of a spec", async (t) => {
+test("issue title edits never change artifact roles in a shared directory", async (t) => {
   const c = await setup(t);
-  const input = { ...issue, title: "Add design" };
-  const { worktree } = await c.collect(input);
+  await c.git(
+    ["push", "origin", "HEAD:agent/issue-9-add-design"],
+    join(c.dir, "seed"),
+  );
+  c.config.paths.plansDir = c.config.paths.specsDir;
+  const { worktree } = await c.collect({ ...issue, title: "Add design" });
   await fs.mkdir(join(worktree, "custom/specs"), { recursive: true });
-  c.config.paths.plansDir = "custom/specs";
   await fs.writeFile(
-    join(worktree, "custom/specs/2026-10-14-issue-9-add-design.md"),
+    join(worktree, "custom/specs/2026-10-14-issue-9-design.md"),
+    "spec",
+  );
+  await fs.writeFile(
+    join(worktree, "custom/specs/2026-10-14-issue-9-plan.md"),
     "plan",
   );
-  const facts = await c.collect(input);
-  assert.equal(facts.specPath, undefined);
-  assert.equal(facts.planPath, "custom/specs/2026-10-14-issue-9-add-design.md");
+  for (const title of ["Add design", "Add better design", "Plan"]) {
+    const facts = await c.collect({ ...issue, title });
+    assert.equal(facts.worktree, worktree);
+    assert.equal(facts.specPath, "custom/specs/2026-10-14-issue-9-design.md");
+    assert.equal(facts.planPath, "custom/specs/2026-10-14-issue-9-plan.md");
+  }
 });
 
 for (const alias of [false, true]) {
   test(`hardlinked canonical spec and plan never supply both facts: directoryAlias=${alias}`, async (t) => {
     const c = await setup(t);
-    const input = { ...issue, title: "Add design" };
-    const { worktree } = await c.collect(input);
+    const { worktree } = await c.collect();
     await fs.mkdir(join(worktree, "custom/specs"), { recursive: true });
     if (alias) {
       await fs.symlink(
@@ -366,28 +366,22 @@ for (const alias of [false, true]) {
       );
       c.config.paths.plansDir = "plans-alias";
     } else await fs.mkdir(join(worktree, "custom/plans"), { recursive: true });
-    const spec = join(
-      worktree,
-      "custom/specs/2026-10-14-issue-9-add-design-design.md",
-    );
+    const spec = join(worktree, "custom/specs/2026-10-14-issue-9-design.md");
     const plan = join(
       worktree,
       c.config.paths.plansDir,
-      "2026-10-14-issue-9-add-design.md",
+      "2026-10-14-issue-9-plan.md",
     );
     await fs.writeFile(spec, "one physical artifact");
     await fs.link(spec, plan);
-    const facts = await c.collect(input);
-    assert.equal(
-      facts.specPath,
-      "custom/specs/2026-10-14-issue-9-add-design-design.md",
-    );
+    const facts = await c.collect();
+    assert.equal(facts.specPath, "custom/specs/2026-10-14-issue-9-design.md");
     assert.equal(facts.planPath, undefined);
     await fs.unlink(plan);
     await fs.writeFile(plan, "distinct plan");
     assert.equal(
-      (await c.collect(input)).planPath,
-      `${c.config.paths.plansDir}/2026-10-14-issue-9-add-design.md`,
+      (await c.collect()).planPath,
+      `${c.config.paths.plansDir}/2026-10-14-issue-9-plan.md`,
     );
   });
 }

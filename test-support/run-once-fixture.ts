@@ -13,8 +13,8 @@ import {
   type RunOnceOptions,
 } from "../src/kernel/run-once.ts";
 
-export const spec = "docs/specs/2026-10-15-issue-9-add-login-design.md";
-export const plan = "docs/plans/2026-10-15-issue-9-add-login.md";
+export const spec = "docs/specs/2026-10-15-issue-9-design.md";
+export const plan = "docs/plans/2026-10-15-issue-9-plan.md";
 export const done = { status: "done", summary: "Login work complete" };
 export const branch = "agent/issue-9-add-login";
 export async function setupRun(t: TestContext, steps: unknown[] = []) {

@@ -1,11 +1,10 @@
 import fs from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
-  isPlanFile,
-  isSpecFile,
-  planFileName,
-  specFileName,
+  artifactFileName,
+  isArtifactFile,
   worktreeDirName,
+  type ArtifactKind,
 } from "./names.ts";
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue, PullRequest } from "../host/types.ts";
@@ -37,7 +36,8 @@ function assertContained(root: string, path: string): void {
 async function findArtifact(
   worktree: string,
   directory: string,
-  matches: (name: string) => boolean,
+  kind: ArtifactKind,
+  issue: number,
 ): Promise<string | undefined> {
   const path = resolve(worktree, directory);
   assertContained(worktree, path);
@@ -46,7 +46,9 @@ async function findArtifact(
     assertContained(root, await fs.realpath(path));
     const entries = await fs.readdir(path, { withFileTypes: true });
     const name = entries
-      .filter((entry) => entry.isFile() && matches(entry.name))
+      .filter(
+        (entry) => entry.isFile() && isArtifactFile(kind, issue, entry.name),
+      )
       .map((entry) => entry.name)
       .sort()
       .at(-1);
@@ -99,23 +101,24 @@ export async function collectFacts(
     remoteExists: remoteBranchExists,
   });
   const today = now();
-  const specName = specFileName(today, issue.number, issue.title);
-  const planName = planFileName(today, issue.number, issue.title);
-  const expectedPath = (directory: string, name: string) =>
-    relative(worktree, resolve(worktree, directory, name));
-  const canonicalPlan = (name: string) => name.slice(10) === planName.slice(10);
+  const expectedPath = (directory: string, kind: ArtifactKind) =>
+    relative(
+      worktree,
+      resolve(worktree, directory, artifactFileName(kind, today, issue.number)),
+    );
   const specPath = await findArtifact(
     worktree,
     config.paths.specsDir,
-    (name) => isSpecFile(issue.number, name) && !canonicalPlan(name),
+    "spec",
+    issue.number,
   );
   let planPath = await findArtifact(
     worktree,
     config.paths.plansDir,
-    (name) =>
-      isPlanFile(issue.number, name) &&
-      (!isSpecFile(issue.number, name) || canonicalPlan(name)),
+    "plan",
+    issue.number,
   );
+  // A hardlink would otherwise let one document satisfy both gates.
   if (specPath && planPath) {
     const spec = await fs.stat(join(worktree, specPath));
     const plan = await fs.stat(join(worktree, planPath));
@@ -143,8 +146,8 @@ export async function collectFacts(
       baseBranch,
       ...(specPath === undefined ? {} : { specPath }),
       ...(planPath === undefined ? {} : { planPath }),
-      expectedSpecPath: expectedPath(config.paths.specsDir, specName),
-      expectedPlanPath: expectedPath(config.paths.plansDir, planName),
+      expectedSpecPath: expectedPath(config.paths.specsDir, "spec"),
+      expectedPlanPath: expectedPath(config.paths.plansDir, "plan"),
       ...(pullRequest === undefined ? {} : { pullRequest }),
     },
   };

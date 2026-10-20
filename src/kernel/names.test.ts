@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  artifactFileName,
   branchName,
+  isArtifactFile,
   isIssueBranch,
-  isPlanFile,
-  isSpecFile,
   newRunId,
-  planFileName,
   runDirectory,
   slugify,
-  specFileName,
   worktreeDirName,
 } from "./names.ts";
 
@@ -47,34 +45,47 @@ test("worktreeDirName replaces every branch separator", () => {
   );
 });
 
-test("specFileName uses the local date and title slug", () => {
+test("artifact file names use the local date, issue number, and kind only", () => {
   assert.equal(
-    specFileName(date, 5, "Login"),
-    "2026-10-15-issue-5-login-design.md",
+    artifactFileName("spec", date, 5),
+    "2026-10-15-issue-5-design.md",
   );
+  assert.equal(artifactFileName("plan", date, 5), "2026-10-15-issue-5-plan.md");
 });
 
-test("isSpecFile recognizes matching names and rejects other issue numbers or shapes", () => {
-  assert.equal(isSpecFile(5, "2026-10-15-issue-5-login-design.md"), true);
-  assert.equal(isSpecFile(5, "2026-10-15-issue-50-login-design.md"), false);
-  assert.equal(isSpecFile(5, "issue-5-design.md"), false);
+test("artifact recognition matches issue and kind across creation dates", () => {
+  for (const kind of ["spec", "plan"] as const) {
+    assert.equal(
+      isArtifactFile(kind, 5, artifactFileName(kind, new Date(2024, 0, 2), 5)),
+      true,
+    );
+    assert.equal(
+      isArtifactFile(kind, 5, artifactFileName(kind, date, 50)),
+      false,
+    );
+    assert.equal(isArtifactFile(kind, 5, `issue-5-${kind}.md`), false);
+  }
 });
 
-test("isSpecFile recognizes a spec file with an empty title slug", () => {
-  assert.equal(isSpecFile(7, specFileName(date, 7, "???")), true);
-});
-
-test("planFileName uses the local date and title slug", () => {
-  assert.equal(planFileName(date, 5, "Login"), "2026-10-15-issue-5-login.md");
-});
-
-test("isPlanFile recognizes matching names and rejects another issue number", () => {
-  assert.equal(isPlanFile(5, "2026-10-15-issue-5-login.md"), true);
-  assert.equal(isPlanFile(5, "2026-10-15-issue-50-login.md"), false);
-});
-
-test("isPlanFile recognizes a plan file with an empty title slug", () => {
-  assert.equal(isPlanFile(7, planFileName(date, 7, "???")), true);
+test("spec and plan names never match each other or title-derived names", () => {
+  assert.equal(
+    isArtifactFile("plan", 5, artifactFileName("spec", date, 5)),
+    false,
+  );
+  assert.equal(
+    isArtifactFile("spec", 5, artifactFileName("plan", date, 5)),
+    false,
+  );
+  for (const kind of ["spec", "plan"] as const) {
+    assert.equal(
+      isArtifactFile(kind, 9, "2026-10-14-issue-9-add-design.md"),
+      false,
+    );
+    assert.equal(
+      isArtifactFile(kind, 9, "2026-10-14-issue-9-add-plan.md"),
+      false,
+    );
+  }
 });
 
 test("newRunId uses the local timestamp and a four-character hex suffix", () => {
@@ -86,8 +97,8 @@ test("newRunId uses the local timestamp and a four-character hex suffix", () => 
 test("artifact names and run IDs pad local years below 1000", () => {
   const year999 = new Date(2026, 9, 15, 13, 4, 5);
   year999.setFullYear(999);
-  assert.ok(specFileName(year999, 5, "Login").startsWith("0999-"));
-  assert.ok(planFileName(year999, 5, "Login").startsWith("0999-"));
+  assert.ok(artifactFileName("spec", year999, 5).startsWith("0999-"));
+  assert.ok(artifactFileName("plan", year999, 5).startsWith("0999-"));
   assert.ok(newRunId(year999).startsWith("09991015-"));
 });
 
@@ -95,13 +106,5 @@ test("runDirectory joins the run root, issue, and identifier", () => {
   assert.equal(
     runDirectory(".patchmill/runs", 5, "x"),
     ".patchmill/runs/issue-5/x",
-  );
-});
-
-test("canonical plans keep ordinary design title suffixes discoverable", () => {
-  assert.equal(isPlanFile(9, "2026-10-14-issue-9-add-design.md"), true);
-  assert.equal(
-    planFileName(date, 9, "Add design"),
-    "2026-10-15-issue-9-add-design.md",
   );
 });

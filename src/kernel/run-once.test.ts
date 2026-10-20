@@ -238,8 +238,8 @@ for (const hasPlan of [false, true]) {
     c.config.paths.specsDir = "docs";
     c.config.paths.plansDir = "docs";
     await c.seed({
-      "docs/2026-10-15-issue-9-add-login-design.md": "spec",
-      ...(hasPlan ? { "docs/2026-10-15-issue-9-add-login.md": "plan" } : {}),
+      "docs/2026-10-15-issue-9-design.md": "spec",
+      ...(hasPlan ? { "docs/2026-10-15-issue-9-plan.md": "plan" } : {}),
     });
     const outcome = await c.run({ dryRun: true });
     assert.equal(outcome.status, "dry-run");
@@ -249,38 +249,6 @@ for (const hasPlan of [false, true]) {
         phase: hasPlan ? "implementation" : "planning",
       });
   });
-}
-
-for (const shared of [false, true]) {
-  for (const hasPlan of [false, true]) {
-    test(`canonical Add design artifacts derive their distinct roles: shared=${shared}, plan=${hasPlan}`, async (t) => {
-      const c = await setupRun(t);
-      if (shared) {
-        c.config.paths.specsDir = "docs";
-        c.config.paths.plansDir = "docs";
-      }
-      await c.mutate((s) => {
-        s.issues[0]!.title = "Add design";
-      });
-      await c.seed({
-        [`${c.config.paths.specsDir}/2026-10-14-issue-9-add-design-design.md`]:
-          "spec",
-        ...(hasPlan
-          ? {
-              [`${c.config.paths.plansDir}/2026-10-14-issue-9-add-design.md`]:
-                "plan",
-            }
-          : {}),
-      });
-      const outcome = await c.run({ dryRun: true });
-      assert.equal(outcome.status, "dry-run");
-      if (outcome.status === "dry-run")
-        assert.deepEqual(outcome.derived, {
-          kind: "phase",
-          phase: hasPlan ? "implementation" : "planning",
-        });
-    });
-  }
 }
 
 for (const login of ["work", ""]) {

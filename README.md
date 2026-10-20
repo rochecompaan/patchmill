@@ -37,9 +37,13 @@ request exists, not that it merged.
 Stable names give humans and agents the same paths. Branches use
 `agent/issue-N-<slug>` for implementation. Required gates use
 `agent/issue-N--spec` and `agent/issue-N--plan`. Specs use
-`docs/specs/YYYY-MM-DD-issue-N-<slug>-design.md`. Plans use
-`docs/plans/YYYY-MM-DD-issue-N-<slug>.md`. Worktrees live under `.worktrees`,
-with branch slashes replaced by hyphens.
+`docs/specs/YYYY-MM-DD-issue-N-design.md`. Plans use
+`docs/plans/YYYY-MM-DD-issue-N-plan.md`. Artifact names leave out the issue
+title, so a title edit never changes which file is the spec or the plan. Rename
+artifacts from earlier versions once, for example
+`2026-10-01-issue-9-login-design.md` to `2026-10-01-issue-9-design.md` and
+`2026-10-01-issue-9-login.md` to `2026-10-01-issue-9-plan.md`. Worktrees live
+under `.worktrees`, with branch slashes replaced by hyphens.
 
 ## Install and start
 

@@ -23,32 +23,36 @@ export function worktreeDirName(branch: string): string {
   return branch.replaceAll("/", "-");
 }
 
-export function isSpecFile(issue: number, fileName: string): boolean {
-  return new RegExp(
-    `^\\d{4}-\\d{2}-\\d{2}-issue-${issue}(-.+)?-design\\.md$`,
-  ).test(fileName);
+export type ArtifactKind = "spec" | "plan";
+
+// Issue titles change, so artifact names carry only the issue and kind.
+const artifactSuffix: Record<ArtifactKind, string> = {
+  spec: "design",
+  plan: "plan",
+};
+
+export function artifactFileName(
+  kind: ArtifactKind,
+  date: Date,
+  issue: number,
+): string {
+  return `${localDate(date)}-issue-${issue}-${artifactSuffix[kind]}.md`;
 }
 
-export function isPlanFile(issue: number, fileName: string): boolean {
-  return new RegExp(`^\\d{4}-\\d{2}-\\d{2}-issue-${issue}(-.+)?\\.md$`).test(
-    fileName,
-  );
+export function isArtifactFile(
+  kind: ArtifactKind,
+  issue: number,
+  fileName: string,
+): boolean {
+  return new RegExp(
+    `^\\d{4}-\\d{2}-\\d{2}-issue-${issue}-${artifactSuffix[kind]}\\.md$`,
+  ).test(fileName);
 }
 
 function localDate(date: Date): string {
   return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
     .map((part, index) => String(part).padStart(index === 0 ? 4 : 2, "0"))
     .join("-");
-}
-
-export function specFileName(date: Date, issue: number, title: string): string {
-  const slug = slugify(title);
-  return `${localDate(date)}-issue-${issue}${slug === "" ? "" : `-${slug}`}-design.md`;
-}
-
-export function planFileName(date: Date, issue: number, title: string): string {
-  const slug = slugify(title);
-  return `${localDate(date)}-issue-${issue}${slug === "" ? "" : `-${slug}`}.md`;
 }
 
 export function newRunId(now: Date): string {
