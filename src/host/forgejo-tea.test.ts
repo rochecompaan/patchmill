@@ -99,10 +99,10 @@ for (const login of ["name", ""]) {
       (c) => c[1] === "issues" && c[2] === "edit",
     );
     assert.equal(edits.length, 2);
-    assert.ok(edits[0]?.includes("--remove-labels"));
-    assert.ok(!edits[0]?.includes("--add-labels"));
-    assert.ok(edits[1]?.includes("--add-labels"));
-    assert.ok(!edits[1]?.includes("--remove-labels"));
+    assert.ok(edits[0]?.includes("--add-labels"));
+    assert.ok(!edits[0]?.includes("--remove-labels"));
+    assert.ok(edits[1]?.includes("--remove-labels"));
+    assert.ok(!edits[1]?.includes("--add-labels"));
     assert.ok(
       runner.calls.some(
         (c) =>
@@ -113,6 +113,57 @@ for (const login of ["name", ""]) {
     );
   });
 }
+
+function labelFixture(failing: "add" | "remove") {
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    {
+      match: new RegExp(`--${failing}-labels`),
+      result: { code: 1, stderr: "label service unavailable" },
+    },
+    { match: /^tea /, result: {} },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "" });
+  const edits = () =>
+    runner.calls.filter((c) => c[1] === "issues" && c[2] === "edit");
+  return { host, edits };
+}
+
+test("a failed replacement leaves the previous workflow labels in place", async () => {
+  const { host, edits } = labelFixture("add");
+  await assert.rejects(
+    host.setLabels(3, ["agent-done"], ["in-progress"]),
+    CommandFailedError,
+  );
+  assert.equal(edits().length, 1);
+  assert.ok(!edits()[0]?.includes("--remove-labels"));
+});
+
+test("a failed removal after replacement reports the partial transition", async () => {
+  const { host } = labelFixture("remove");
+  await assert.rejects(
+    host.setLabels(3, ["agent-done"], ["in-progress"]),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /#3/);
+      assert.match(error.message, /added agent-done/);
+      assert.match(error.message, /in-progress/);
+      assert.match(error.message, /label service unavailable/);
+      assert.ok(error.cause instanceof CommandFailedError);
+      return true;
+    },
+  );
+});
+
+test("labels being added are never removed in the same transition", async () => {
+  const { runner, host } = fixture();
+  await host.setLabels(3, ["in-progress"], ["in-progress", "agent-ready"]);
+  const removal = runner.calls.find((c) => c.includes("--remove-labels"));
+  assert.equal(
+    removal?.[removal.indexOf("--remove-labels") + 1],
+    "agent-ready",
+  );
+});
 
 test("empty label edits do not even look up origin", async () => {
   const { host, runner } = fixture();

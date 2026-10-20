@@ -217,14 +217,9 @@ export class ForgejoHost implements Host, RepositorySetupHost {
     );
   }
   async setLabels(n: number, add: string[], remove: string[]): Promise<void> {
-    if (remove.length)
-      await this.scoped([
-        "issues",
-        "edit",
-        String(n),
-        "--remove-labels",
-        remove.join(","),
-      ]);
+    // tea has no atomic swap. Adding first means a failure never leaves the
+    // issue without a workflow label.
+    const stale = remove.filter((name) => !add.includes(name));
     if (add.length)
       await this.scoped([
         "issues",
@@ -233,6 +228,23 @@ export class ForgejoHost implements Host, RepositorySetupHost {
         "--add-labels",
         add.join(","),
       ]);
+    if (!stale.length) return;
+    try {
+      await this.scoped([
+        "issues",
+        "edit",
+        String(n),
+        "--remove-labels",
+        stale.join(","),
+      ]);
+    } catch (error) {
+      if (!add.length) throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Issue #${n}: added ${add.join(", ")} but could not remove ${stale.join(", ")}: ${reason}`,
+        { cause: error },
+      );
+    }
   }
   async commentIssue(n: number, body: string): Promise<void> {
     // Keep context before -- so tea does not interpret it as comment text.
