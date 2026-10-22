@@ -25,7 +25,8 @@ export function worktreeDirName(branch: string): string {
 
 export type ArtifactKind = "spec" | "plan";
 
-// Issue titles change, so artifact names carry only the issue and kind.
+// The title slug only describes the file. The issue number and the final
+// suffix identify it, so a title edit can never turn a plan into a spec.
 const artifactSuffix: Record<ArtifactKind, string> = {
   spec: "design",
   plan: "plan",
@@ -35,8 +36,10 @@ export function artifactFileName(
   kind: ArtifactKind,
   date: Date,
   issue: number,
+  title: string,
 ): string {
-  return `${localDate(date)}-issue-${issue}-${artifactSuffix[kind]}.md`;
+  const slug = slugify(title);
+  return `${localDate(date)}-issue-${issue}${slug === "" ? "" : `-${slug}`}-${artifactSuffix[kind]}.md`;
 }
 
 export function isArtifactFile(
@@ -45,7 +48,7 @@ export function isArtifactFile(
   fileName: string,
 ): boolean {
   return new RegExp(
-    `^\\d{4}-\\d{2}-\\d{2}-issue-${issue}-${artifactSuffix[kind]}\\.md$`,
+    `^\\d{4}-\\d{2}-\\d{2}-issue-${issue}(?:-.+)?-${artifactSuffix[kind]}\\.md$`,
   ).test(fileName);
 }
 

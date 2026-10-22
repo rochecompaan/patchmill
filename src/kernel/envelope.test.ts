@@ -33,8 +33,8 @@ const facts: Facts = {
   branch: "agent/issue-9-x",
   baseBranch: "main",
   remoteBranchExists: false,
-  expectedSpecPath: "docs/specs/2026-10-15-issue-9-design.md",
-  expectedPlanPath: "docs/plans/2026-10-15-issue-9-plan.md",
+  expectedSpecPath: "docs/specs/2026-10-15-issue-9-x-design.md",
+  expectedPlanPath: "docs/plans/2026-10-15-issue-9-x-plan.md",
   stage: "spec",
 };
 const input: RunEnvelopeInput = {
@@ -75,8 +75,8 @@ test("run envelope substitutes context and ordered facts with expected artifact 
     "Worktree: /trees/issue-9",
     "Branch: agent/issue-9-x",
     "Base: main",
-    "Spec: expected: docs/specs/2026-10-15-issue-9-design.md",
-    "Plan: expected: docs/plans/2026-10-15-issue-9-plan.md",
+    "Spec: expected: docs/specs/2026-10-15-issue-9-x-design.md",
+    "Plan: expected: docs/plans/2026-10-15-issue-9-x-plan.md",
     "Pull request: none",
     "Gate: required; publish the spec PR",
     "Time limit: 37 minutes",

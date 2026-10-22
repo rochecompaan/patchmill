@@ -138,7 +138,11 @@ async function observe(
   const expectedPath = (directory: string, kind: ArtifactKind) =>
     relative(
       worktree,
-      resolve(worktree, directory, artifactFileName(kind, today, issue.number)),
+      resolve(
+        worktree,
+        directory,
+        artifactFileName(kind, today, issue.number, issue.title),
+      ),
     );
   const specPath = await artifacts.find(config.paths.specsDir, "spec");
   let planPath = await artifacts.find(config.paths.plansDir, "plan");

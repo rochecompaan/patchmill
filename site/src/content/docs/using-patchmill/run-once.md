@@ -113,21 +113,22 @@ request. Patchmill does not merge or automatically retry failed attempts.
 | Required spec branch  | `agent/issue-N--spec`.                                         |
 | Required plan branch  | `agent/issue-N--plan`.                                         |
 | Worktree              | `.worktrees/<branch-with-slashes-replaced-by-hyphens>`.        |
-| Spec                  | `docs/specs/YYYY-MM-DD-issue-N-design.md`.                     |
-| Plan                  | `docs/plans/YYYY-MM-DD-issue-N-plan.md`.                       |
+| Spec                  | `docs/specs/YYYY-MM-DD-issue-N-<slug>-design.md`.              |
+| Plan                  | `docs/plans/YYYY-MM-DD-issue-N-<slug>-plan.md`.                |
 | Run output            | `.patchmill/runs/issue-N/<run-id>/`.                           |
 
-Only these spec and plan names count as artifacts. The `-design` and `-plan`
-suffixes keep the roles separate, even when both directories are equal. When an
-issue has several files of one kind, the newest date wins. Issue titles are not
-part of artifact names, so rename files from earlier versions once to match.
-Each attempt writes `prompt.md`, `pi.log`, `session-N.log`, `sessions/`, and
-`result.json`. The prompt is replaced for each phase in the attempt. Session
-logs stay separate. The aggregate `pi.log` contains stdout and stderr from all
-phases. Raw agent output stays in logs, not the console. `result.json` is a
-diagnostic record, never a resume input. Cost reporting reads its phase names,
-but phase selection never reads it. The console shows phase progress, a readable
-final outcome, log paths, and best-effort cost.
+Only these spec and plan names count as artifacts. The slug comes from the issue
+title and only describes the file. The issue number and the `-design` or `-plan`
+suffix identify it, so a title edit never changes a file's role, even when both
+directories are equal. When an issue has several files of one kind, the newest
+date wins. Plans from earlier versions have no `-plan` suffix, so rename them
+once to match. Each attempt writes `prompt.md`, `pi.log`, `session-N.log`,
+`sessions/`, and `result.json`. The prompt is replaced for each phase in the
+attempt. Session logs stay separate. The aggregate `pi.log` contains stdout and
+stderr from all phases. Raw agent output stays in logs, not the console.
+`result.json` is a diagnostic record, never a resume input. Cost reporting reads
+its phase names, but phase selection never reads it. The console shows phase
+progress, a readable final outcome, log paths, and best-effort cost.
 
 ## Cost reporting
 

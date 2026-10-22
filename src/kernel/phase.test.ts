@@ -9,8 +9,8 @@ const base: Facts = {
   remoteBranchExists: false,
   worktree: "/fixture/worktree",
   baseBranch: "main",
-  expectedSpecPath: "docs/specs/2026-10-15-issue-9-design.md",
-  expectedPlanPath: "docs/plans/2026-10-15-issue-9-plan.md",
+  expectedSpecPath: "docs/specs/2026-10-15-issue-9-x-design.md",
+  expectedPlanPath: "docs/plans/2026-10-15-issue-9-x-plan.md",
 };
 const spec = { specPath: base.expectedSpecPath };
 const plan = { planPath: base.expectedPlanPath };

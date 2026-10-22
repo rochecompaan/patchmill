@@ -147,7 +147,7 @@ worktree when it is missing, and collects the remaining facts in that worktree:
 | ---- | ------------------------------------------------------------------------------------------------------------------ |
 | F1   | Does a remote branch `agent/issue-N-*` exist? (One match is used. Several matches stop the run with `needs-info`.) |
 | F2   | Does a spec `<specsDir>/*-issue-N-*-design.md` exist in the worktree?                                              |
-| F3   | Does a plan `<plansDir>/*-issue-N-*.md` exist in the worktree?                                                     |
+| F3   | Does a plan `<plansDir>/*-issue-N-*-plan.md` exist in the worktree?                                                |
 | F4   | Is spec approval satisfied? True when the gate is off, or when the issue carries `spec-approved`.                  |
 | F5   | Is there a pull request whose head is the branch? None, draft, open, merged, or closed.                            |
 
@@ -214,7 +214,7 @@ issue comments and does not touch labels.
 | Branch        | `agent/issue-<N>-<slug>`, slug from the title at creation, 48 characters at most.             |
 | Worktree      | `<worktreeDir>/<branch with "/" replaced by "-">`, default `.worktrees`.                      |
 | Spec          | `<specsDir>/<YYYY-MM-DD>-issue-<N>-<slug>-design.md`, default `docs/specs`.                   |
-| Plan          | `<plansDir>/<YYYY-MM-DD>-issue-<N>-<slug>.md`, default `docs/plans`.                          |
+| Plan          | `<plansDir>/<YYYY-MM-DD>-issue-<N>-<slug>-plan.md`, default `docs/plans`.                     |
 | Run directory | `.patchmill/runs/issue-<N>/<run-id>/` with `prompt.md`, `pi.log`, `sessions/`, `result.json`. |
 
 `result.json` is a write-only record for operators and future tooling. The

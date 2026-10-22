@@ -45,44 +45,48 @@ test("worktreeDirName replaces every branch separator", () => {
   );
 });
 
-test("artifact file names use the local date, issue number, and kind only", () => {
+test("artifact file names use the local date, issue, title, and kind", () => {
   assert.equal(
-    artifactFileName("spec", date, 5),
-    "2026-10-15-issue-5-design.md",
+    artifactFileName("spec", date, 5, "Fix: login crashes!"),
+    "2026-10-15-issue-5-fix-login-crashes-design.md",
   );
-  assert.equal(artifactFileName("plan", date, 5), "2026-10-15-issue-5-plan.md");
+  assert.equal(
+    artifactFileName("plan", date, 5, "Fix: login crashes!"),
+    "2026-10-15-issue-5-fix-login-crashes-plan.md",
+  );
+  assert.equal(
+    artifactFileName("plan", date, 5, "???"),
+    "2026-10-15-issue-5-plan.md",
+  );
 });
 
-test("artifact recognition matches issue and kind across creation dates", () => {
+test("artifact recognition matches issue and kind across dates and titles", () => {
   for (const kind of ["spec", "plan"] as const) {
+    for (const title of ["Old title", "???"])
+      assert.equal(
+        isArtifactFile(
+          kind,
+          5,
+          artifactFileName(kind, new Date(2024, 0, 2), 5, title),
+        ),
+        true,
+      );
     assert.equal(
-      isArtifactFile(kind, 5, artifactFileName(kind, new Date(2024, 0, 2), 5)),
-      true,
-    );
-    assert.equal(
-      isArtifactFile(kind, 5, artifactFileName(kind, date, 50)),
+      isArtifactFile(kind, 5, artifactFileName(kind, date, 50, "Login")),
       false,
     );
-    assert.equal(isArtifactFile(kind, 5, `issue-5-${kind}.md`), false);
+    assert.equal(isArtifactFile(kind, 5, `issue-5-login-${kind}.md`), false);
   }
 });
 
-test("spec and plan names never match each other or title-derived names", () => {
-  assert.equal(
-    isArtifactFile("plan", 5, artifactFileName("spec", date, 5)),
-    false,
-  );
-  assert.equal(
-    isArtifactFile("spec", 5, artifactFileName("plan", date, 5)),
-    false,
-  );
-  for (const kind of ["spec", "plan"] as const) {
+test("spec and plan names never match each other, whatever the title", () => {
+  for (const title of ["Add design", "Add better design", "Add plan", "???"]) {
     assert.equal(
-      isArtifactFile(kind, 9, "2026-10-14-issue-9-add-design.md"),
+      isArtifactFile("plan", 9, artifactFileName("spec", date, 9, title)),
       false,
     );
     assert.equal(
-      isArtifactFile(kind, 9, "2026-10-14-issue-9-add-plan.md"),
+      isArtifactFile("spec", 9, artifactFileName("plan", date, 9, title)),
       false,
     );
   }
@@ -97,8 +101,8 @@ test("newRunId uses the local timestamp and a four-character hex suffix", () => 
 test("artifact names and run IDs pad local years below 1000", () => {
   const year999 = new Date(2026, 9, 15, 13, 4, 5);
   year999.setFullYear(999);
-  assert.ok(artifactFileName("spec", year999, 5).startsWith("0999-"));
-  assert.ok(artifactFileName("plan", year999, 5).startsWith("0999-"));
+  assert.ok(artifactFileName("spec", year999, 5, "Login").startsWith("0999-"));
+  assert.ok(artifactFileName("plan", year999, 5, "Login").startsWith("0999-"));
   assert.ok(newRunId(year999).startsWith("09991015-"));
 });
 

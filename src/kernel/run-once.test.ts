@@ -328,8 +328,10 @@ for (const hasPlan of [false, true]) {
     c.config.paths.specsDir = "docs";
     c.config.paths.plansDir = "docs";
     await c.seed({
-      "docs/2026-10-15-issue-9-design.md": "spec",
-      ...(hasPlan ? { "docs/2026-10-15-issue-9-plan.md": "plan" } : {}),
+      "docs/2026-10-15-issue-9-add-login-design.md": "spec",
+      ...(hasPlan
+        ? { "docs/2026-10-15-issue-9-add-login-plan.md": "plan" }
+        : {}),
     });
     const outcome = await c.run({ dryRun: true });
     assert.equal(outcome.status, "dry-run");
