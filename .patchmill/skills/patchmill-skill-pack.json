@@ -5,8 +5,8 @@
     "source": {
       "type": "github-release",
       "repository": "obra/superpowers",
-      "tag": "v7.0.0",
-      "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v7.0.0.tar.gz"
+      "tag": "v7.0.1",
+      "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v7.0.1.tar.gz"
     },
     "additionalSources": [
       {
@@ -17,7 +17,7 @@
       }
     ]
   },
-  "installedAt": "2026-10-13T09:41:26.358Z",
+  "installedAt": "2026-10-24T06:59:10.326Z",
   "skillDir": ".patchmill/skills",
   "skills": [
     {
@@ -253,7 +253,7 @@
   "files": [
     {
       "path": ".patchmill/skills/brainstorming/SKILL.md",
-      "sha256": "6ee10d1481b8a2580d5336ff66c5c08acc9d4b251b13bbc3bfd31be99c261d43"
+      "sha256": "61a7ef918652108c76a3fd01e02dd92d39996c6b46d4cb2819cbd03f6c45e46a"
     },
     {
       "path": ".patchmill/skills/brainstorming/builder-check-prompt.md",
@@ -289,7 +289,7 @@
     },
     {
       "path": ".patchmill/skills/executing-plans/SKILL.md",
-      "sha256": "f38e8f2ddcf079f65493adc713c1fed78421dfaf5f4dbf6b3a6b2b1d95466e71"
+      "sha256": "e4649e59880ef2643d1da128e3d607e87e3f969410d72095a5bf65811b6036dc"
     },
     {
       "path": ".patchmill/skills/executing-plans/scripts/task-done",
@@ -381,7 +381,7 @@
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/SKILL.md",
-      "sha256": "8dde5589ee083fb4999106d116f01c8fdaf3116a8a9813fdedeb80329de49046"
+      "sha256": "ba41f697136cba88a7962d60c8e2f97488ba04a8688b1d0fbeb27f6953808e75"
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/implementer-prompt.md",
@@ -390,6 +390,34 @@
     {
       "path": ".patchmill/skills/subagent-driven-development/re-review-prompt.md",
       "sha256": "0828a5e9cbb12ba49f14621dd8c3953c48c0fc383e75bb5494f055ed0d6d824f"
+    },
+    {
+      "path": ".patchmill/skills/subagent-driven-development/references/batching.md",
+      "sha256": "b54dc7e23dbfb90db89bcb2fb3af591aabf6a271a165fbc0da4c6f9439980eac"
+    },
+    {
+      "path": ".patchmill/skills/subagent-driven-development/references/cannot-verify.md",
+      "sha256": "e698713a15e0eabf1a2ab26ffe1bb04bf70c9d6d2e2060d44a0f9a1bdd4408bf"
+    },
+    {
+      "path": ".patchmill/skills/subagent-driven-development/references/final-review.md",
+      "sha256": "2fd999d86e5dd0b9b32aaf93f2a41663ef30b3e3cb78fb2fd5cb450eb59eb9de"
+    },
+    {
+      "path": ".patchmill/skills/subagent-driven-development/references/fix-loop.md",
+      "sha256": "eafff1f801af2ced86e8761f3eeef04b701860d986ba5d0a8b20d506a75104bb"
+    },
+    {
+      "path": ".patchmill/skills/subagent-driven-development/references/handling-reports.md",
+      "sha256": "8f759cdd4936220c38aab05b6d6c48c6df8ac8f146b0f37a6d2facbf87133c67"
+    },
+    {
+      "path": ".patchmill/skills/subagent-driven-development/references/preflight.md",
+      "sha256": "3ea21c5fc1af1a190ac8a9d19ceb0849b47bf2ffe27b87dffcc21b6a0539776c"
+    },
+    {
+      "path": ".patchmill/skills/subagent-driven-development/references/resuming.md",
+      "sha256": "ff6e38bde2276faa2a7e93513086caded0ea10edbf2ec7f349a7e3b0d7c668c4"
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/scripts/review-package",
@@ -505,31 +533,43 @@
     },
     {
       "path": ".patchmill/skills/writing-skills/SKILL.md",
-      "sha256": "bbdfe742f853562e643a3d40d64476359d47881e39cef80a189283fa26d11ab9"
+      "sha256": "8cb3ac68c6d8c4bb46886b998b09af7989643cab8bd0e46ee86dd62e64546bbe"
     },
     {
-      "path": ".patchmill/skills/writing-skills/anthropic-best-practices.md",
-      "sha256": "217629b356c09c9bd11017c9788e8fc654ca1b32c92d4a51cd490e16dd65e59a"
-    },
-    {
-      "path": ".patchmill/skills/writing-skills/examples/CLAUDE_MD_TESTING.md",
+      "path": ".patchmill/skills/writing-skills/references/CLAUDE_MD_TESTING.md",
       "sha256": "0b379a3415e185d3c434b3ad283d8aa132f3022c2a4f210f168865b5986bcef0"
     },
     {
-      "path": ".patchmill/skills/writing-skills/graphviz-conventions.dot",
+      "path": ".patchmill/skills/writing-skills/references/anthropic-best-practices.md",
+      "sha256": "217629b356c09c9bd11017c9788e8fc654ca1b32c92d4a51cd490e16dd65e59a"
+    },
+    {
+      "path": ".patchmill/skills/writing-skills/references/bulletproofing.md",
+      "sha256": "9397023e6bc85b556a57f3097371363bf03e28e755c57f403f470bcda90e0a23"
+    },
+    {
+      "path": ".patchmill/skills/writing-skills/references/discovery.md",
+      "sha256": "c6bbc74af3be90f693f7cbc986af6fa94e8df75f65109b52e96032587f5b92af"
+    },
+    {
+      "path": ".patchmill/skills/writing-skills/references/flowcharts.md",
+      "sha256": "8b1f542391f274f0d33f3457ac099a3d317d6877eaa3b8d3b1ebef151b55fda7"
+    },
+    {
+      "path": ".patchmill/skills/writing-skills/references/graphviz-conventions.dot",
       "sha256": "e2890a593c91370e384b42f2f67b1a6232c9e69dddea7891a0c1c46d7b20b694"
     },
     {
-      "path": ".patchmill/skills/writing-skills/persuasion-principles.md",
+      "path": ".patchmill/skills/writing-skills/references/persuasion-principles.md",
       "sha256": "a51bc9bf75189ea73a27b3fb504a2fdfdb966fb1f7f1cdf03203230a216ccc03"
+    },
+    {
+      "path": ".patchmill/skills/writing-skills/references/testing-skills-with-subagents.md",
+      "sha256": "ed8a6862c085900135962390530d9dc7637ad6d650b4324ce3b051287a5c3f22"
     },
     {
       "path": ".patchmill/skills/writing-skills/render-graphs.js",
       "sha256": "c7f412cc629461c4d10287e668731874c0497707023e3e3f74a5355eb2cee196"
-    },
-    {
-      "path": ".patchmill/skills/writing-skills/testing-skills-with-subagents.md",
-      "sha256": "c711346852c911b24a84aa161e0cff06a4cd7f4e2fa9e9c0a266cead5afcbade"
     }
   ]
 }
