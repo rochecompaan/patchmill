@@ -70,6 +70,15 @@ test("installs complete real packs with hashes, repairs files and preserves unch
   await stat(
     join(destination, "subagent-driven-development/implementer-prompt.md"),
   );
+  // Planning and implementation stop when these frontend files are missing.
+  for (const path of [
+    "frontend-design/SKILL.md",
+    "frontend-design/LICENSE.txt",
+    "patchmill-frontend-review/SKILL.md",
+    "patchmill-frontend-review/LICENSE",
+    "patchmill-frontend-review/references/web-interface-guidelines.md",
+  ])
+    await stat(join(destination, path));
   assert.deepEqual(
     manifest.files.map((file: { path: string }) => file.path).sort(),
     expected.sort(),

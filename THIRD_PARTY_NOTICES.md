@@ -1,5 +1,7 @@
 # Third-Party Notices
 
+Patchmill vendors the following third-party components:
+
 ## Anthropic frontend-design
 
 - Repository: <https://github.com/anthropics/skills>
@@ -43,8 +45,6 @@ The renamed reference is not an active skill.
 - License: MIT, from the pinned `LICENSE` file.
 - Purpose: Offline rules for independent frontend review.
 - Modification status: Both files remain verbatim.
-
-Patchmill vendors the following third-party components:
 
 ## agent-stuff `extensions/todos.ts`
 

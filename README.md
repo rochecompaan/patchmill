@@ -169,17 +169,12 @@ SimpleEnglish skills alongside its own skills.
 
 ## Frontend design and review
 
-The recommended local pack adds conditional frontend guidance. For meaningful
-browser-visible changes, planning includes a linked, offline full-page HTML
-mockup. Implementation completes normal code review and validation, then runs
-fresh independent frontend review. The parent repairs valid findings and
-refreshes review and evidence after frontend changes.
-
-Backend, documentation, and non-material copy work skip these additions. Pack
-`2026.10.2` uses pinned local guidance and needs no configuration change. Custom
-and global workflows opt in through their own wrappers. See
-[Skills configuration](https://patchmill.dev/guides/skills-configuration/) and
-[Workflow artifacts](https://patchmill.dev/using-patchmill/workflow-artifacts/).
+For meaningful browser-visible changes, planning adds a linked, offline,
+full-page HTML mockup to the spec. After validation, implementation reviews the
+frontend against pinned local rules, fixes every valid finding, and records the
+review in the pull request. Backend, documentation, and minor copy work skip
+both steps. No configuration change is needed. See
+[Skills configuration](https://patchmill.dev/guides/skills-configuration/).
 
 ## License
 

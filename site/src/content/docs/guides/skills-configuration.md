@@ -30,9 +30,12 @@ extra configuration hooks.
 
 ## Installed pack
 
-The eight Patchmill skills are `patchmill-issue-triage`, `patchmill-planning`,
-`patchmill-implementation`, `patchmill-visual-evidence`, `module-size`,
-`patchmill-plan`, `patchmill-label`, and `patchmill-cleanup`.
+The ten Patchmill skills are `patchmill-issue-triage`, `patchmill-planning`,
+`patchmill-implementation`, `patchmill-visual-evidence`,
+`patchmill-frontend-review`, `frontend-design`, `module-size`, `patchmill-plan`,
+`patchmill-label`, and `patchmill-cleanup`. Patchmill vendors `frontend-design`
+from Anthropic and the frontend review rules from Vercel at pinned commits. See
+`THIRD_PARTY_NOTICES.md` for their sources and licenses.
 
 The thirteen selected Superpowers skills are `brainstorming`, `writing-plans`,
 `executing-plans`, `subagent-driven-development`, `test-driven-development`,
@@ -61,6 +64,28 @@ canonical independent review role is `reviewer`, not `code-reviewer`.
 `pi-subagents` through runtime `-e` arguments, not copied extension files. The
 kernel does not observe child agents. Triage passes no explicit extension paths.
 Pi can still load resources from its own environment and configuration.
+
+## Frontend design and review
+
+The planning and implementation skills each decide whether frontend work applies
+and record a brief reason. Layout, responsive behavior, styling, interaction,
+motion, accessibility, navigation, and user-flow changes apply. Backend and
+documentation work skip these steps. Copy-only work applies only when it
+materially changes one of these areas. No configuration key is needed.
+
+When design applies, planning reads the `frontend-design` sibling while it
+writes the spec. It adds a self-contained HTML mockup under `docs/mockups/` that
+opens from disk without network access. The mockup shows the full page at mobile
+and desktop widths. The spec links it from a `## Companion artifacts` section,
+and the mockup is committed with the spec. Older approved specs need no mockup.
+The kernel does not check mockups.
+
+After validation, implementation follows `patchmill-frontend-review` for
+applicable work. The review uses pinned local rules and never fetches rules at
+runtime. Kernel-launched sessions run it as a separate self-review pass. An
+interactive operator can authorize a fresh `reviewer` subagent instead. Every
+valid finding is fixed and reviewed again before the pull request is marked
+ready. The pull request body records the decision, findings, and repairs.
 
 ## Results and evidence
 

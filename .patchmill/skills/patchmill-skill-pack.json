@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-10-19T06:17:42.505Z",
+  "installedAt": "2026-10-26T08:39:42.473Z",
   "sources": {
     "patchmill": "0.20.0",
     "superpowers": "7.0.0",
@@ -59,6 +59,14 @@
       "sha256": "8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65"
     },
     {
+      "path": "frontend-design/LICENSE.txt",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "path": "frontend-design/SKILL.md",
+      "sha256": "d91970639e9f5c37682ac7ab60094d35f1c7c1f38d731bd56396563aee10c1d3"
+    },
+    {
       "path": "module-size/SKILL.md",
       "sha256": "272283f16620955524b0d979af64767e2a58af4ec73ab3fba2c2444d9a009c0e"
     },
@@ -67,8 +75,24 @@
       "sha256": "2b748ca2d16ccc00e677f85e6126160868f37ba38f798a8a3b2e9b5c1064ad8d"
     },
     {
+      "path": "patchmill-frontend-review/LICENSE",
+      "sha256": "6cd1609c9c12233507cdd2ce0d32e9a721e3c27494951be06b90090deeeb7af2"
+    },
+    {
+      "path": "patchmill-frontend-review/references/upstream-web-design-guidelines.md",
+      "sha256": "f4647ca866a3accf763777f83e7682954f0187cd6bea7eea0399796652414e8f"
+    },
+    {
+      "path": "patchmill-frontend-review/references/web-interface-guidelines.md",
+      "sha256": "5a775e6411f790f518dbc9c1fa7c50a89e6873502d9a3530a6eb223a590bcfe8"
+    },
+    {
+      "path": "patchmill-frontend-review/SKILL.md",
+      "sha256": "84b917b8901e9c26102eb2c2c852e0371e9f45b0786cfd2e9cc6f3b930ed8653"
+    },
+    {
       "path": "patchmill-implementation/SKILL.md",
-      "sha256": "959fb1f4837237b3c2f13d65d4a71a96a2ae022bcc3a57ebb5e1d47dc067ef9f"
+      "sha256": "00c2c57863b3889d061e9f859480daf4966356b72b56ad59b688bce50efa5480"
     },
     {
       "path": "patchmill-issue-triage/SKILL.md",
@@ -84,7 +108,7 @@
     },
     {
       "path": "patchmill-planning/SKILL.md",
-      "sha256": "69ad20d42772a829e80299a250e2495e3b980c35be54e9b56d0c79c513e8e18e"
+      "sha256": "f193152ad4ad90c4f2ad4f67a6efce0c713782a84057812e8ee25ecf8065da1d"
     },
     {
       "path": "patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",
