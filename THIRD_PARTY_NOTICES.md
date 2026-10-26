@@ -90,7 +90,7 @@ content.
 
 ## Site HTTP cache policy
 
-- Source: `http-cache-semantics@4.2.0` from the npm registry
+- Source: `http-cache-semantics@4.3.0` from the npm registry
 - Repository: <https://github.com/kornelski/http-cache-semantics>
 - License: BSD 2-Clause (`vendor/http-cache-semantics/LICENSE`)
 - Security patch: <https://github.com/kornelski/http-cache-semantics/pull/58>
