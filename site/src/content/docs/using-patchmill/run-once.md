@@ -1,339 +1,163 @@
 ---
 title: Run-once
-description:
-  Advance one ready issue through Patchmill's planning pull-request workflow.
+description: Advance one issue from observed git and host facts.
 ---
 
-`patchmill run-once` advances one actionable issue through the configured
-workflow. For a fresh `agent-ready` issue it initializes strict `planning-pr-v1`
-state and snapshots the configured
-[planning review gates](/reference/workflow-labels/). That snapshot stays
-immutable for the Issue run.
-
-Preview selection without mutation:
+`patchmill run-once` advances one issue through planning and implementation. It
+uses a separate branch and pull request for each required planning gate, then an
+implementation branch and pull request. Each phase gets a fresh Pi session. The
+kernel reads git and the issue host between sessions. It never reads a saved
+result to choose the next phase.
 
 ```sh
+patchmill run-once
+patchmill run-once --issue 123
 patchmill run-once --dry-run
+patchmill run-once --issue 123 --plan-only
 ```
 
-## Concurrent explicit commands
+Without `--issue`, selection takes the oldest open issue with `agent-ready` or
+`in-progress`. Explicit selection requires an open issue, but does not require
+`agent-ready`. The local issue lock still prevents concurrent attempts. Dry run
+prints selection and the derived phase without claiming or running Pi.
+`--plan-only` stops after planning completes and never starts implementation. It
+does not bypass either planning gate.
 
-For independent issues, start separate commands from the same clone root:
+## Claim and release
+
+The kernel holds an exclusive OS lock on `<runsDir>/issue-N/lock` throughout the
+attempt and label cleanup. It then swaps `agent-ready` for `in-progress` and
+rereads the issue. A narrow race between separate clones remains possible.
+
+The lock file is permanent. The OS releases ownership when its handle closes or
+the process exits. JSON inside it records a PID and start time for diagnosis
+only. Empty, stale, or corrupt JSON does not prove that the issue is inactive.
+Never remove or replace the lock file or its parent directory.
+
+After a hard crash leaves `in-progress`, run:
 
 ```sh
-# Terminal 1
-patchmill run-once --issue 101
-
-# Terminal 2
-patchmill run-once --issue 102
+patchmill release --issue N
 ```
 
-Each process owns its selected issue, phase workspaces, state, artifacts, logs,
-and Pi sessions. Explicit selection reads only the requested issue. Other active
-or resumable issues do not prevent new explicit work.
+This command acquires the same OS lock before resetting the label to
+`agent-ready`. Contention returns exit code 1 without label changes. Do not use
+a label reset as permission to delete an active worktree.
 
-If the requested issue already has an owner, Patchmill reports
-`issue already in progress.` and returns exit code `0`. The losing process
-leaves the issue unchanged. This result does not require lease repair.
+## Phase derivation
 
-Without `--issue`, automatic selection remains serial. Automatic commands cannot
-overlap explicit commands, other automatic commands, or mutating recovery
-commands. Dry-run reserves no ownership.
+After claiming, Patchmill fetches `origin` and inspects each required planning
+gate before implementation. Each gate has a stable head, independent of title
+edits. The kernel reuses a stage's workspace or creates it from the fetched
+base. Expected spec and plan branches are not ambiguous implementation branches.
+Several implementation branches stop with `needs-info`.
 
-### Operator responsibilities
+| Observed fact                                                       | Next action                                     |
+| ------------------------------------------------------------------- | ----------------------------------------------- |
+| Required planning PR is absent                                      | Run planning for that stage and publish its PR. |
+| Required planning PR is open                                        | Keep `in-progress` and stop without Pi.         |
+| Required planning PR is closed, not merged                          | Stop with `needs-info`.                         |
+| Required planning PR is merged and its artifacts are on the base    | Advance to the next required stage.             |
+| Merged planning artifacts are absent from, or differ from, the base | Stop with `needs-info`.                         |
+| No required planning gate remains, but a document is absent         | Run planning on the implementation branch.      |
+| No required gate remains and both documents exist                   | Run implementation.                             |
+| Implementation PR is merged and closes the issue                    | Stop with `agent-done`.                         |
 
-Select independent issues. Control model spending and the number of processes.
-Allocate CPU capacity, ports, test databases, and external services for each
-workspace. Patchmill does not predict conflicts between independent changes.
+`workflow.specApproval.required` and `workflow.planApproval.required` both
+default off. With both on, merge the spec PR, then the plan PR, before
+implementation. Review approval or an approval label does not unlock either
+gate. Adding `agent-ready` cannot bypass an open required PR.
 
-Use one supported Patchmill version and one clone root. The Git common directory
-binds the host repository, state directory, workspace root, and todo definition
-to one namespace. Symlinks do not create another namespace.
+When a gate is off, its document goes into the next required planning PR. With
+no later gate, it goes into the implementation PR. Planning PR bodies use
+`Refs #N`, not closing keywords. Only the implementation PR completes the issue.
+Each later branch starts from the fetched base with earlier merged documents.
+The kernel never deletes merged planning branches or worktrees.
 
-Before an upgrade or state migration, stop all affected processes. A changed
-namespace requires deliberate migration while no process owns it.
+## Outcome checks
 
-Unsupported cases include:
-
-- Coordination across separate clones or hosts.
-- Concurrent configuration changes or artifact-edit commands such as `set-plan`.
-- Manual shared Git mutations during active Run attempts.
-- Cleanup hooks that remove shared services or another issue's resources.
-- Multiple writers for the same issue.
-
-CAUTION: Do not remove another Run attempt's locks or use destructive cleanup as
-recovery. These actions can destroy owned work or permit conflicting writers.
-
-### Todos and evidence
-
-The default todo root remains `.pi/todos` inside the owned workspace. Relative
-custom roots use that workspace, not the shared clone root. Absolute shared
-roots use issue-scoped reads and mutations. Startup and cleanup preserve other
-issues' tasks and disable global todo garbage collection in shared roots.
-
-Resume preserves existing todo locations, titles, tags, and completion rules.
-Ambiguous locations block instead of combining or moving tasks. Each new Run
-attempt receives separate logs and sessions, even with identical timestamps.
-
-## Comment-backed issue state
-
-When `issueState.provider` is `comments`, Run-once reads the latest trusted
-Patchmill state comment instead of repository labels for workflow state such as
-`agent-ready`, `in-progress`, `spec-review`, `plan-review`, and `agent-done`.
-State changes append new comments and do not edit or delete older state
-comments.
-
-Priority labels still affect automatic issue ordering when they exist. If you
-cannot use priority labels, Run-once falls back to issue-number ordering among
-eligible issues.
-
-## Fresh planning workflow
-
-The saved gate snapshot assigns spec and plan artifacts to a **phase
-workspace**: the owned worktree and branch for one spec, plan, or implementation
-phase, pinned to saved remote-base evidence.
-
-1. Patchmill fetches the target base and resolves assigned artifacts. Exactly
-   one matching regular file under the configured directory satisfies assigned
-   work; none creates work and multiple candidates block.
-2. An agent edits, self-reviews, and commits only the requested artifact in its
-   phase workspace.
-3. If that phase has a required planning review gate, Patchmill pushes it in a
-   non-closing **planning pull request** and returns `review-pending` with exit
-   code `0`.
-4. A human reviews and merges that exact pull request. Run ordinary recovery:
-
-   ```sh
-   patchmill run-once --issue N
-   ```
-
-   Patchmill verifies the exact saved pull request and its merge on the saved
-   target base before advancing. Comments and labels do not unlock a fresh
-   phase.
-
-5. Implementation always produces an open, issue-closing pull request. Patchmill
-   verifies its ownership marker, closing reference, repository, branches, and
-   head OID. Publication returns `pr-created` and leaves the Issue run in
-   progress.
-6. After the PR merges, rerun the same explicit command. Patchmill verifies its
-   merge against the fetched target base and resumes finish checkpoints without
-   another agent or PR. Only verified merge and completed finish checkpoints
-   produce `merged` and the done label.
-
-### Gate matrix
-
-| Spec review | Plan review | Pull request sequence                                                        |
-| ----------- | ----------- | ---------------------------------------------------------------------------- |
-| Off         | Off         | Implementation contains spec, plan, and code.                                |
-| On          | Off         | Spec planning pull request, then implementation with plan and code.          |
-| Off         | On          | Plan planning pull request contains spec and plan, then implementation.      |
-| On          | On          | Spec planning pull request, plan planning pull request, then implementation. |
-
-GitHub planning heads remain in the target repository. Forgejo may use the
-supported same-host head repository. Both providers use the same markers, gate
-rules, merge verification, and recovery behavior.
-
-## Results and output
-
-Progress is written to stderr. Redirect stdout for the compact one-line JSON
-result:
-
-```sh
-patchmill run-once --issue N > result.json
-```
-
-`review-pending` and `stopped` with reason `plan-only` are exit-zero nonfailure
-results. Patchmill no longer returns the public `cleanup-pending` result, even
-for saved records from older releases.
-
-After a legacy workspace refresh, the result includes `quarantinePaths`. This
-array names the retained old checkouts. Recovery progress, final JSONL data, and
-the terminal's **Quarantine paths** section name the same paths. A later blocked
-result also retains this field.
-
-An open planning review takes precedence over a plan-only stop. A later
-invocation without the option resumes the saved phase and gate snapshot.
-
-### Failure diagnostics
-
-Every reason-bearing blocked, stopped, environment, and error result keeps its
-stable `reason` code and adds a `diagnostic` object. The object has a short
-`summary`, plain-language `explanation`, attributed `details`, safe `actions`,
-`safety` warnings, and `retry` guidance. Redirected stdout and the final JSONL
-`result` event contain the same object; terminal output renders the same fields
-as Reason, Explanation, Details, Recommended action, Safety, and Retry.
-
-`retry.kind` states when another invocation can help: `retry-now` means the
-recommended normal command can make progress now; `after-action` means first
-complete the listed safe action; `same-result` means the same command will stop
-again until the recorded state changes; and `inspect-first` means inspect and
-reconcile preserved evidence before deciding whether to retry. For example,
-redirected output for a dirty phase workspace includes its stable code and the
-same structured diagnostic written to JSONL:
+The agent ends with a fenced JSON block containing exactly these fields:
 
 ```json
-{
-  "status": "blocked",
-  "issueNumber": 242,
-  "reason": "planning-workspace-dirty",
-  "diagnostic": {
-    "summary": "Phase workspace has local changes",
-    "explanation": "The phase workspace contains local changes and cannot be resumed or published safely.",
-    "details": [
-      {
-        "key": "issueNumber",
-        "label": "Issue",
-        "value": 242
-      },
-      {
-        "key": "phase",
-        "label": "Phase",
-        "value": "plan"
-      },
-      {
-        "key": "branch",
-        "label": "Branch",
-        "value": "agent/issue-242-plan"
-      },
-      {
-        "key": "worktreePath",
-        "label": "Worktree",
-        "value": ".worktrees/patchmill-issue-242-plan"
-      },
-      {
-        "key": "workspaceState",
-        "label": "Workspace state",
-        "value": "ready"
-      },
-      {
-        "key": "statusEvidence",
-        "label": "Status",
-        "value": "dirty"
-      }
-    ],
-    "actions": [
-      {
-        "description": "Inspect the reported phase, branch, path, state, and status evidence; preserve the work before retrying."
-      }
-    ],
-    "safety": [
-      "Do not run git clean, destructive reset, or delete the phase workspace."
-    ],
-    "retry": {
-      "kind": "same-result",
-      "guidance": "An immediate retry will give the same result."
-    }
-  },
-  "questions": []
-}
+{ "status": "done", "summary": "What changed, or what needs a human answer." }
 ```
 
-Selection rejection JSONL events also include a diagnostic beside their reason.
-A final `no-issue` result intentionally has no aggregate reason because its
-per-Issue rejection events are the source of that information.
+`status` is `done`, `needs-input`, or `failed`. Questions go in `summary`. The
+kernel checks the world rather than trusting `done`:
 
-Commands in diagnostics are limited to supported commands with a positive Issue
-number: `patchmill run-once --issue N`, and, only for Issue run lease/fence
-recovery, `patchmill run lease repair --issue N`. A `planning-pr-v1` planning
-lock is not an Issue run lease: lock diagnostics never recommend lease repair.
+| Phase or result                                                       | Required fact or outcome                                                                                                                       |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planning reports `done`                                               | The remote branch and required artifacts exist. Gated stages also need their non-closing planning PR. Wait for merge or derive the next phase. |
+| Implementation reports `done`                                         | Open, non-draft pull request has the issue branch as head and a body with `Closes #N`, `Fixes #N`, or `Resolves #N`.                           |
+| Verified implementation                                               | Set `agent-done`, without waiting for merge.                                                                                                   |
+| Unverified claim, `needs-input`, `failed`, missing result, or timeout | Set `needs-info` and report the reason.                                                                                                        |
 
-## Recovery and operator safety
+Uncommitted changes or unpushed commits produce warnings. They do not invalidate
+a real ready pull request. The kernel posts one comment per stop with the
+outcome, summary, best-effort cost, and warnings. The agent never changes issue
+labels or posts issue comments.
 
-For intentional resume, run `patchmill run-once --issue N` again. A process
-exit, cancellation, crash, or open PR does not complete the Issue run. A merged
-PR can close the host issue before local finish checkpoints complete. Explicit
-recovery still verifies that saved PR and finishes only its owned issue.
+If the final label update or comment fails, the verified outcome still stands.
+Patchmill records each failure next to the outcome in `result.json` and the
+console, then exits with code 1. Fix the issue's labels or comment by hand.
 
-A busy shared Git transaction returns `stopped` with reason `repository-busy`.
-Retry the same explicit command after the other transaction ends. Patchmill
-preserves the selected checkpoint and lifecycle labels. Independent agent work
-does not hold the Git guard.
+To address an open ready pull request's review, add `agent-ready` and rerun. The
+implementation skill reads its comments and revises the same branch and pull
+request. Patchmill does not merge or automatically retry failed attempts.
 
-A timed-out or interrupted Git command can leave partial mutations. Preserve its
-state and command evidence. A dead owner PID alone cannot authorize recovery of
-an unverified active Git command.
+## Names and local output
 
-A retry observes durable state, the remote, and the host before repeating an
-effect. It can adopt an exact pushed head or created pull request, complete a
-checkpointed cleanup, return the same open review, or verify a merge.
+| Item                  | Default rule                                                   |
+| --------------------- | -------------------------------------------------------------- |
+| Implementation branch | `agent/issue-N-<title-slug>`, with at most 48 slug characters. |
+| Required spec branch  | `agent/issue-N--spec`.                                         |
+| Required plan branch  | `agent/issue-N--plan`.                                         |
+| Worktree              | `.worktrees/<branch-with-slashes-replaced-by-hyphens>`.        |
+| Spec                  | `docs/specs/YYYY-MM-DD-issue-N-<slug>-design.md`.              |
+| Plan                  | `docs/plans/YYYY-MM-DD-issue-N-<slug>-plan.md`.                |
+| Run output            | `.patchmill/runs/issue-N/<run-id>/`.                           |
 
-Patchmill uses ordinary Git status for verification, recovery, and cleanup.
-Ignored content never blocks these operations or requires an operator label or
-retry. This rule applies to every ignored path, including collapsed directories
-such as `.pi/` and tool output such as `node_modules/`.
+Only these spec and plan names count as artifacts. The slug comes from the issue
+title and only describes the file. The issue number and the `-design` or `-plan`
+suffix identify it, so a title edit never changes a file's role, even when both
+directories are equal. When an issue has several files of one kind, the newest
+date wins. Plans from earlier versions have no `-plan` suffix, so rename them
+once to match. Each attempt writes `prompt.md`, `pi.log`, `session-N.log`,
+`sessions/`, and `result.json`. The prompt is replaced for each phase in the
+attempt. Session logs stay separate. The aggregate `pi.log` contains stdout and
+stderr from all phases. Raw agent output stays in logs, not the console.
+`result.json` is a diagnostic record, never a resume input. Cost reporting reads
+its phase names, but phase selection never reads it. The console shows phase
+progress, a readable final outcome, log paths, and best-effort cost.
 
-Staged changes, tracked changes, and non-ignored untracked files remain
-blockers. A force-added ignored file counts as staged or committed content.
-Existing status and artifact-diff guards still apply. Read-only artifact
-verification preserves HEAD, the index, artifact files, and ignored files.
+## Cost reporting
 
-Phase removal still requires valid ownership, path identity, registration, HEAD,
-and publication evidence.
+Patchmill adds a cost table to the current planning or implementation PR. It
+groups usage by phase and model across all retained local runs for the issue. An
+implementation PR includes costs from earlier specification and planning PRs.
+The console and issue comment continue to show the current attempt's cost.
 
-**CAUTION:** Do not store unique data in ignored files inside disposable phase
-workspaces. Cleanup permanently deletes all ignored content, including `.env`,
-`.pi/`, unknown files, and operator-created files.
+Prompt tokens include uncached input, cache reads, and cache writes. The table
+includes parent and subagent sessions. Copied assistant entries with the same ID
+and usage count once. Dollar estimates use Pi's recorded prices, not a billing
+statement. Missing prices leave dollar totals unavailable, not zero.
 
-In-place recovery preserves ignored files. Legacy refresh and reset move the old
-checkout, with its ignored files, to a retained quarantine path. Patchmill never
-removes quarantine paths. The replacement checkout starts without those old
-ignored files. Reset reports the retained paths through its existing
-`quarantinePaths` result.
+Patchmill replaces only the section between its cost markers. The rest of the PR
+body stays unchanged. If usage cannot be read or publication fails, Patchmill
+records a warning without changing the run outcome or skipping label cleanup.
+Keep earlier run directories if later reports must include their costs.
 
-This preservation rule does not apply to final phase cleanup. Patchmill never
-force-cleans a phase workspace or force-updates a conflicting branch. It does
-not replace a missing, ambiguous, or closed-unmerged planning pull request.
+## Supervision and cleanup
 
-A retry can recover one committed artifact that the agent completed before its
-checkpoint failed. Patchmill proves ownership, ordinary cleanliness, ancestry,
-and a single artifact-only delta from the saved HEAD. It selects the committed
-artifact by issue number and configured directory, not by the retry date. The
-checkpoint retains the original artifact path, commit, todo root, and todos. No
-second artifact agent runs for that artifact. Ambiguous candidates, unrelated
-commits, changed HEAD, or checkpoint errors stop before later agents or
-publication. Normal planning review and implementation PR gates still apply.
+Each session uses `pi.timeoutMinutes`, which defaults to 90 minutes. On timeout,
+cancellation, or termination, the kernel sends `SIGTERM` to the process group.
+After five seconds, it sends `SIGKILL` if needed. The kernel attempts label
+cleanup and closes the local lock handle in `finally`. A hard crash can still
+leave host labels unchanged.
 
-Saved legacy `cleanup-pending` records resume normal cleanup without a ready
-label. Patchmill does not publish new needs-info state for these records.
-Existing needs-info state still blocks selection until the configured ready
-state acknowledges it.
-
-| Situation                                            | Operator action                                                                                                                                                                                                                                                                     |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Open review                                          | Review or merge the same pull request, then rerun Run-once.                                                                                                                                                                                                                         |
-| Legacy cleanup pending                               | Rerun the same issue. No cleanup-specific ready label is necessary. Existing needs-info state still requires the normal ready acknowledgement.                                                                                                                                      |
-| Closed-unmerged, proven missing, or ambiguous review | Repair the host state manually; Patchmill does not replace the pull request.                                                                                                                                                                                                        |
-| Dirty or uncheckpointed phase workspace              | Inspect and preserve local work before retrying.                                                                                                                                                                                                                                    |
-| Transient host failure                               | Repair authentication or connectivity, then retry.                                                                                                                                                                                                                                  |
-| Active lock                                          | Wait for its owner; never remove it.                                                                                                                                                                                                                                                |
-| Stale same-host lock                                 | Run-once automatically archives exact stale bytes under `planning-pr-v1/archive/issue-locks/` and continues after a same-host dead-PID proof. The console warning identifies the archive path; JSONL warning data includes the fingerprint and archive path. Archives are retained. |
-| Unverifiable, malformed, or transition-conflict lock | Coordinate with the recorded host/operator and inspect the preserved evidence before retrying; age alone proves nothing. Remote hosts, PID reuse that appears live, and infrastructure failures remain fail-closed.                                                                 |
-
-`patchmill run lease repair` and `patchmill run reset` do not authorize deleting
-a `planning-pr-v1` lock, state file, branch, or workspace. They retain their
-legacy recovery behavior only. Mutating reset and lease repair also use
-repository admission. Reset refuses planning state and published PR checkpoints.
-Use ordinary explicit resume for those checkpoints.
-
-Read-only `patchmill run lease repair --issue N` reserves no ownership. For a
-known interrupted local repair, inspection prints exact primary and paired guard
-fingerprints. The confirmed repair command verifies shutdown and archives only
-those linked guards. It preserves the target lease and earlier interrupted
-evidence. Inspect again before any separate lease repair.
-
-Unknown, foreign, malformed, unlinked, or unverified repair guards remain
-blocked. Interrupted reconciliation guards also remain blocked. Preserve this
-evidence for operator inspection. No lock-bypass flag exists.
-
-## Legacy compatibility
-
-`set-spec`, `set-plan`, approval labels, uploads, and `--plan-only` remain
-available for unfinished legacy Issue runs during the compatibility window. They
-are deprecated for fresh work. Use Run-once review gates for automated review
-stops, or the human-invoked `patchmill-plan` skill for local planning without
-automated implementation.
-
-Legacy implementation also requires a PR. `git.allowDirectLand: true` is no
-longer supported. An old direct-land checkpoint without verifiable PR evidence
-blocks with migration guidance. Preserve that checkpoint instead of creating
-replacement work.
+The kernel never deletes worktrees. Use the human-controlled `patchmill-cleanup`
+skill for inspected, confirmed cleanup under the same lock. Keep permanent lock
+files and their parent directories intact. For independent concurrent issues,
+allocate separate ports, databases, and services. Do not change shared
+configuration or Git state during active runs. See
+[Git safety](/reference/git-safety/) for host branch protection.

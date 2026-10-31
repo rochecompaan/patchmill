@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
 import { HELP_TEXT, main, runAuth } from "./main.ts";
-import type { PiInitSetupResult } from "../init/pi-init-setup.ts";
-import type { PiModelChoice, PiReadiness } from "../init/pi-preflight.ts";
+import type { PiAuthSetupResult } from "./pi-auth-setup.ts";
+import type { PiModelChoice, PiReadiness } from "./pi-preflight.ts";
 
 function model(): PiModelChoice {
   return {
@@ -34,7 +34,7 @@ function missingReadiness(): PiReadiness {
   };
 }
 
-function readySetup(): PiInitSetupResult {
+function readySetup(): PiAuthSetupResult {
   return {
     status: "ready",
     readiness: readyReadiness(),
@@ -102,7 +102,7 @@ test("successful interactive auth prints repo-local summary and next commands", 
       detectPiReadiness: () => readyReadiness(),
       readLocalPiDefaultModel: async () => undefined,
       persistDefaultModel: async () => undefined,
-      resolvePiInitSetup: async (options) => {
+      resolvePiAuthSetup: async (options) => {
         forceInteractiveSetup = options.forceInteractiveSetup;
         assert.equal(
           options.piAgentDir,
@@ -145,7 +145,7 @@ test("incomplete non-interactive setup exits before prompt-capable setup", async
     {
       isInteractive: false,
       detectPiReadiness: () => missingReadiness(),
-      resolvePiInitSetup: async () => {
+      resolvePiAuthSetup: async () => {
         setupCalled = true;
         throw new Error("setup should not run");
       },
@@ -175,7 +175,7 @@ test("local Pi default model read failures are surfaced", async () => {
         readLocalPiDefaultModel: async () => {
           throw new Error("settings are malformed");
         },
-        resolvePiInitSetup: async () => {
+        resolvePiAuthSetup: async () => {
           throw new Error("setup should not run");
         },
       },
@@ -199,7 +199,7 @@ test("ready state still forces interactive setup", async () => {
       detectPiReadiness: () => readyReadiness(),
       readLocalPiDefaultModel: async () => undefined,
       persistDefaultModel: async () => undefined,
-      resolvePiInitSetup: async (options) => {
+      resolvePiAuthSetup: async (options) => {
         forceInteractiveSetup = options.forceInteractiveSetup;
         return readySetup();
       },
@@ -224,7 +224,7 @@ test("cancelled setup exits 1 without workflow commands", async () => {
       detectPiReadiness: () => readyReadiness(),
       readLocalPiDefaultModel: async () => undefined,
       persistDefaultModel: async () => undefined,
-      resolvePiInitSetup: async () => ({
+      resolvePiAuthSetup: async () => ({
         status: "cancelled",
         readiness: readyReadiness(),
         selection: {

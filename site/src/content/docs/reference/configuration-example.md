@@ -1,130 +1,46 @@
 ---
 title: Configuration example
-description: Copy focused pieces from a broad Patchmill configuration example.
+description: The complete supported default configuration.
 ---
 
-This example shows the main `patchmill.config.json` surface in one place. Copy
-only the pieces your repository needs; Patchmill fills omitted labels, paths,
-skills, and git policy from defaults.
+This is the complete default configuration. Omitted keys use these values.
+Unknown keys fail by name. Copy only the values that your repository needs.
 
 ```json
 {
-  "host": {
-    "provider": "forgejo-tea",
-    "login": "triage-agent"
-  },
-  "pi": {
-    "triageThinking": "high"
-  },
+  "host": { "provider": "github-gh", "login": "", "trustedAuthors": [] },
   "labels": {
     "ready": "agent-ready",
+    "inProgress": "in-progress",
     "needsInfo": "needs-info",
-    "unsuitable": "agent-unsuitable",
-    "in-progress": "in-progress",
     "done": "agent-done",
-    "blocked": "blocked",
-    "types": ["bug", "enhancement", "docs", "chore", "test"],
-    "priorities": [
-      "priority:critical",
-      "priority:high",
-      "priority:medium",
-      "priority:low"
-    ]
-  },
-  "triage": {
-    "stateMap": {
-      "agent-ready": "agent-ready",
-      "needs-info": "needs-info",
-      "agent-unsuitable": "agent-unsuitable",
-      "blocked": "blocked"
-    }
-  },
-  "workflow": {
-    "specApproval": {
-      "required": false,
-      "reviewLabel": "spec-review",
-      "approvedLabel": "spec-approved"
-    },
-    "planApproval": {
-      "required": false,
-      "reviewLabel": "plan-review",
-      "approvedLabel": "plan-approved"
-    }
-  },
-  "skills": {
-    "triage": ".patchmill/skills/patchmill-issue-triage",
-    "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
-    "toolchain": ".patchmill/skills/project-toolchain",
-    "review": ".patchmill/skills/project-review",
-    "visualEvidence": ".patchmill/skills/patchmill-visual-evidence",
-    "landing": ".patchmill/skills/project-landing"
+    "unsuitable": "agent-unsuitable",
+    "blocked": "blocked"
   },
   "paths": {
     "specsDir": "docs/specs",
     "plansDir": "docs/plans",
-    "runStateDir": ".patchmill/runs",
-    "triageLogDir": ".patchmill/triage-runs",
     "worktreeDir": ".worktrees",
-    "cleanStatusIgnorePrefixes": [".patchmill/runs/", ".patchmill/triage-runs/"]
+    "runsDir": ".patchmill/runs"
   },
-  "git": {
-    "baseBranch": "main",
-    "baseRef": "HEAD",
-    "remote": "origin",
-    "branchPrefix": "agent/issue-",
-    "worktreePrefix": "patchmill-issue-",
-    "slugLength": 48,
-    "allowDirectLand": false
+  "git": { "baseBranch": null },
+  "skills": {
+    "triage": ".patchmill/skills/patchmill-issue-triage",
+    "planning": ".patchmill/skills/patchmill-planning",
+    "implementation": ".patchmill/skills/patchmill-implementation"
   },
-  "cleanupHook": "./scripts/cleanup.sh",
-  "projectPolicy": {
-    "projectName": "Example Project",
-    "contextFileNames": ["AGENTS.md"],
-    "planRequiresApproval": false,
-    "validation": {
-      "rules": [
-        {
-          "category": "tests",
-          "commands": ["npm test"]
-        }
-      ],
-      "forbiddenSubstitutions": []
-    },
-    "directLand": {
-      "targetBranch": "main"
-    },
-    "visualEvidence": {
-      "referenceScreenshotPaths": ["docs/screenshots"],
-      "prEvidenceExample": {
-        "screenshotPath": "docs/screenshots/example-screen.png",
-        "caption": "Reference screenshot for the changed UI state"
-      }
-    }
+  "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
+  "workflow": {
+    "specApproval": { "required": false },
+    "planApproval": { "required": false }
   }
 }
 ```
 
-## Notes
+For Forgejo, set `host.provider` to `forgejo-tea`. Leave `host.login` empty to
+use Tea's default profile, or set an explicit Tea profile alias. GitHub init can
+seed the detected username for comment trust, not account selection.
 
-- Use `github-gh` with an empty `host.login` when the repository uses the active
-  GitHub `gh` authentication context.
-- Path-like skill values must resolve to a `SKILL.md` file. For example,
-  `.patchmill/skills/project-review` resolves to
-  `.patchmill/skills/project-review/SKILL.md`.
-- `workflow.*Approval.required` values are planning review-gate settings that
-  Run-once snapshots for fresh Issue runs. Their label fields are retained for
-  unfinished legacy runs only.
-- `projectPolicy.pi.taskContract` exists for advanced workflow coordination, but
-  most repositories should keep the default task contract.
-- Run `patchmill doctor` after configuration changes.
-
-The managed implementation skill uses one final independent review, one fix
-pass, and all final validation commands. It permits at most two code-related PR
-check repairs. Namespace and global `superpowers:executing-plans` defaults do
-not include the Patchmill appendix automatically. Explicit custom implementation
-and review references remain operator overrides.
-
-To migrate, run `npx patchmill@latest skills update`. Then explicitly change the
-implementation reference to the path in this example. The updater preserves
-customized files and does not rewrite config.
+`git.baseBranch: null` uses the remote default branch. Both planning gates
+default off. The three skill paths each name a directory with `SKILL.md`. See
+[Configuration](/getting-started/configuration/) for these boundaries.

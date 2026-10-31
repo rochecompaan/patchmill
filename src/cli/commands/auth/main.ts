@@ -1,25 +1,26 @@
-#!/usr/bin/env node
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { cwd } from "node:process";
-import { pathToFileURL } from "node:url";
+import { CONFIG_FILE, loadConfig } from "../../../config/config.ts";
 import {
   localPiAgentDir,
   readLocalPiDefaultModel,
   writeLocalPiDefaultModel,
-} from "../init/pi-agent-settings.ts";
+} from "./pi-agent-settings.ts";
 import {
-  resolvePiInitSetup as defaultResolvePiInitSetup,
-  type PiInitSetupResolver,
-  type PiInitSetupResult,
-} from "../init/pi-init-setup.ts";
-import { selectModelInteractively as defaultSelectModelInteractively } from "../init/pi-model-selector.ts";
-import type { SelectInteractiveModel } from "../init/pi-model-selection.ts";
-import { detectPiReadiness, type PiReadiness } from "../init/pi-preflight.ts";
-import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
+  resolvePiAuthSetup as defaultResolvePiAuthSetup,
+  type PiAuthSetupResolver,
+  type PiAuthSetupResult,
+} from "./pi-auth-setup.ts";
+import { selectModelInteractively as defaultSelectModelInteractively } from "./pi-model-selector.ts";
+import type { SelectInteractiveModel } from "./pi-model-selection.ts";
+import { detectPiReadiness, type PiReadiness } from "./pi-preflight.ts";
+import type { runPiSmokeTest } from "./pi-smoke-test.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill auth [options]
 
-Configure or repair repo-local Pi provider authentication.
+Configure repo-local provider authentication and choose a default model.
 
 Options:
   --help, -h  Show this help and exit.
@@ -30,25 +31,33 @@ export type AuthOutput = {
   stderr: (line: string) => void;
 };
 
-type MaybePromise<T> = T | Promise<T>;
-
 export type PiReadinessDetector = (options: {
   agentDir: string;
-}) => MaybePromise<PiReadiness>;
+}) => PiReadiness | Promise<PiReadiness>;
 export type PiSmokeTestRunner = typeof runPiSmokeTest;
+
+type AuthOptions = {
+  detectPiReadiness?: PiReadinessDetector;
+  runPiSmokeTest?: PiSmokeTestRunner;
+  isInteractive?: boolean;
+  selectModelInteractively?: SelectInteractiveModel;
+  resolvePiAuthSetup?: PiAuthSetupResolver;
+  readLocalPiDefaultModel?: typeof readLocalPiDefaultModel;
+  persistDefaultModel?: typeof writeLocalPiDefaultModel;
+};
 
 const DEFAULT_OUTPUT: AuthOutput = {
   stdout: (line) => console.log(line),
   stderr: (line) => console.error(line),
 };
 
-function selectedModel(setup: PiInitSetupResult): string | undefined {
+function selectedModel(setup: PiAuthSetupResult): string | undefined {
   return setup.selection.status === "selected"
     ? `${setup.selection.provider}/${setup.selection.modelId}`
     : undefined;
 }
 
-function formatSummary(piAgentDir: string, setup: PiInitSetupResult): string {
+function formatSummary(piAgentDir: string, setup: PiAuthSetupResult): string {
   const messages = [
     `Pi agent directory: ${piAgentDir}`,
     setup.readiness.message,
@@ -74,26 +83,21 @@ export async function runAuth(
   args: string[],
   repoRoot = cwd(),
   output: AuthOutput = DEFAULT_OUTPUT,
-  options: {
-    detectPiReadiness?: PiReadinessDetector;
-    runPiSmokeTest?: PiSmokeTestRunner;
-    isInteractive?: boolean;
-    selectModelInteractively?: SelectInteractiveModel;
-    resolvePiInitSetup?: PiInitSetupResolver;
-    readLocalPiDefaultModel?: typeof readLocalPiDefaultModel;
-    persistDefaultModel?: typeof writeLocalPiDefaultModel;
-  } = {},
+  options: AuthOptions = {},
 ): Promise<number> {
   if (args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
     output.stdout(HELP_TEXT);
     return 0;
   }
-  if (args.length > 0) {
-    throw new Error(`Unknown option: ${args[0]}`);
-  }
+  if (args.length > 0) throw new Error(`Unknown option: ${args[0]}`);
 
-  const resolvedRepoRoot = repoRoot;
-  const piAgentDir = localPiAgentDir(resolvedRepoRoot);
+  const resolvedRepoRoot = resolve(repoRoot);
+  const piAgentDir = existsSync(join(resolvedRepoRoot, CONFIG_FILE))
+    ? resolve(
+        resolvedRepoRoot,
+        (await loadConfig(resolvedRepoRoot)).pi.agentDir,
+      )
+    : localPiAgentDir(resolvedRepoRoot);
   const readiness = await (options.detectPiReadiness ?? detectPiReadiness)({
     agentDir: piAgentDir,
   });
@@ -109,7 +113,6 @@ export async function runAuth(
   const currentDefault = await (
     options.readLocalPiDefaultModel ?? readLocalPiDefaultModel
   )(piAgentDir);
-
   const persistDefaultModel = async (
     model: Parameters<typeof writeLocalPiDefaultModel>[1],
   ) => {
@@ -118,8 +121,7 @@ export async function runAuth(
       model,
     );
   };
-
-  const setup = await (options.resolvePiInitSetup ?? defaultResolvePiInitSetup)(
+  const setup = await (options.resolvePiAuthSetup ?? defaultResolvePiAuthSetup)(
     {
       repoRoot: resolvedRepoRoot,
       piAgentDir,
@@ -138,19 +140,15 @@ export async function runAuth(
   return setup.status === "ready" ? 0 : 1;
 }
 
-export async function main(args = process.argv.slice(2)): Promise<number> {
+export async function main(
+  args = process.argv.slice(2),
+  options: AuthOptions & { repoRoot?: string; output?: AuthOutput } = {},
+): Promise<number> {
+  const output = options.output ?? DEFAULT_OUTPUT;
   try {
-    return await runAuth(args);
+    return await runAuth(args, options.repoRoot ?? cwd(), output, options);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    output.stderr(error instanceof Error ? error.message : String(error));
     return 1;
   }
-}
-
-const isMain = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
-
-if (isMain) {
-  process.exitCode = await main();
 }

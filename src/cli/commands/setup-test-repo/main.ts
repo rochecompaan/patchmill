@@ -1,16 +1,14 @@
-#!/usr/bin/env node
-import type { CommandRunner } from "../../../command/types.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { createCommandRunner } from "../triage/command.ts";
-import { createRepositorySetupHostProvider } from "../../../host/factory.ts";
+import { createHostForProvider } from "../../../host/factory.ts";
 import type {
-  RepositoryInfo,
-  RepositorySetupHostProvider,
-  RepositoryTarget,
+  HostProviderId,
+  RepositorySetupHost,
 } from "../../../host/types.ts";
+import { CommandFailedError, runCommand } from "../../../process/command.ts";
+import type { CommandRunner } from "../../../process/command.ts";
+import type { CliOutput } from "../../main.ts";
 import { parseArgs } from "./args.ts";
 import {
   copyFixtureToRepository,
@@ -19,322 +17,109 @@ import {
 } from "./fixtures.ts";
 import { SETUP_TEST_REPO_LABELS } from "./labels.ts";
 
-export const HELP_TEXT = `Usage:
-  patchmill setup-test-repo --provider github-gh --repo OWNER/REPO [--reset]
-  patchmill setup-test-repo --provider forgejo-tea --repo OWNER/REPO --login LOGIN [--reset]
-
-Create or reset a disposable public Team Lunch Poll repository for trying Patchmill.
-
-Options:
-  --help, -h             Show this help and exit.
-  --provider PROVIDER    Required. One of: github-gh, forgejo-tea.
-  --repo OWNER/REPO      Required. Disposable target repository.
-  --login LOGIN          Optional named tea login for forgejo-tea.
-  --reset                Delete and recreate the target repository before seeding.
-`;
-
-export type SetupTestRepoOutput = {
-  stdout: (line: string) => void;
-  stderr: (line: string) => void;
-};
-
-export type SetupTestRepoDependencies = {
+const HELP = `Usage: patchmill setup-test-repo --provider <github-gh|forgejo-tea> --repo OWNER/REPO [--login NAME] [--reset]
+Create a public disposable fixture repository. --reset deletes an existing repository.`;
+type Options = {
   runner?: CommandRunner;
-  output?: SetupTestRepoOutput;
+  output?: CliOutput;
   tempParent?: string;
-  createProvider?: (options: {
-    runner: CommandRunner;
-    repoRoot: string;
-    provider: "github-gh" | "forgejo-tea";
-    login: string;
-  }) => RepositorySetupHostProvider;
+  createProvider?: (
+    provider: HostProviderId,
+    login: string,
+    runner: CommandRunner,
+    repoRoot: string,
+  ) => RepositorySetupHost;
 };
 
-type SetupSeedProgressEvent =
-  | { type: "push-seed-commit" }
-  | { type: "ensure-labels" }
-  | { type: "seed-issues-start"; total: number }
-  | { type: "seed-issue"; completed: number; total: number; title: string };
-
-function formatSetupSeedProgress(event: SetupSeedProgressEvent): string {
-  switch (event.type) {
-    case "push-seed-commit":
-      return "Pushing seed commit";
-    case "ensure-labels":
-      return "Ensuring labels";
-    case "seed-issues-start":
-      return `Seeding issues (${event.total})`;
-    case "seed-issue":
-      return `  [${event.completed}/${event.total}] ${event.title}`;
-  }
-}
-
-function emitSetupSeedProgress(
-  output: SetupTestRepoOutput,
-  event: SetupSeedProgressEvent,
-): void {
-  output.stdout(formatSetupSeedProgress(event));
-}
-
-const DEFAULT_OUTPUT: SetupTestRepoOutput = {
-  stdout: (line) => console.log(line),
-  stderr: (line) => console.error(line),
-};
-
-async function runGit(
-  runner: CommandRunner,
-  repoRoot: string,
-  args: string[],
-): Promise<void> {
-  const result = await runner.run("git", args, { cwd: repoRoot });
-  if (result.code !== 0) {
-    throw new Error(
-      `git ${args.join(" ")} failed: ${result.stderr || result.stdout}`,
-    );
-  }
-}
-
-async function ensureGit(runner: CommandRunner): Promise<void> {
-  const result = await runner.run("git", ["--version"]);
-  if (result.code !== 0) {
-    throw new Error(`git --version failed: ${result.stderr || result.stdout}`);
-  }
-}
-
-function createProviderFromFactory(options: {
-  runner: CommandRunner;
-  repoRoot: string;
-  provider: "github-gh" | "forgejo-tea";
-  login: string;
-}): RepositorySetupHostProvider {
-  return createRepositorySetupHostProvider({
-    runner: options.runner,
-    repoRoot: options.repoRoot,
-    host: { provider: options.provider, login: options.login },
-  });
-}
-
-async function prepareRepository(options: {
-  provider: RepositorySetupHostProvider;
-  target: RepositoryTarget;
-  reset: boolean;
-  output: SetupTestRepoOutput;
-  markCreated: () => void;
-}): Promise<RepositoryInfo> {
-  const existing = await options.provider.getRepository(options.target);
-  if (existing && !options.reset) {
-    throw new Error(
-      `Repository ${options.target.slug} already exists. Rerun with --reset only if it is disposable and safe to delete.`,
-    );
-  }
-
-  if (options.reset) {
-    options.output.stdout(
-      `Resetting ${options.provider.displayName} repository ${options.target.slug}${existing ? ` (${existing.publicUrl})` : ""}`,
-    );
-    if (existing) {
-      options.output.stdout(`Deleting ${options.target.slug}`);
-      await options.provider.deleteRepo(options.target);
-    }
-    options.output.stdout(`Creating public repository ${options.target.slug}`);
-  }
-
-  await options.provider.createPublicRepo(options.target);
-  options.markCreated();
-  const created = await options.provider.getRepository(options.target);
-  if (!created) {
-    throw new Error(
-      `Repository ${options.target.slug} was created but could not be read back from ${options.provider.displayName}`,
-    );
-  }
-  return created;
-}
-
-async function createSeedCommit(options: {
-  runner: CommandRunner;
-  repoRoot: string;
-}): Promise<void> {
-  await runGit(options.runner, options.repoRoot, ["init", "-b", "main"]);
-  await runGit(options.runner, options.repoRoot, [
-    "add",
-    "README.md",
-    "PROJECT_BRIEF.md",
-    "issues",
-  ]);
-  await runGit(options.runner, options.repoRoot, [
-    "-c",
-    "user.name=Patchmill",
-    "-c",
-    "user.email=patchmill@example.invalid",
-    "commit",
-    "-m",
-    "Seed Team Lunch Poll demo",
-  ]);
-}
-
-async function pushSeedCommit(options: {
-  runner: CommandRunner;
-  repoRoot: string;
-  remoteUrl: string;
-}): Promise<void> {
-  await runGit(options.runner, options.repoRoot, [
-    "remote",
-    "add",
-    "origin",
-    options.remoteUrl,
-  ]);
-  await runGit(options.runner, options.repoRoot, [
-    "push",
-    "-u",
-    "origin",
-    "main",
-  ]);
-}
-
-async function createMissingLabels(
-  provider: RepositorySetupHostProvider,
-  target: RepositoryTarget,
-): Promise<void> {
-  const existingLabels = new Set(await provider.listLabels(target));
-  for (const label of SETUP_TEST_REPO_LABELS) {
-    if (!existingLabels.has(label.name))
-      await provider.createLabel(target, label);
-  }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function rollbackCreatedRepository(options: {
-  provider: RepositorySetupHostProvider;
-  target: RepositoryTarget;
-}): Promise<string> {
-  try {
-    await options.provider.deleteRepo(options.target);
-    return `Rolled back ${options.target.slug} after setup failure.`;
-  } catch (rollbackError) {
-    return `Rollback failed for ${options.target.slug}: ${errorMessage(rollbackError)}`;
-  }
-}
-
-export async function runSetupTestRepo(
-  args: string[],
-  dependencies: SetupTestRepoDependencies = {},
+export async function main(
+  args: string[] = process.argv.slice(2),
+  options: Options = {},
 ): Promise<number> {
-  const output = dependencies.output ?? DEFAULT_OUTPUT;
+  const output = options.output ?? {
+    stdout: console.log,
+    stderr: console.error,
+  };
+  let directory: string | undefined;
+  let created = false;
+  let host: RepositorySetupHost | undefined;
+  let config: ReturnType<typeof parseArgs> | undefined;
   try {
-    const config = parseArgs(args);
+    config = parseArgs(args);
     if (config.showHelp) {
-      output.stdout(HELP_TEXT);
+      output.stdout(HELP);
       return 0;
     }
-    if (!config.provider || !config.target) {
-      throw new Error("Invalid setup-test-repo configuration");
+    const target = config.target!;
+    const fixture = await resolveFixtureDirectory();
+    const issues = await loadSetupIssues(fixture);
+    directory = await mkdtemp(
+      join(options.tempParent ?? tmpdir(), "patchmill-setup-"),
+    );
+    const runner = options.runner ?? runCommand;
+    host = (options.createProvider ?? createHostForProvider)(
+      config.provider!,
+      config.login ?? "",
+      runner,
+      directory,
+    );
+    const cli = await host.checkCli();
+    if (!cli.ok) throw new Error(cli.message);
+    const existing = await host.getRepository(target);
+    if (existing && !config.reset)
+      throw new Error(
+        `${target.slug} already exists; use --reset to delete and recreate it`,
+      );
+    if (existing) {
+      output.stdout(`Deleting ${target.slug}`);
+      await host.deleteRepo(target);
     }
-
-    const runner = dependencies.runner ?? createCommandRunner();
-    await ensureGit(runner);
-
-    const tempParent = dependencies.tempParent ?? tmpdir();
-    const repoRoot = await mkdtemp(join(tempParent, "patchmill-test-repo-"));
-    try {
-      const provider = (
-        dependencies.createProvider ?? createProviderFromFactory
-      )({
-        runner,
-        repoRoot,
-        provider: config.provider,
-        login: config.login ?? "",
-      });
-
-      const cli = await provider.checkCli();
-      if (!cli.ok) {
-        throw new Error([cli.message, ...cli.remediation].join("\n"));
-      }
-
-      const fixtureDir = await resolveFixtureDirectory();
-      const issues = await loadSetupIssues(fixtureDir);
-      await copyFixtureToRepository(fixtureDir, repoRoot);
-      await createSeedCommit({
-        runner,
-        repoRoot,
-      });
-
-      let createdRemote = false;
-      try {
-        const repository = await prepareRepository({
-          provider,
-          target: config.target,
-          reset: config.reset,
-          output,
-          markCreated: () => {
-            createdRemote = true;
-          },
-        });
-
-        emitSetupSeedProgress(output, { type: "push-seed-commit" });
-        await pushSeedCommit({
-          runner,
-          repoRoot,
-          remoteUrl: repository.gitRemoteUrl,
-        });
-
-        emitSetupSeedProgress(output, { type: "ensure-labels" });
-        await createMissingLabels(provider, config.target);
-
-        emitSetupSeedProgress(output, {
-          type: "seed-issues-start",
-          total: issues.length,
-        });
-        for (const [index, issue] of issues.entries()) {
-          emitSetupSeedProgress(output, {
-            type: "seed-issue",
-            completed: index + 1,
-            total: issues.length,
-            title: issue.title,
-          });
-          await provider.createIssue(config.target, issue);
-        }
-
-        output.stdout(`Seeded ${repository.publicUrl}`);
-      } catch (error) {
-        if (createdRemote) {
-          const rollbackMessage = await rollbackCreatedRepository({
-            provider,
-            target: config.target,
-          });
-          throw new Error(`${errorMessage(error)}\n${rollbackMessage}`, {
-            cause: error,
-          });
-        }
-        throw error;
-      }
-      output.stdout("");
-      output.stdout("Next steps:");
-      output.stdout(`  ${provider.cloneCommand(config.target)}`);
-      output.stdout(`  cd ${config.target.repo}`);
-      output.stdout("  patchmill init");
-      output.stdout("  patchmill triage --dry-run");
-      output.stdout("  patchmill triage");
-      return 0;
-    } finally {
-      await rm(repoRoot, { recursive: true, force: true });
+    output.stdout(`Creating ${target.slug} on ${host.displayName}`);
+    await host.createPublicRepo(target);
+    created = true;
+    const repository = await host.getRepository(target);
+    if (!repository)
+      throw new Error(`Created repository ${target.slug} could not be found`);
+    await copyFixtureToRepository(fixture, directory);
+    const git = async (argv: string[]) => {
+      const result = await runner("git", argv, { cwd: directory! });
+      if (result.code !== 0) throw new CommandFailedError("git", argv, result);
+    };
+    await git(["init", "--initial-branch=main"]);
+    await git(["add", "."]);
+    await git([
+      "-c",
+      "user.name=Patchmill",
+      "-c",
+      "user.email=patchmill@example.invalid",
+      "commit",
+      "-m",
+      "Seed demo repository",
+    ]);
+    await git(["remote", "add", "origin", repository.gitRemoteUrl]);
+    await git(["push", "--set-upstream", "origin", "main"]);
+    const labels = new Set(await host.listLabels(target));
+    for (const label of SETUP_TEST_REPO_LABELS) {
+      if (!labels.has(label.name)) await host.createLabel(target, label);
     }
+    for (const issue of issues) await host.createIssue(target, issue);
+    output.stdout(
+      `Created ${issues.length} fixture issues: ${repository.publicUrl}`,
+    );
+    output.stdout(
+      `Next: ${host.cloneCommand(target)}, then run patchmill init and patchmill triage.`,
+    );
+    return 0;
   } catch (error) {
     output.stderr(error instanceof Error ? error.message : String(error));
+    if (created && host && config?.target) {
+      try {
+        await host.deleteRepo(config.target);
+      } catch (rollbackError) {
+        output.stderr(`Rollback failed: ${String(rollbackError)}`);
+      }
+    }
     return 1;
+  } finally {
+    if (directory) await rm(directory, { recursive: true, force: true });
   }
-}
-
-export async function main(args = process.argv.slice(2)): Promise<number> {
-  return runSetupTestRepo(args);
-}
-
-const isMain = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
-
-if (isMain) {
-  process.exitCode = await main();
 }

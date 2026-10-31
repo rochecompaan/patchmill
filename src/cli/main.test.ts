@@ -1,135 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
-import { HELP_TEXT, createCliMain, main, resolveCommand } from "./main.ts";
+import { HELP_TEXT, createCliMain } from "./main.ts";
 
-test("resolveCommand returns help with no command", () => {
-  assert.equal(
-    resolveCommand([], ["init", "doctor", "triage", "run-once"]),
-    "help",
-  );
-});
-
-test("resolveCommand maps triage to the public command name", () => {
-  assert.deepEqual(resolveCommand(["triage", "--dry-run"], ["triage"]), {
-    command: "triage",
-    args: ["--dry-run"],
-  });
-});
-
-test("resolveCommand maps run-once to the public command name", () => {
-  assert.deepEqual(resolveCommand(["run-once", "--issue", "7"], ["run-once"]), {
-    command: "run-once",
-    args: ["--issue", "7"],
-  });
-});
-
-test("resolveCommand maps set-spec and set-plan to their public command names", () => {
-  assert.deepEqual(
-    resolveCommand(
-      ["set-spec", "--issue", "7", "docs/specs/a.md"],
-      ["set-spec"],
-    ),
-    {
-      command: "set-spec",
-      args: ["--issue", "7", "docs/specs/a.md"],
-    },
-  );
-  assert.deepEqual(
-    resolveCommand(
-      ["set-plan", "--issue", "7", "docs/plans/a.md"],
-      ["set-plan"],
-    ),
-    {
-      command: "set-plan",
-      args: ["--issue", "7", "docs/plans/a.md"],
-    },
-  );
-});
-
-test("resolveCommand maps setup-test-repo to the public command name", () => {
-  assert.deepEqual(
-    resolveCommand(
-      ["setup-test-repo", "--provider", "github-gh"],
-      ["setup-test-repo"],
-    ),
-    {
-      command: "setup-test-repo",
-      args: ["--provider", "github-gh"],
-    },
-  );
-});
-
-test("resolveCommand maps skills to the public command name", () => {
-  assert.deepEqual(resolveCommand(["skills", "update"], ["skills"]), {
-    command: "skills",
-    args: ["update"],
-  });
-});
-
-test("resolveCommand maps init to the public command name", () => {
-  assert.deepEqual(resolveCommand(["init"], ["init"]), {
-    command: "init",
-    args: [],
-  });
-});
-
-test("resolveCommand maps auth to the public command name", () => {
-  assert.deepEqual(resolveCommand(["auth", "--help"], ["auth"]), {
-    command: "auth",
-    args: ["--help"],
-  });
-});
-
-test("resolveCommand maps doctor to the public command name", () => {
-  assert.deepEqual(resolveCommand(["doctor", "--quiet"], ["doctor"]), {
-    command: "doctor",
-    args: ["--quiet"],
-  });
-});
-
-test("main prints the package version", async () => {
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
-  const packageJson = JSON.parse(
-    readFileSync(join(repoRoot, "package.json"), "utf8"),
-  ) as { version: string };
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-  const originalLog = console.log;
-  const originalError = console.error;
-
-  try {
-    console.log = (line?: unknown) => stdout.push(String(line));
-    console.error = (line?: unknown) => stderr.push(String(line));
-
-    assert.equal(await main(["version"]), 0);
-  } finally {
-    console.log = originalLog;
-    console.error = originalError;
-  }
-
-  assert.deepEqual(stdout, [packageJson.version]);
-  assert.deepEqual(stderr, []);
-});
-
-test("resolveCommand rejects unknown commands", () => {
-  assert.throws(
-    () => resolveCommand(["queue"], ["init", "doctor", "triage", "run-once"]),
-    /Unknown command: queue/,
-  );
-});
-
-test("resolveCommand rejects inherited property names", () => {
-  assert.throws(
-    () =>
-      resolveCommand(["toString"], ["init", "doctor", "triage", "run-once"]),
-    /Unknown command: toString/,
-  );
-});
-
-test("createCliMain prints top-level help", async () => {
+test("createCliMain prints help for the skills-first commands", async () => {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const main = createCliMain(new Map(), {
@@ -138,175 +11,16 @@ test("createCliMain prints top-level help", async () => {
   });
 
   assert.equal(await main(["--help"]), 0);
-  assert.match(HELP_TEXT, /init\s+Create a minimal patchmill\.config\.json\./);
-  assert.match(
-    HELP_TEXT,
-    /auth\s+Configure or repair repo-local Pi provider authentication\./,
-  );
-  assert.match(HELP_TEXT, /doctor\s+Run read-only readiness checks\./);
-  assert.match(HELP_TEXT, /skills\s+Manage Patchmill project-local skills\./);
-  assert.match(
-    HELP_TEXT,
-    /set-spec\s+Deprecated; legacy Issue-run comment compatibility only\./,
-  );
-  assert.match(
-    HELP_TEXT,
-    /set-plan\s+Deprecated; legacy Issue-run comment compatibility only\./,
-  );
-  assert.match(HELP_TEXT, /version\s+Print the Patchmill CLI version\./);
-  assert.match(
-    HELP_TEXT,
-    /setup-test-repo\s+Create or reset a disposable Patchmill demo repository\./,
-  );
   assert.deepEqual(stdout, [HELP_TEXT]);
   assert.deepEqual(stderr, []);
-});
-
-test("createCliMain dispatches selected command with remaining args", async () => {
-  const calls: string[][] = [];
-  const main = createCliMain(
-    new Map([
-      [
-        "triage",
-        async (args) => {
-          calls.push(args);
-          return 17;
-        },
-      ],
-    ]),
-  );
-
-  assert.equal(await main(["triage", "--dry-run"]), 17);
-  assert.deepEqual(calls, [["--dry-run"]]);
-});
-
-test("createCliMain dispatches setup-test-repo command", async () => {
-  const calls: string[][] = [];
-  const main = createCliMain(
-    new Map([
-      [
-        "setup-test-repo",
-        async (args) => {
-          calls.push(args);
-          return 0;
-        },
-      ],
-    ]),
-  );
-
-  assert.equal(
-    await main([
-      "setup-test-repo",
-      "--provider",
-      "github-gh",
-      "--repo",
-      "OWNER/REPO",
-    ]),
-    0,
-  );
-  assert.deepEqual(calls, [
-    ["--provider", "github-gh", "--repo", "OWNER/REPO"],
-  ]);
-});
-
-test("createCliMain dispatches auth command", async () => {
-  const calls: string[][] = [];
-  const main = createCliMain(
-    new Map([
-      [
-        "auth",
-        async (args) => {
-          calls.push(args);
-          return 0;
-        },
-      ],
-    ]),
-  );
-
-  assert.equal(await main(["auth", "--help"]), 0);
-  assert.deepEqual(calls, [["--help"]]);
-});
-
-test("createCliMain dispatches skills command", async () => {
-  const calls: string[][] = [];
-  const main = createCliMain(
-    new Map([
-      [
-        "skills",
-        async (args) => {
-          calls.push(args);
-          return 0;
-        },
-      ],
-    ]),
-  );
-
-  assert.equal(await main(["skills", "update"]), 0);
-  assert.deepEqual(calls, [["update"]]);
-});
-
-test("createCliMain dispatches set-spec and set-plan commands", async () => {
-  const calls: Array<{ command: string; args: string[] }> = [];
-  const main = createCliMain(
-    new Map([
-      [
-        "set-spec",
-        async (args) => {
-          calls.push({ command: "set-spec", args });
-          return 0;
-        },
-      ],
-      [
-        "set-plan",
-        async (args) => {
-          calls.push({ command: "set-plan", args });
-          return 0;
-        },
-      ],
-    ]),
-  );
-
-  assert.equal(await main(["set-spec", "--issue", "7", "docs/specs/a.md"]), 0);
-  assert.equal(await main(["set-plan", "--issue", "7", "docs/plans/a.md"]), 0);
-  assert.deepEqual(calls, [
-    { command: "set-spec", args: ["--issue", "7", "docs/specs/a.md"] },
-    { command: "set-plan", args: ["--issue", "7", "docs/plans/a.md"] },
-  ]);
-});
-
-test("createCliMain dispatches init and doctor commands", async () => {
-  const calls: Array<{ command: string; args: string[] }> = [];
-  const main = createCliMain(
-    new Map([
-      [
-        "init",
-        async (args) => {
-          calls.push({ command: "init", args });
-          return 0;
-        },
-      ],
-      [
-        "doctor",
-        async (args) => {
-          calls.push({ command: "doctor", args });
-          return 0;
-        },
-      ],
-    ]),
-  );
-
-  assert.equal(await main(["init"]), 0);
-  assert.equal(await main(["doctor", "--quiet"]), 0);
-  assert.deepEqual(calls, [
-    { command: "init", args: [] },
-    { command: "doctor", args: ["--quiet"] },
-  ]);
+  assert.match(HELP_TEXT, /release/);
+  assert.doesNotMatch(HELP_TEXT, /set-spec|skills|run /);
 });
 
 test("createCliMain reports unknown commands with help", async () => {
   const stdout: string[] = [];
   const stderr: string[] = [];
-  const main = createCliMain(new Map([["triage", async () => 0]]), {
+  const main = createCliMain(new Map(), {
     stdout: (line) => stdout.push(line),
     stderr: (line) => stderr.push(line),
   });
@@ -316,20 +30,20 @@ test("createCliMain reports unknown commands with help", async () => {
   assert.deepEqual(stderr, ["Unknown command: queue", HELP_TEXT]);
 });
 
-test("top-level dispatch forwards run reset arguments", async () => {
-  let argumentsSeen: string[] = [];
+test("createCliMain dispatches version with remaining arguments", async () => {
+  const calls: string[][] = [];
   const main = createCliMain(
     new Map([
       [
-        "run",
+        "version",
         async (args) => {
-          argumentsSeen = args;
-          return 0;
+          calls.push(args);
+          return 17;
         },
       ],
     ]),
-    { stdout: () => undefined, stderr: () => undefined },
   );
-  assert.equal(await main(["run", "reset", "--issue", "45"]), 0);
-  assert.deepEqual(argumentsSeen, ["reset", "--issue", "45"]);
+
+  assert.equal(await main(["version", "--verbose"]), 17);
+  assert.deepEqual(calls, [["--verbose"]]);
 });

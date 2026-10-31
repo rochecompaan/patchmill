@@ -1,371 +1,97 @@
 ---
 title: Configuration
-description: Configure the Patchmill workflow your agents should follow.
+description: Configure the host, paths, skills, timeout, and planning gates.
 ---
 
-Patchmill reads repository behavior from `patchmill.config.json`.
+Patchmill reads `patchmill.config.json` from the repository root. Run
+`patchmill init --provider github-gh` to create it when missing. Every supported
+key has a default. Unknown keys fail loading by name. There are no aliases or
+earlier-version readers. Retired spec/plan review-label settings are accepted
+but ignored. New configuration omits them.
 
-Before running `patchmill init`, make sure the repository's issue-host CLI is
-installed and authenticated. Patchmill uses GitHub's `gh` CLI or Forgejo/Gitea's
-`tea` CLI for issue and pull-request operations; see
-[Providers](/guides/providers/) for setup details.
+## Host and trust
 
-Then initialize the repository and customize only the parts that change how your
-team wants agents to work.
+`host.provider` is `github-gh` or `forgejo-tea`. GitHub uses the active `gh`
+authentication context. Its init flow can seed `host.login` with the detected
+username. It does not use that value to select a GitHub account.
 
-```sh
-patchmill init
-```
+For Forgejo, `host.login: ""` means Tea's default profile. Use an explicit Tea
+profile alias to select another profile. Do not substitute the detected username
+for the alias. `init --provider forgejo-tea --login PROFILE` records that alias.
+There is no Patchmill environment override for the login.
 
-A good first configuration answers five questions:
+The authenticated username and `host.trustedAuthors` identify trusted comment
+authors. GitHub also trusts its nonempty configured `host.login`. A Tea profile
+alias does not grant trust. Duplicate identities count once. Issue content and
+comments remain untrusted instructions, even from those authors.
 
-1. Which issue host should Patchmill use?
-2. Should humans approve specs or plans before implementation?
-3. How should agents prepare the development environment?
-4. Which skills should guide implementation, review, visual evidence, and
-   landing?
-5. Where should Patchmill look for project context, validation commands, and
-   visual reference files?
+## Planning gates
 
-## Configure the issue host
+`workflow.specApproval.required` and `workflow.planApproval.required` each
+default to `false`. Set either to `true` to require a separate planning pull
+request for that stage. Only merging that pull request into the base unlocks the
+next stage. Review approval alone does not unlock it.
 
-`host` tells Patchmill which issue and pull-request provider to use. `init`
-usually writes this for you.
+The issue stays `in-progress` while waiting. A later run resumes under the same
+issue lock. Ungated documents go into the next required planning pull request,
+or the implementation pull request when no later gate is required. With both
+gates off, planning writes both documents and continues to implementation.
 
-```json
-{
-  "host": {
-    "provider": "github-gh",
-    "login": ""
-  }
-}
-```
+## Paths and git
 
-Use `github-gh` for GitHub through the active `gh` CLI authentication context.
-GitHub does not use `host.login` to choose an account.
+`paths` contains `specsDir`, `plansDir`, `worktreeDir`, and `runsDir`. The
+defaults are `docs/specs`, `docs/plans`, `.worktrees`, and `.patchmill/runs`.
+Required planning gates use separate branches and worktrees. Each later branch
+starts from the fetched base after earlier planning PRs merge.
+`git.baseBranch: null` uses the remote default branch. A string selects an
+explicit base branch. The remote is `origin`.
 
-For Forgejo/Gitea through the `tea` CLI, set the configured login name:
+## Skills and Pi
 
-```json
-{
-  "host": {
-    "provider": "forgejo-tea",
-    "login": "triage-agent"
-  }
-}
-```
+`skills` contains only `triage`, `planning`, and `implementation`. Each value
+names a directory with a `SKILL.md` file. Put repository procedures in skills
+and `AGENTS.md`, not extra configuration keys.
 
-`PATCHMILL_HOST_LOGIN` can override `host.login` for providers that use named
-logins, which is useful when local machines need different credentials.
+`pi.agentDir` defaults to `.patchmill/pi-agent`. `pi.timeoutMinutes` defaults to
+90 for each session. Run `patchmill auth` to configure provider credentials and
+choose a default model in that directory. The command verifies the provider and
+returns to the shell without opening Pi chat. See
+[Skills configuration](/guides/skills-configuration/).
 
-## Choose where Patchmill stores issue workflow state
-
-Patchmill stores workflow state in labels by default:
+## Full defaults
 
 ```json
 {
-  "issueState": {
-    "provider": "labels"
-  }
-}
-```
-
-Use comment-backed state when you can comment on issues but cannot create or
-apply repository labels:
-
-```json
-{
-  "issueState": {
-    "provider": "comments",
-    "trustedAuthors": ["your-login"]
-  }
-}
-```
-
-To set this up after `patchmill init`, run `patchmill init` without `--yes`,
-answer `no` when asked to create missing labels, then edit
-`patchmill.config.json` to set `issueState.provider` to `comments`. Omit
-`trustedAuthors` to trust the authenticated host user, or set it when other
-users may write authoritative Patchmill state comments.
-
-## Decide when humans approve work
-
-`workflow.specApproval.required` and `workflow.planApproval.required` choose
-planning review gates for a fresh Issue run. Run-once snapshots the values at
-initialization; a required gate creates a planning pull request and waits for
-its verified merge.
-
-```json
-{
-  "workflow": {
-    "specApproval": {
-      "required": true,
-      "reviewLabel": "spec-review",
-      "approvedLabel": "spec-approved"
-    },
-    "planApproval": {
-      "required": true,
-      "reviewLabel": "plan-review",
-      "approvedLabel": "plan-approved"
-    }
-  }
-}
-```
-
-Good starting points:
-
-- Leave both approvals off for solo projects or low-risk maintenance queues.
-- Require plan approval when humans should review the implementation approach
-  before agents edit code.
-- Require spec approval when issues often need product, UX, or architecture
-  clarification before planning.
-
-The field names remain stable. Their label values are compatibility data for
-unfinished legacy runs; adding an approved label never advances fresh state.
-Review and merge the exact planning pull request, then rerun Run-once. See the
-[gate matrix](/using-patchmill/run-once/#gate-matrix) for every sequence.
-
-All implementation workflows require a validated pull request.
-`git.allowDirectLand` defaults to `false`. An explicit `true` value is rejected
-with migration guidance. A custom landing skill cannot authorize target-branch
-updates.
-
-## Teach agents how to work in this repository
-
-`skills` is the most important section to customize. Skills are the instructions
-Patchmill gives agents at each workflow stage.
-
-```json
-{
-  "skills": {
-    "triage": ".patchmill/skills/patchmill-issue-triage",
-    "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
-    "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
-  }
-}
-```
-
-Start with the generated `triage`, `planning`, `implementation`, and
-`visualEvidence` skills. `patchmill-planning` is the unattended planning entry
-point: it preserves sibling Superpowers guidance while requiring phase
-workspaces, artifact-only commits, self-review, and the requested terminal JSON.
-Then add optional hooks only after the referenced skill exists in the
-repository:
-
-```json
-{
-  "skills": {
-    "developmentEnvironment": ".patchmill/skills/development-environment",
-    "toolchain": ".patchmill/skills/project-toolchain",
-    "review": ".patchmill/skills/project-review",
-    "landing": ".patchmill/skills/project-landing"
-  }
-}
-```
-
-Each path-like value must resolve to a `SKILL.md` file. For example,
-`.patchmill/skills/project-review` means Patchmill will look for
-`.patchmill/skills/project-review/SKILL.md`.
-
-Add only the optional hooks your repository needs:
-
-- `developmentEnvironment`: run before implementation when agents need local
-  services, seeded data, Tilt, Docker, Kubernetes, or another setup step.
-- `toolchain`: describe how to install dependencies, run tests, start servers,
-  and validate changes.
-- `review`: require explicit review passes before final handoff.
-- `landing`: describe PR review, validation, checks, and handoff requirements.
-  The skill cannot authorize direct target-branch publication.
-- `visualEvidence`: describe how to capture screenshots or other proof for UI
-  changes.
-
-Prefer project-local skill paths under `.patchmill/skills/` when the team wants
-reviewable, versioned agent instructions. Use global or bundled skill names only
-when the exact skill text does not need to live in the repository.
-
-The managed inline workflow uses one final independent reviewer and one fix
-pass. It reruns final commands and permits at most two code-related PR check
-repairs. Namespace and global `superpowers:executing-plans` defaults do not
-automatically include the Patchmill review appendix. Use the managed local pack
-for the complete workflow. Explicit custom implementation and review skills
-remain operator overrides.
-
-To migrate an older managed pack, run `npx patchmill@latest skills update`. Then
-explicitly set `skills.implementation` to
-`.patchmill/skills/inline-dev-with-validation-and-pr-checks`. Updates preserve
-customized files and do not rewrite config.
-
-See [Skills configuration](/guides/skills-configuration/) for the full skill
-surface.
-
-## Clean up successful development environments
-
-Use the top-level `cleanupHook` when a successful implementation leaves local
-services or issue-specific development resources that a deterministic script can
-remove:
-
-```json
-{
-  "cleanupHook": "./scripts/cleanup.sh"
-}
-```
-
-Patchmill invokes the configured path through `bash` from the issue worktree.
-The hook owns external resources, not removal of worktree-local files. Phase
-cleanup removes all worktree-local ignored files after ordinary Git status is
-clean and the existing safeguards pass. Ignored content alone does not require
-an operator retry. Patchmill checkpoints a successful hook and does not repeat
-it during cleanup retries.
-
-For example, a repository with a worktree-scoped Docker Compose project can
-provide:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-docker compose down --remove-orphans
-```
-
-Use the repository's own teardown command when it uses another environment tool.
-Make cleanup idempotent, namespace resources to the current issue or worktree,
-tolerate resources that are already absent, and leave Patchmill's Git worktree
-and branch intact.
-
-Planning implementation runs its cleanup hook after PR publication, before the
-PR merge. Legacy implementation runs its cleanup hook after verified PR merge.
-Both workflows save finish checkpoints for retries.
-
-Each hook must affect only its owned issue's resources. Shared service cleanup
-is unsupported during concurrent explicit work. See
-[recovery and operator safety](/using-patchmill/run-once/#recovery-and-operator-safety)
-for ordering, retry, failure-reporting, and workspace-ownership details.
-
-## Configure visual evidence paths
-
-Visual evidence has two parts:
-
-- `skills.visualEvidence` tells agents how to capture evidence.
-- `projectPolicy.visualEvidence` tells Patchmill which committed screenshot
-  paths are valid and gives agents an example evidence entry.
-
-```json
-{
-  "projectPolicy": {
-    "visualEvidence": {
-      "referenceScreenshotPaths": ["docs/screenshots", "docs/visual-baselines"],
-      "prEvidenceExample": {
-        "screenshotPath": "docs/screenshots/example-screen.png",
-        "caption": "Reference screenshot for the changed UI state",
-        "referencePaths": ["docs/visual-baselines/homepage.png"]
-      }
-    }
-  }
-}
-```
-
-Use this when UI changes need proof in the pull request. Keep screenshot paths
-inside directories the team is willing to commit, because Patchmill validates
-that referenced evidence files are present before cleanup.
-
-## Set project expectations
-
-`projectPolicy` carries repository-specific expectations that should appear in
-agent prompts.
-
-```json
-{
-  "projectPolicy": {
-    "projectName": "Example Project",
-    "contextFileNames": ["AGENTS.md", "CONTRIBUTING.md"],
-    "validation": {
-      "rules": [
-        {
-          "category": "tests",
-          "commands": ["npm test"]
-        },
-        {
-          "category": "docs",
-          "commands": ["npm run docs:build"]
-        }
-      ],
-      "forbiddenSubstitutions": [
-        "Do not replace browser evidence with static screenshots from design files."
-      ]
-    }
-  }
-}
-```
-
-The most useful starting points are:
-
-- `contextFileNames`: files agents should read for repository rules.
-- `validation.rules`: commands agents should run for common change categories.
-- `forbiddenSubstitutions`: shortcuts agents must not take when validation or
-  evidence is required.
-
-Keep this section short. Put long procedures in skills, where they can be
-reviewed and reused by the relevant workflow stage.
-
-## Keep paths predictable
-
-Most teams can keep the generated `paths` defaults. Customize them when your
-repository already has conventions for specs, plans, worktrees, or run logs.
-
-```json
-{
+  "host": { "provider": "github-gh", "login": "", "trustedAuthors": [] },
+  "labels": {
+    "ready": "agent-ready",
+    "inProgress": "in-progress",
+    "needsInfo": "needs-info",
+    "done": "agent-done",
+    "unsuitable": "agent-unsuitable",
+    "blocked": "blocked"
+  },
   "paths": {
     "specsDir": "docs/specs",
     "plansDir": "docs/plans",
     "worktreeDir": ".worktrees",
-    "runStateDir": ".patchmill/runs",
-    "triageLogDir": ".patchmill/triage-runs"
+    "runsDir": ".patchmill/runs"
+  },
+  "git": { "baseBranch": null },
+  "skills": {
+    "triage": ".patchmill/skills/patchmill-issue-triage",
+    "planning": ".patchmill/skills/patchmill-planning",
+    "implementation": ".patchmill/skills/patchmill-implementation"
+  },
+  "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
+  "workflow": {
+    "specApproval": { "required": false },
+    "planApproval": { "required": false }
   }
 }
 ```
 
-Commit `patchmill.config.json` and project-local skills when the workflow should
-be shared by the team. Keep machine-specific runtime state such as
-`.patchmill/pi-agent/`, `.patchmill/runs/`, and `.patchmill/triage-runs/` local.
-
-Configure the main Pi orchestrator and role-specific subagent defaults in
-[Pi and subagents](/guides/pi-and-subagents/). Keep those settings local with
-the rest of `.patchmill/pi-agent/`.
-
-Concurrent explicit commands share one bound namespace. The namespace binds the
-clone root, host repository, state directory, workspace root, and todo
-definition. Before changing these values or upgrading Patchmill, stop all
-affected processes. See the
-[operator contract](/using-patchmill/run-once/#concurrent-explicit-commands).
-
-The default todo root remains `.pi/todos` within each owned workspace. Relative
-custom todo roots also use that workspace. Absolute shared roots preserve other
-issues' tasks through issue scoping. Resume retains an existing todo location.
-
-## What not to configure first
-
-You usually do not need to set `git.baseBranch`. When it is omitted, `run-once`
-detects the pull-request target branch from local git metadata and falls back to
-`main` only when detection cannot find a better answer.
-
-Only set git policy when your repository has unusual branch, remote, worktree,
-or publication rules. Otherwise, start with workflow gates, skills,
-development-environment setup, and validation policy.
-
-## Check the result
-
-After changing configuration, run:
-
-```sh
-patchmill doctor
-patchmill triage --dry-run
-```
-
-`doctor` validates host access, labels, skills, runtime access, and local paths.
-`triage --dry-run` confirms that Patchmill can read issues before it mutates
-labels or comments.
-
-For a fuller reference, see
-[Environment and configuration reference](/reference/environment-and-config/)
-and the [configuration example](/reference/configuration-example/).
+`init` leaves valid existing configuration unchanged. Invalid configuration
+fails rather than being repaired. Commit shared configuration and installed
+skills. Keep credentials and run output local. After changes, run
+`patchmill doctor`. That command includes a real Pi smoke prompt.

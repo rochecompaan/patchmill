@@ -1,234 +1,162 @@
-import type { CommandRunner } from "../../../command/types.ts";
-import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import {
-  commandText,
-  HELP_TEXT,
-  isHelpOnlyInvocation,
-  loadCliConfig,
-  main,
-  type TriageCliDependencies,
-} from "./main.ts";
-import type { TriageConfig, TriageResult } from "./types.ts";
+import { test, type TestContext } from "node:test";
+import { CONFIG_FILE } from "../../../config/config.ts";
+import { runCommand } from "../../../process/command.ts";
+import { main } from "./main.ts";
 
-function triageConfig(overrides: Partial<TriageConfig> = {}): TriageConfig {
+async function harness(t: TestContext) {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-triage-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, CONFIG_FILE),
+    JSON.stringify({ labels: { ready: "queue" } }),
+  );
+  const stdout: string[] = [],
+    stderr: string[] = [];
   return {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    triageThinking: "high",
-    host: DEFAULT_PATCHMILL_CONFIG.host,
-    logDir: "/repo/.patchmill/triage-runs",
-    projectPolicy: DEFAULT_PATCHMILL_CONFIG.projectPolicy,
-    skills: DEFAULT_PATCHMILL_CONFIG.skills,
-    ...overrides,
+    root,
+    stdout,
+    stderr,
+    options: {
+      repoRoot: root,
+      output: {
+        stdout: (s: string) => stdout.push(s),
+        stderr: (s: string) => stderr.push(s),
+      },
+    },
   };
 }
 
-const commandRunner: CommandRunner = {
-  async run() {
-    throw new Error("command runner should not be called by these tests");
-  },
-};
-
-function triageResult(overrides: Partial<TriageResult> = {}): TriageResult {
-  return {
-    status: "dry-run",
-    issueCount: 0,
-    logPath: "/repo/.patchmill/triage-runs/triage.json",
-    issues: [],
-    ...overrides,
-  };
-}
-
-test("isHelpOnlyInvocation detects help flags", () => {
-  assert.equal(isHelpOnlyInvocation(["--help"]), true);
-  assert.equal(isHelpOnlyInvocation(["-h"]), true);
-  assert.equal(isHelpOnlyInvocation(["--dry-run", "--help"]), true);
-  assert.equal(isHelpOnlyInvocation(["--dry-run"]), false);
+test("strict flags reject malformed issue numbers and unsupported arguments before effects", async (t) => {
+  const f = await harness(t);
+  await rm(join(f.root, CONFIG_FILE));
+  for (const args of [
+    ["--issue"],
+    ["--issue", "0"],
+    ["--issue", "-1"],
+    ["--issue", "1.5"],
+    ["--issue", "1e2"],
+    ["--issue", "9007199254740992"],
+    ["--issue", "1", "--issue", "2"],
+    ["--plan-only"],
+    ["9"],
+    ["--wat"],
+  ]) {
+    f.stderr.length = 0;
+    assert.equal(await main(args, f.options), 1);
+    assert.match(f.stderr.join("\n"), /Use|Unknown/);
+  }
 });
 
-test("commandText formats the displayed triage command", () => {
-  assert.equal(commandText([]), "patchmill triage");
+test("assembles checked Host and bundled Pi, forwards flags and output", async (t) => {
+  const f = await harness(t);
+  const runner: typeof runCommand = async (command, args, options) => {
+    assert.equal(command, "gh");
+    assert.ok(
+      [
+        JSON.stringify(["--version"]),
+        JSON.stringify(["auth", "status"]),
+        JSON.stringify(["api", "user", "--jq", ".login"]),
+      ].includes(JSON.stringify(args)),
+    );
+    assert.equal(options?.cwd, f.root);
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  let entered = false;
   assert.equal(
-    commandText(["--dry-run", "--limit", "2"]),
-    "patchmill triage --dry-run --limit 2",
+    await main(["--issue", "9", "--dry-run"], {
+      ...f.options,
+      runner,
+      runTriage: async (config, deps, options) => {
+        entered = true;
+        assert.equal(config.labels.ready, "queue");
+        assert.equal(deps.repoRoot, f.root);
+        assert.ok(deps.now() instanceof Date);
+        assert.equal(deps.piCommand.command, process.execPath);
+        assert.equal(
+          (await stat(deps.piCommand.argsPrefix[0]!)).isFile(),
+          true,
+        );
+        assert.equal(options.issue, 9);
+        assert.equal(options.dryRun, true);
+        assert.equal(options.signal?.aborted, false);
+        options.onProgress?.({ type: "selected", total: 1 });
+        deps.output.stdout("queue: Looks clear.");
+        return [{ issue: 9, label: "queue", applied: false }];
+      },
+    }),
+    0,
   );
+  assert.equal(entered, true);
+  assert.ok(f.stdout.includes("queue: Looks clear."));
+  assert.match(f.stdout.join("\n"), /agent issue triage: dry-run/);
+  assert.deepEqual(f.stderr, []);
 });
 
-test("loadCliConfig parses help without reading project config", async () => {
-  const config = await loadCliConfig(
-    ["--help"],
-    "/path/that/does/not/exist",
-    {},
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  test(`${signal} aborts kernel and listeners are removed after success and error`, async (t) => {
+    const f = await harness(t);
+    const before = process.listeners(signal);
+    for (const fails of [false, true]) {
+      assert.equal(
+        await main([], {
+          ...f.options,
+          runner: async () => ({ code: 0, stdout: "", stderr: "" }),
+          runTriage: async (_config, _deps, options) => {
+            process.emit(signal);
+            assert.equal(options.signal?.aborted, true);
+            if (fails) throw new Error("triage failed");
+            return [];
+          },
+        }),
+        fails ? 1 : 0,
+      );
+      assert.deepEqual(process.listeners(signal), before);
+      if (!fails)
+        assert.match(f.stdout.join("\n"), /agent issue triage: cancelled/);
+    }
+    assert.match(f.stderr.join("\n"), /triage failed/);
+  });
+}
+
+test("Host readiness failure prevents kernel entry", async (t) => {
+  const f = await harness(t);
+  assert.equal(
+    await main([], {
+      ...f.options,
+      runner: async () => ({ code: 1, stdout: "", stderr: "login required" }),
+      runTriage: async () => assert.fail("kernel entered"),
+    }),
+    1,
   );
-
-  assert.equal(config.showHelp, true);
-  assert.equal(config.repoRoot, "/path/that/does/not/exist");
+  assert.match(f.stderr.join("\n"), /login required/);
 });
 
-test("loadCliConfig loads defaults and applies CLI/env overrides", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "triage-main-"));
-  const config = await loadCliConfig(
-    ["--dry-run", "--issue", "7", "--log-dir", "triage-logs"],
-    repoRoot,
-    { PATCHMILL_HOST_LOGIN: "triage-agent" },
+test("missing configuration fails before Host commands", async (t) => {
+  const f = await harness(t);
+  await rm(join(f.root, CONFIG_FILE));
+  assert.equal(
+    await main([], {
+      ...f.options,
+      runner: async () => assert.fail("host entered"),
+    }),
+    1,
   );
-
-  assert.equal(config.dryRun, true);
-  assert.equal(config.execute, false);
-  assert.equal(config.issueNumber, 7);
-  assert.equal(config.logDir, "triage-logs");
-  assert.equal(config.host.login, "triage-agent");
+  assert.match(f.stderr.join("\n"), /Missing/);
 });
 
-test("main prints help and skips triage", async () => {
-  const stdout: string[] = [];
-  let ranTriage = false;
-  const deps: TriageCliDependencies = {
-    async loadCliConfig() {
-      return triageConfig({ showHelp: true });
-    },
-    createCommandRunner() {
-      return commandRunner;
-    },
-    async runTriage() {
-      ranTriage = true;
-      return triageResult();
-    },
-    createProgressReporter() {
-      throw new Error("reporter should not be created for help");
-    },
-    writeStdout(line) {
-      stdout.push(line);
-    },
-    writeStderr() {
-      throw new Error("stderr should not be written");
-    },
-  };
-
-  const code = await main(["--help"], deps);
-
-  assert.equal(code, 0);
-  assert.deepEqual(stdout, [HELP_TEXT]);
-  assert.equal(ranTriage, false);
-});
-
-test("main runs triage with the command runner and progress reporter", async () => {
-  const events: string[] = [];
-  const onProgress = () => events.push("progress");
-  const onToolCall = () => events.push("tool");
-  const result = triageResult({ status: "applied" });
-  const config = triageConfig({ dryRun: false, execute: true });
-  let finishedWith: TriageResult | undefined;
-  const deps: TriageCliDependencies = {
-    async loadCliConfig(args) {
-      assert.deepEqual(args, ["--issue", "12"]);
-      return config;
-    },
-    createCommandRunner() {
-      return commandRunner;
-    },
-    async runTriage(runner, runConfig) {
-      assert.strictEqual(runner, commandRunner);
-      assert.strictEqual(runConfig.onProgress, onProgress);
-      assert.strictEqual(runConfig.onToolCall, onToolCall);
-      assert.equal(runConfig.issueNumber, undefined);
-      return result;
-    },
-    createProgressReporter(options) {
-      assert.equal(options.command, "patchmill triage --issue 12");
-      return {
-        onProgress,
-        onToolCall,
-        finish(finishedResult) {
-          finishedWith = finishedResult;
-        },
-      };
-    },
-    writeStdout() {
-      throw new Error("stdout should be owned by reporter");
-    },
-    writeStderr() {
-      throw new Error("stderr should not be written");
-    },
-  };
-
-  const code = await main(["--issue", "12"], deps);
-
-  assert.equal(code, 0);
-  assert.strictEqual(finishedWith, result);
-});
-
-test("main wires tool-call output to the live console by default", async () => {
-  const stdout: string[] = [];
-  const result = triageResult({ status: "applied" });
-  const config = triageConfig({ dryRun: false, execute: true });
-  const deps: TriageCliDependencies = {
-    async loadCliConfig(args) {
-      assert.deepEqual(args, []);
-      return config;
-    },
-    createCommandRunner() {
-      return commandRunner;
-    },
-    async runTriage(_runner, runConfig) {
-      runConfig.onToolCall?.({ toolName: "bash" });
-      return result;
-    },
-    createProgressReporter(options) {
-      assert.equal(options.command, "patchmill triage");
-      return {
-        onProgress() {},
-        onToolCall(event) {
-          stdout.push(`tool:${event.toolName ?? "tool"}`);
-        },
-        finish() {},
-      };
-    },
-    writeStdout() {
-      throw new Error("stdout should be owned by reporter");
-    },
-    writeStderr() {
-      throw new Error("stderr should not be written");
-    },
-  };
-
-  const code = await main([], deps);
-
-  assert.equal(code, 0);
-  assert.deepEqual(stdout, ["tool:bash"]);
-});
-
-test("main writes errors and returns one", async () => {
-  const stderr: string[] = [];
-  const deps: TriageCliDependencies = {
-    async loadCliConfig() {
-      throw new Error("bad argument");
-    },
-    createCommandRunner() {
-      return commandRunner;
-    },
-    async runTriage() {
-      throw new Error("triage should not run");
-    },
-    createProgressReporter() {
-      throw new Error("reporter should not be created");
-    },
-    writeStdout() {
-      throw new Error("stdout should not be written");
-    },
-    writeStderr(line) {
-      stderr.push(line);
-    },
-  };
-
-  const code = await main(["--unknown"], deps);
-
-  assert.equal(code, 1);
-  assert.deepEqual(stderr, ["bad argument"]);
+test("registered triage help is effect free outside a repository", async (t) => {
+  const f = await harness(t);
+  await rm(join(f.root, CONFIG_FILE));
+  const result = await runCommand(
+    process.execPath,
+    [join(process.cwd(), "bin/patchmill.ts"), "triage", "--help"],
+    { cwd: f.root },
+  );
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /Usage: patchmill triage/);
+  assert.equal(result.stderr, "");
 });

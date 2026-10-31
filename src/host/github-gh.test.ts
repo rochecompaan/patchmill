@@ -1,665 +1,381 @@
-import type { IssueSummary, LabelDefinition } from "../issue/types.ts";
-import type { CommandResult, CommandRunner } from "../command/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GitHubGhHostProvider } from "./github-gh.ts";
+import { recordingRunner } from "../../test-support/recording-runner.ts";
+import { CommandFailedError } from "../process/command.ts";
+import { createHostForProvider } from "./factory.ts";
+import { GitHubHost } from "./github-gh.ts";
 
-type RecordedCall = {
-  command: string;
-  args: string[];
-  cwd?: string;
+const fork = {
+  number: 1,
+  url: "https://example/1",
+  state: "MERGED",
+  isDraft: false,
+  body: "fork",
+  headRefName: "agent/issue-3-x",
+  headRepository: { name: "repo" },
+  headRepositoryOwner: { login: "outsider" },
+  baseRefName: "release",
+};
+const deleted = {
+  ...fork,
+  number: 2,
+  url: "https://example/2",
+  state: "OPEN",
+  isDraft: true,
+  body: "deleted",
+  headRepository: null,
+  headRepositoryOwner: null,
+  baseRefName: "main",
 };
 
-const repoRoot = "/repo";
-const target = {
-  owner: "OWNER",
-  repo: "patchmill-test",
-  slug: "OWNER/patchmill-test",
-};
-
-function scriptedRunner(
-  responses: Record<string, CommandResult>,
-): CommandRunner & { calls: RecordedCall[] } {
-  const calls: RecordedCall[] = [];
-  return {
-    calls,
-    async run(command, args, options = {}) {
-      calls.push({ command, args: [...args], cwd: options.cwd });
-      const key = [command, ...args].join(" ");
-      const response = responses[key];
-      if (!response) throw new Error(`Unexpected command: ${key}`);
-      return response;
-    },
-  };
-}
-
-function createProvider(runner: CommandRunner): GitHubGhHostProvider {
-  return new GitHubGhHostProvider({ runner, repoRoot });
-}
-
-function createProviderWithResponses(responses: CommandResult[]): {
-  provider: GitHubGhHostProvider;
-  calls: RecordedCall[];
-} {
-  const calls: RecordedCall[] = [];
-  let index = 0;
-  const runner: CommandRunner = {
-    async run(command, args, options = {}) {
-      calls.push({ command, args: [...args], cwd: options.cwd });
-      const response = responses[index];
-      index += 1;
-      if (!response)
-        throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-      return response;
-    },
-  };
-  return { provider: createProvider(runner), calls };
-}
-
-function commandLines(runner: { calls: RecordedCall[] }): string[] {
-  return runner.calls.map((call) => [call.command, ...call.args].join(" "));
-}
-
-function assertGhContext(call: RecordedCall): void {
-  assert.equal(call.command, "gh");
-  assert.equal(call.cwd, repoRoot);
-}
-
-function flagValue(args: string[], flag: string): string | undefined {
-  const index = args.indexOf(flag);
-  return index === -1 ? undefined : args[index + 1];
-}
-
-test("GitHubGhHostProvider lists open issues", async () => {
-  const runner = scriptedRunner({
-    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
-      {
-        code: 0,
-        stdout: JSON.stringify([
-          {
-            number: 42,
-            title: "Fix dashboard",
-            body: null,
-            state: "OPEN",
-            labels: [{ name: "agent-ready" }, { name: "bug" }],
-            author: { login: "alice" },
-            createdAt: "2026-05-27T09:00:00Z",
-            updatedAt: "2026-05-28T10:00:00Z",
-            url: "https://github.example/issues/12",
-          },
-        ]),
-        stderr: "",
-      },
-  });
-  const provider = new GitHubGhHostProvider({ runner, repoRoot });
-
-  const issues = await provider.listOpenIssues();
-
-  assert.deepEqual(issues, [
+test("listPullRequests maps head repository and base branch from repo cwd", async () => {
+  const runner = recordingRunner([
     {
-      number: 42,
-      title: "Fix dashboard",
-      body: "",
+      match: /gh pr list/,
+      result: {
+        stdout: JSON.stringify([
+          fork,
+          deleted,
+          { ...fork, headRefName: "other" },
+        ]),
+      },
+    },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.listPullRequests("agent/issue-3-x"), [
+    {
+      number: 1,
+      url: "https://example/1",
+      state: "merged",
+      draft: false,
+      body: "fork",
+      headRepository: "outsider/repo",
+      headBranch: "agent/issue-3-x",
+      baseBranch: "release",
+    },
+    {
+      number: 2,
+      url: "https://example/2",
       state: "open",
-      labels: ["agent-ready", "bug"],
-      author: "alice",
-      created: "2026-05-27T09:00:00Z",
-      updated: "2026-05-28T10:00:00Z",
-      url: "https://github.example/issues/12",
+      draft: true,
+      body: "deleted",
+      headRepository: null,
+      headBranch: "agent/issue-3-x",
+      baseBranch: "main",
     },
   ]);
-  assert.equal(issues[0]?.url, "https://github.example/issues/12");
-  assert.equal(runner.calls.length, 1);
-  assertGhContext(runner.calls[0]!);
-  assert.equal(runner.calls[0]!.args.includes("--search"), false);
-  assert.deepEqual(runner.calls[0]!.args, [
-    "issue",
-    "list",
-    "--state",
-    "open",
-    "--limit",
-    "1001",
-    "--json",
-    "number,title,body,state,labels,author,createdAt,updatedAt,url",
-  ]);
-});
-
-test("GitHubGhHostProvider fails loudly when non-search listing reaches the safe cap", async () => {
-  const runner = scriptedRunner({
-    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
-      {
-        code: 0,
-        stdout: JSON.stringify(
-          Array.from({ length: 1001 }, (_, index) => ({
-            number: index + 1,
-            title: `Issue ${index + 1}`,
-            body: "",
-            state: "OPEN",
-            labels: [],
-            author: { login: "reporter" },
-            createdAt: "2026-06-29T19:00:00Z",
-            updatedAt: "2026-06-29T19:15:28Z",
-            url: `https://github.example/repo/issues/${index + 1}`,
-          })),
-        ),
-        stderr: "",
-      },
-  });
-
-  await assert.rejects(
-    () => createProvider(runner).listOpenIssues(),
-    /gh issue list returned at least 1001 open issues; Patchmill cannot safely apply oldest-first triage ordering after a capped GitHub CLI response without risking silently skipped older issues/,
-  );
-  assert.equal(runner.calls[0]!.args.includes("--search"), false);
-});
-
-test("GitHubGhHostProvider avoids search-backed list for redirected repository slugs", async () => {
-  const runner: CommandRunner & { calls: RecordedCall[] } = {
-    calls: [],
-    async run(command, args, options = {}) {
-      runner.calls.push({ command, args: [...args], cwd: options.cwd });
-      const line = [command, ...args].join(" ");
-      if (args.includes("--search")) {
-        return { code: 0, stdout: "[]", stderr: "" };
-      }
-      assert.equal(
-        line,
-        "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url",
-      );
-      return {
-        code: 0,
-        stdout: JSON.stringify([
-          {
-            number: 57,
-            title: "Remote slug redirects",
-            body: "Untrusted issue body is inert test data.",
-            state: "OPEN",
-            labels: [{ name: "bug" }],
-            author: { login: "reporter" },
-            createdAt: "2026-06-29T19:00:00Z",
-            updatedAt: "2026-06-29T19:15:28Z",
-            url: "https://github.example/new-owner/repo/issues/57",
-          },
-        ]),
-        stderr: "",
-      };
-    },
-  };
-
-  const issues = await createProvider(runner).listOpenIssues();
-
-  assert.equal(issues.length, 1);
-  assert.equal(issues[0]?.number, 57);
-  assert.equal(issues[0]?.created, "2026-06-29T19:00:00Z");
-  assert.equal(runner.calls.length, 1);
-  assert.equal(runner.calls[0]!.args.includes("--search"), false);
-});
-
-test("GitHubGhHostProvider reports CLI readiness", async () => {
-  const runner = scriptedRunner({
-    "gh --version": { code: 0, stdout: "gh version 2.0.0", stderr: "" },
-    "gh auth status": { code: 0, stdout: "Logged in", stderr: "" },
-  });
-
-  const result = await createProvider(runner).checkCli();
-
-  assert.deepEqual(result, { ok: true, message: "github via gh" });
-  assert.deepEqual(commandLines(runner), ["gh --version", "gh auth status"]);
-  assertGhContext(runner.calls[0]!);
-  assertGhContext(runner.calls[1]!);
-});
-
-test("GitHubGhHostProvider reports CLI version failures with remediation", async () => {
-  const runner = scriptedRunner({
-    "gh --version": { code: 1, stdout: "", stderr: "gh not found" },
-  });
-
-  const result = await createProvider(runner).checkCli();
-
-  assert.deepEqual(result, {
-    ok: false,
-    message: "gh --version failed: gh not found",
-    remediation: [
-      "Install and authenticate gh, then rerun:",
-      "  gh auth login",
-      "  patchmill doctor",
+  assert.deepEqual(runner.calls, [
+    [
+      "gh",
+      "pr",
+      "list",
+      "--head",
+      "agent/issue-3-x",
+      "--state",
+      "all",
+      "--limit",
+      "100",
+      "--json",
+      "number,url,state,isDraft,body,headRefName,headRepository,headRepositoryOwner,baseRefName",
     ],
-  });
-  assert.deepEqual(commandLines(runner), ["gh --version"]);
-  assertGhContext(runner.calls[0]!);
+  ]);
+  assert.equal(runner.options[0]?.cwd, "/repo");
 });
 
-test("GitHubGhHostProvider reports CLI authentication failures with remediation", async () => {
-  const runner = scriptedRunner({
-    "gh --version": { code: 0, stdout: "gh version 2.0.0", stderr: "" },
-    "gh auth status": { code: 1, stdout: "", stderr: "not logged in" },
-  });
-
-  const result = await createProvider(runner).checkCli();
-
-  assert.deepEqual(result, {
-    ok: false,
-    message: "gh auth status failed: not logged in",
-    remediation: [
-      "Install and authenticate gh, then rerun:",
-      "  gh auth login",
-      "  patchmill doctor",
-    ],
-  });
+test("listPullRequests returns nothing for an empty list", async () => {
+  const runner = recordingRunner([
+    { match: /gh pr list/, result: { stdout: "[]" } },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.listPullRequests("agent/issue-3-x"), []);
 });
 
-test("GitHubGhHostProvider resolves active gh login as trusted triage comment author", async () => {
-  const runner = scriptedRunner({
-    "gh api user --jq .login": {
-      code: 0,
-      stdout: "triage-agent\n",
-      stderr: "",
-    },
-  });
-
-  const authors = await createProvider(runner).trustedTriageCommentAuthors();
-
-  assert.deepEqual(authors, ["triage-agent"]);
-  assert.deepEqual(commandLines(runner), ["gh api user --jq .login"]);
-  assertGhContext(runner.calls[0]!);
-});
-
-test("GitHubGhHostProvider hydrates issue comments from gh issue view", async () => {
-  const comments = [
-    {
-      author: { login: "alice" },
-      body: "First comment",
-      createdAt: "2026-05-28T12:00:00Z",
-    },
-  ];
-  const runner = scriptedRunner({
-    "gh issue view 7 --json number,title,body,state,labels,author,createdAt,updatedAt,url,comments":
+test("pushRepository reads origin, including SSH host aliases", async () => {
+  for (const origin of [
+    "git@github.com:Owner/repo.git",
+    "github-work:owner/repo.git",
+  ]) {
+    const runner = recordingRunner([
       {
-        code: 0,
-        stdout: JSON.stringify({
-          number: 7,
-          title: "First",
-          body: "",
-          state: "OPEN",
-          labels: [],
-          author: { login: "ana" },
-          updatedAt: "2026-05-28T10:00:00Z",
-          comments,
-          url: "https://github.example/issues/12",
-        }),
-        stderr: "",
+        match: /^git remote get-url origin$/,
+        result: { stdout: `${origin}\n` },
       },
-  });
-  const issues: IssueSummary[] = [
-    { number: 7, title: "First", body: "", state: "open", labels: [] },
-  ];
+    ]);
+    const host = new GitHubHost({ runner, repoRoot: "/repo" });
+    assert.match(await host.pushRepository(), /^owner\/repo$/i);
+    assert.equal(runner.options[0]?.cwd, "/repo");
+  }
+});
 
-  const hydrated = await createProvider(runner).hydrateIssueComments(issues);
-
-  assert.strictEqual(hydrated, issues);
-  assert.deepEqual(issues[0]?.comments, [
-    {
-      authorLogin: "alice",
-      body: "First comment",
-      created: "2026-05-28T12:00:00Z",
-    },
-  ]);
-  assert.deepEqual(commandLines(runner), [
-    "gh issue view 7 --json number,title,body,state,labels,author,createdAt,updatedAt,url,comments",
+test("setLabels omits an empty remove list", async () => {
+  const runner = recordingRunner([{ match: /gh issue edit/, result: {} }]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  await host.setLabels(3, ["a"], []);
+  assert.deepEqual(runner.calls, [
+    ["gh", "issue", "edit", "3", "--add-label", "a"],
   ]);
 });
 
-test("GitHubGhHostProvider views one issue by number", async () => {
-  const runner = scriptedRunner({
-    "gh issue view 2 --json number,title,body,state,labels,author,createdAt,updatedAt,url,comments":
-      {
-        code: 0,
-        stdout: JSON.stringify({
-          number: 2,
-          title: "Two",
-          body: null,
-          state: "CLOSED",
-          labels: [{ name: "docs" }],
-          author: { login: "bob" },
-          createdAt: "2026-05-27T10:00:00Z",
-          updatedAt: "2026-05-28T11:00:00Z",
-          comments: [{ author: { login: "alice" }, body: "done" }],
-          url: "https://github.example/issues/2",
-        }),
-        stderr: "",
-      },
-  });
-
-  const issue = await createProvider(runner).viewIssue(2);
-
-  assert.deepEqual(commandLines(runner), [
-    "gh issue view 2 --json number,title,body,state,labels,author,createdAt,updatedAt,url,comments",
-  ]);
-  assert.equal(issue.number, 2);
-  assert.equal(issue.body, "");
-  assert.equal(issue.state, "closed");
-  assert.equal(issue.created, "2026-05-27T10:00:00Z");
-  assert.deepEqual(issue.comments, [{ authorLogin: "alice", body: "done" }]);
-});
-
-test("GitHubGhHostProvider lists labels", async () => {
-  const runner = scriptedRunner({
-    "gh label list --limit 1000 --json name": {
-      code: 0,
-      stdout: JSON.stringify([{ name: "agent-ready" }, { name: "bug" }]),
-      stderr: "",
-    },
-  });
-
-  const labels = await createProvider(runner).listLabels();
-
-  assert.deepEqual(labels, ["agent-ready", "bug"]);
-  assert.deepEqual(commandLines(runner), [
-    "gh label list --limit 1000 --json name",
-  ]);
-});
-
-test("GitHub setup provider lists labels on an explicit repository", async () => {
-  const runner = scriptedRunner({
-    "gh label list --repo OWNER/patchmill-test --limit 1000 --json name": {
-      code: 0,
-      stdout: JSON.stringify([{ name: "feature" }, { name: "bug" }]),
-      stderr: "",
-    },
-  });
-
-  const labels = await createProvider(runner).listLabels(target);
-
-  assert.deepEqual(labels, ["bug", "feature"]);
-  assert.deepEqual(commandLines(runner), [
-    "gh label list --repo OWNER/patchmill-test --limit 1000 --json name",
-  ]);
-});
-
-test("GitHubGhHostProvider strips leading hash when creating labels", async () => {
-  const label: LabelDefinition = {
-    name: "agent-ready",
-    color: "#2ea043",
-    description: "Ready for implementation",
-  };
-  const runner = scriptedRunner({
-    "gh label create agent-ready --color 2ea043 --description Ready for implementation":
-      { code: 0, stdout: "", stderr: "" },
-  });
-
-  await createProvider(runner).createLabel(label);
-
-  assert.equal(runner.calls.length, 1);
-  assertGhContext(runner.calls[0]!);
-  assert.deepEqual(runner.calls[0]!.args.slice(0, 3), [
-    "label",
-    "create",
-    label.name,
-  ]);
-  assert.equal(flagValue(runner.calls[0]!.args, "--color"), "2ea043");
-  assert.equal(
-    flagValue(runner.calls[0]!.args, "--description"),
-    label.description,
-  );
-});
-
-test("GitHub setup provider creates labels on an explicit repository", async () => {
-  const label: LabelDefinition = {
-    name: "feature",
-    color: "#0e8a16",
-    description: "New functionality",
-  };
-  const runner = scriptedRunner({
-    "gh label create feature --repo OWNER/patchmill-test --color 0e8a16 --description New functionality":
-      { code: 0, stdout: "", stderr: "" },
-  });
-
-  await createProvider(runner).createLabel(target, label);
-
-  assert.deepEqual(commandLines(runner), [
-    "gh label create feature --repo OWNER/patchmill-test --color 0e8a16 --description New functionality",
-  ]);
-});
-
-test("GitHubGhHostProvider applies label additions and removals", async () => {
-  const runner = scriptedRunner({
-    "gh issue edit 12 --add-label agent-ready,bug --remove-label needs-info": {
-      code: 0,
-      stdout: "",
-      stderr: "",
-    },
-  });
-
-  await createProvider(runner).applyLabels({
-    issueNumber: 12,
-    oldLabels: ["needs-info"],
-    newLabels: ["agent-ready", "bug"],
-    addLabels: ["agent-ready", "bug"],
-    removeLabels: ["needs-info"],
-  });
-
-  assert.deepEqual(commandLines(runner), [
-    "gh issue edit 12 --add-label agent-ready,bug --remove-label needs-info",
-  ]);
-});
-
-test("GitHubGhHostProvider does not call gh when no label changes are needed", async () => {
-  const runner = scriptedRunner({});
-
-  await createProvider(runner).applyLabels({
-    issueNumber: 12,
-    oldLabels: ["bug"],
-    newLabels: ["bug"],
-    addLabels: [],
-    removeLabels: [],
-  });
-
+test("setLabels makes no call for two empty lists", async () => {
+  const runner = recordingRunner([]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  await host.setLabels(3, [], []);
   assert.deepEqual(runner.calls, []);
 });
 
-test("GitHubGhHostProvider comments on issues", async () => {
-  const body = "Automated triage needs more information.";
-  const runner = scriptedRunner({
-    "gh issue comment 9 --body Automated triage needs more information.": {
-      code: 0,
-      stdout: "",
-      stderr: "",
-    },
-  });
-
-  await createProvider(runner).commentIssue(9, body);
-
-  assert.deepEqual(commandLines(runner), [
-    "gh issue comment 9 --body Automated triage needs more information.",
-  ]);
-  assert.equal(flagValue(runner.calls[0]!.args, "--body"), body);
-});
-
-test("GitHubGhHostProvider command failures include gh and operation context", async () => {
-  const issueRunner = scriptedRunner({
-    "gh issue view 3 --json number,title,body,state,labels,author,createdAt,updatedAt,url,comments":
-      { code: 1, stdout: "", stderr: "not found" },
-  });
-  await assert.rejects(
-    () => createProvider(issueRunner).viewIssue(3),
-    /gh issue view failed for #3: not found/,
-  );
-
-  const labelRunner = scriptedRunner({
-    "gh label create agent-ready --color 2ea043 --description Ready": {
-      code: 1,
-      stdout: "",
-      stderr: "already exists",
-    },
-  });
-  await assert.rejects(
-    () =>
-      createProvider(labelRunner).createLabel({
-        name: "agent-ready",
-        color: "#2ea043",
-        description: "Ready",
-      }),
-    /gh label create failed for agent-ready: already exists/,
-  );
-});
-
-test("GitHubGhHostProvider reports actionable gh issue list failures", async () => {
-  const runner = scriptedRunner({
-    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
-      { code: 1, stdout: "", stderr: "HTTP 403: Resource not accessible" },
-  });
-
-  await assert.rejects(
-    () => createProvider(runner).listOpenIssues(),
-    /gh issue list failed; check GitHub authentication, repository remote, and repository permissions: HTTP 403: Resource not accessible/,
-  );
-});
-
-test("GitHubGhHostProvider emits shell-safe missing-label remediation", () => {
-  const provider = createProvider(
-    scriptedRunner({ "gh --version": { code: 0, stdout: "", stderr: "" } }),
-  );
-
-  assert.equal(
-    provider.missingLabelRemediation({
-      name: "agent ready; echo 'owned'",
-      color: "#2ea043",
-      description: "Ready for $(implementation) & review",
-    }),
-    "  gh label create 'agent ready; echo '\"'\"'owned'\"'\"'' --color 2ea043 --description 'Ready for $(implementation) & review'",
-  );
-});
-
-test("GitHub setup provider returns repository info with gh repo view", async () => {
-  const { provider, calls } = createProviderWithResponses([
+test("viewIssue maps labels, authors, comments, and state", async () => {
+  const runner = recordingRunner([
     {
-      code: 0,
-      stdout: JSON.stringify({
-        name: "patchmill-test",
-        url: "https://github.com/OWNER/patchmill-test",
-        sshUrl: "git@github.com:OWNER/patchmill-test.git",
-      }),
-      stderr: "",
+      match: /gh issue view/,
+      result: {
+        stdout: JSON.stringify({
+          number: 3,
+          title: "Fix",
+          body: "Details",
+          labels: [{ name: "bug" }],
+          state: "OPEN",
+          url: "https://example/3",
+          author: { login: "octocat" },
+          createdAt: "today",
+          comments: [
+            { author: { login: "reviewer" }, body: "yes", createdAt: "later" },
+          ],
+        }),
+      },
     },
   ]);
-
-  assert.deepEqual(await provider.getRepository(target), {
-    publicUrl: "https://github.com/OWNER/patchmill-test",
-    gitRemoteUrl: "git@github.com:OWNER/patchmill-test.git",
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.viewIssue(3), {
+    number: 3,
+    title: "Fix",
+    body: "Details",
+    labels: ["bug"],
+    state: "open",
+    url: "https://example/3",
+    author: "octocat",
+    createdAt: "today",
+    comments: [{ author: "reviewer", body: "yes", createdAt: "later" }],
   });
-  assert.deepEqual(calls[0], {
-    command: "gh",
-    args: ["repo", "view", "OWNER/patchmill-test", "--json", "name,url,sshUrl"],
-    cwd: "/repo",
-  });
-});
-
-test("GitHub setup provider returns undefined when gh repo view cannot find the repo", async () => {
-  const { provider } = createProviderWithResponses([
-    { code: 1, stdout: "", stderr: "Could not resolve to a Repository" },
-  ]);
-
-  assert.equal(await provider.getRepository(target), undefined);
-});
-
-test("GitHub setup provider rejects malformed repository info", async () => {
-  const { provider } = createProviderWithResponses([
-    {
-      code: 0,
-      stdout: JSON.stringify({ name: "patchmill-test", url: null }),
-      stderr: "",
-    },
-  ]);
-
-  await assert.rejects(
-    () => provider.getRepository(target),
-    /gh repo view did not return a public URL for OWNER\/patchmill-test/u,
-  );
-});
-
-test("GitHub setup provider throws when repo view fails for reasons other than not found", async () => {
-  const { provider } = createProviderWithResponses([
-    { code: 1, stdout: "", stderr: "HTTP 403: API rate limit exceeded" },
-  ]);
-
-  await assert.rejects(
-    () => provider.getRepository(target),
-    /gh repo view failed for OWNER\/patchmill-test: HTTP 403/u,
-  );
-});
-
-test("GitHub provider creates and deletes public repositories", async () => {
-  const { provider, calls } = createProviderWithResponses([
-    { code: 0, stdout: "", stderr: "" },
-    { code: 0, stdout: "", stderr: "" },
-  ]);
-
-  await provider.createPublicRepo(target);
-  await provider.deleteRepo(target);
-
-  assert.deepEqual(
-    calls.map((call) => call.args),
+  assert.deepEqual(runner.calls, [
     [
-      ["repo", "create", "OWNER/patchmill-test", "--public"],
-      ["repo", "delete", "OWNER/patchmill-test", "--yes"],
+      "gh",
+      "issue",
+      "view",
+      "3",
+      "--json",
+      "number,title,body,labels,state,url,author,createdAt,comments",
     ],
-  );
+  ]);
 });
 
-test("GitHub provider exposes clone command", () => {
-  const { provider } = createProviderWithResponses([]);
-
-  assert.equal(
-    provider.cloneCommand(target),
-    "gh repo clone OWNER/patchmill-test",
-  );
+test("checkCli reports auth failure and stops before user lookup", async () => {
+  const runner = recordingRunner([
+    { match: /gh --version/, result: {} },
+    { match: /gh auth status/, result: { code: 1, stderr: "not logged in\n" } },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.checkCli(), {
+    ok: false,
+    message: "gh auth status failed: not logged in",
+  });
+  assert.deepEqual(runner.calls, [
+    ["gh", "--version"],
+    ["gh", "auth", "status"],
+  ]);
 });
 
-test("GitHub setup provider creates issues with labels on an explicit repository", async () => {
-  const { provider, calls } = createProviderWithResponses([
+test("checkCli reports the trimmed authenticated login", async () => {
+  const runner = recordingRunner([
+    { match: /gh --version/, result: {} },
+    { match: /gh auth status/, result: {} },
+    { match: /gh api user --jq .login/, result: { stdout: "octocat\n" } },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.checkCli(), {
+    ok: true,
+    message: "gh authenticated as octocat",
+    login: "octocat",
+  });
+  assert.deepEqual(runner.calls, [
+    ["gh", "--version"],
+    ["gh", "auth", "status"],
+    ["gh", "api", "user", "--jq", ".login"],
+  ]);
+});
+
+test("commentIssue sends the body through stdin", async () => {
+  const runner = recordingRunner([{ match: /gh issue comment/, result: {} }]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  await host.commentIssue(3, "hello");
+  assert.deepEqual(runner.calls, [
+    ["gh", "issue", "comment", "3", "--body-file", "-"],
+  ]);
+  assert.deepEqual(runner.options, [{ cwd: "/repo", stdin: "hello" }]);
+});
+
+test("listOpenIssues throws CommandFailedError for gh failure", async () => {
+  const runner = recordingRunner([
     {
-      code: 0,
-      stdout: "https://github.com/OWNER/patchmill-test/issues/1\n",
-      stderr: "",
+      match: /gh api --paginate/,
+      result: { code: 1, stderr: "permission denied" },
     },
   ]);
-
-  await provider.createIssue(target, {
-    title: "Build the form",
-    body: "Create a useful form.\n",
-    labels: ["feature", "polish"],
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  await assert.rejects(host.listOpenIssues(), (error) => {
+    assert.ok(error instanceof CommandFailedError);
+    assert.match(error.message, /gh api/);
+    assert.match(error.message, /permission denied/);
+    return true;
   });
-
-  assert.deepEqual(calls[0]?.args, [
-    "issue",
-    "create",
-    "--repo",
-    "OWNER/patchmill-test",
-    "--title",
-    "Build the form",
-    "--body",
-    "Create a useful form.\n",
-    "--label",
-    "feature,polish",
+  assert.deepEqual(runner.calls, [
+    [
+      "gh",
+      "api",
+      "--paginate",
+      "--slurp",
+      "repos/{owner}/{repo}/issues?state=open&per_page=100",
+    ],
   ]);
 });
 
-test("GitHub provider clears ambient GH_REPO for gh commands", async () => {
-  let ghRepoOverrideWasCleared = false;
-  const provider = createProvider({
-    async run(_command, _args, options = {}) {
-      ghRepoOverrideWasCleared =
-        Object.hasOwn(options.env ?? {}, "GH_REPO") &&
-        options.env?.GH_REPO === undefined;
-      return { code: 0, stdout: "", stderr: "" };
+test("repository maps owner, name, and default branch", async () => {
+  const runner = recordingRunner([
+    {
+      match: /gh repo view/,
+      result: {
+        stdout: JSON.stringify({
+          nameWithOwner: "o/r",
+          defaultBranchRef: { name: "main" },
+        }),
+      },
     },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.repository(), {
+    owner: "o",
+    repo: "r",
+    defaultBranch: "main",
   });
+  assert.deepEqual(runner.calls, [
+    ["gh", "repo", "view", "--json", "nameWithOwner,defaultBranchRef"],
+  ]);
+});
 
-  await provider.createIssue(target, {
-    title: "Build the form",
-    body: "Create a useful form.\n",
-    labels: [],
+test("setup repository lookup distinguishes absence and maps URLs; labels strip hash", async () => {
+  const runner = recordingRunner([
+    {
+      match: /gh repo view o\/missing/,
+      result: { code: 1, stderr: "Could not resolve to a Repository" },
+    },
+    {
+      match: /gh repo view o\/r/,
+      result: {
+        stdout: JSON.stringify({
+          url: "https://github.com/o/r",
+          sshUrl: "git@github.com:o/r.git",
+        }),
+      },
+    },
+    { match: /gh label create/, result: {} },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.equal(
+    await host.getRepository({
+      owner: "o",
+      repo: "missing",
+      slug: "o/missing",
+    }),
+    undefined,
+  );
+  const target = { owner: "o", repo: "r", slug: "o/r" };
+  assert.deepEqual(await host.getRepository(target), {
+    publicUrl: "https://github.com/o/r",
+    gitRemoteUrl: "git@github.com:o/r.git",
   });
+  await host.createLabel(target, {
+    name: "bug",
+    color: "#0e8a16",
+    description: "A bug",
+  });
+  assert.deepEqual(runner.calls, [
+    ["gh", "repo", "view", "o/missing", "--json", "url,sshUrl"],
+    ["gh", "repo", "view", "o/r", "--json", "url,sshUrl"],
+    [
+      "gh",
+      "label",
+      "create",
+      "bug",
+      "--color",
+      "0e8a16",
+      "--description",
+      "A bug",
+      "--repo",
+      "o/r",
+    ],
+  ]);
+});
 
-  assert.equal(ghRepoOverrideWasCleared, true);
+test("recordingRunner reuses responses with global regexes", async () => {
+  const runner = recordingRunner([
+    { match: /gh --version/g, result: { stdout: "gh version 2\n" } },
+  ]);
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await runner("gh", ["--version"])).stdout, "gh version 2\n");
+  }
+});
+
+test("factory selects GitHub", () => {
+  const runner = recordingRunner([]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.ok(
+    createHostForProvider("github-gh", "octocat", runner, "/repo") instanceof
+      host.constructor,
+  );
+});
+
+test("enumerates all GitHub issue pages, excluding PRs, so oldest selection and triage see older issues", async () => {
+  const raw = (number: number) => ({
+    number,
+    title: "Issue",
+    body: "Details",
+    labels: [{ name: "agent-ready" }],
+    state: "open",
+    html_url: `https://example/${number}`,
+    user: { login: "alice" },
+    created_at: number === 201 ? "2020-01-01" : "2026-01-01",
+    comments: 2,
+  });
+  const pages = [
+    Array.from({ length: 100 }, (_, i) => raw(i + 1)),
+    Array.from({ length: 100 }, (_, i) => raw(i + 101)),
+    [raw(201), { ...raw(202), pull_request: {} }],
+  ];
+  const runner: import("../process/command.ts").CommandRunner = async (
+    _command,
+    args,
+  ) => ({
+    code: 0,
+    stderr: "",
+    stdout: JSON.stringify(
+      args.includes("--paginate") && args.includes("--slurp")
+        ? pages
+        : pages[0],
+    ),
+  });
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  const issues = await host.listOpenIssues();
+  assert.equal(issues.length, 201);
+  const { selectIssue } = await import("../kernel/run-once.ts");
+  const { selectTriageCandidates } = await import("../kernel/triage.ts");
+  const { DEFAULT_CONFIG } = await import("../config/config.ts");
+  assert.equal(selectIssue(issues, DEFAULT_CONFIG.labels)?.number, 201);
+  assert.equal(
+    selectTriageCandidates(
+      issues.map((i) => ({ ...i, labels: [] })),
+      DEFAULT_CONFIG.labels,
+      [],
+    ).length,
+    201,
+  );
+  assert.equal(issues[200]!.author, "alice");
 });

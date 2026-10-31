@@ -1,39 +1,59 @@
-import type { PatchmillHostProviderId } from "../config/types.ts";
-import type {
-  IssueSummary,
-  LabelChangePlan,
-  LabelDefinition,
-} from "../issue/types.ts";
-
-export type {
-  IssueCommentSummary,
-  IssueSummary,
-  LabelChangePlan,
-  LabelDefinition,
-} from "../issue/types.ts";
-
-export type RepositoryTarget = {
-  owner: string;
-  repo: string;
-  slug: string;
-};
-
-export type HostIssueCreateInput = {
+export type HostProviderId = "github-gh" | "forgejo-tea";
+export type IssueComment = { author: string; body: string; createdAt: string };
+export type Issue = {
+  number: number;
   title: string;
   body: string;
   labels: string[];
+  state: "open" | "closed";
+  url: string;
+  author: string;
+  createdAt: string;
+  comments: IssueComment[];
 };
-
-export type RepositoryInfo = {
-  publicUrl: string;
-  gitRemoteUrl: string;
+export type PullRequest = {
+  number: number;
+  url: string;
+  state: "open" | "merged" | "closed";
+  draft: boolean;
+  body: string;
+  /** owner/repo the head branch lives in; null once that repository is deleted. */
+  headRepository: string | null;
+  headBranch: string;
+  baseBranch: string;
 };
-
-export type RepositorySetupHostProvider = {
-  readonly id: PatchmillHostProviderId;
-  readonly displayName: string;
+export type LabelDefinition = {
+  name: string;
+  color: string;
+  description: string;
+};
+export type HostCliCheck = { ok: boolean; message: string; login?: string };
+export type Repository = { owner: string; repo: string; defaultBranch: string };
+export interface Host {
   checkCli(): Promise<HostCliCheck>;
-  getRepository(target: RepositoryTarget): Promise<RepositoryInfo | undefined>;
+  repository(): Promise<Repository>;
+  listOpenIssues(): Promise<Issue[]>; // comments may be empty
+  viewIssue(n: number): Promise<Issue>; // comments populated
+  listLabels(): Promise<string[]>;
+  createLabel(label: LabelDefinition): Promise<void>;
+  setLabels(n: number, add: string[], remove: string[]): Promise<void>;
+  commentIssue(n: number, body: string): Promise<void>;
+  /** owner/repo that origin points at, where issue branches are pushed. */
+  pushRepository(): Promise<string>;
+  /**
+   * Pull requests into this repository whose head branch is named `branch`,
+   * from any head repository. Use the kernel's findPullRequest to pick one.
+   */
+  listPullRequests(branch: string): Promise<PullRequest[]>;
+  updatePullRequestBody(n: number, body: string): Promise<void>;
+}
+export type RepositoryTarget = { owner: string; repo: string; slug: string };
+export interface RepositorySetupHost {
+  displayName: string;
+  checkCli(): Promise<HostCliCheck>;
+  getRepository(
+    target: RepositoryTarget,
+  ): Promise<{ publicUrl: string; gitRemoteUrl: string } | undefined>;
   createPublicRepo(target: RepositoryTarget): Promise<void>;
   deleteRepo(target: RepositoryTarget): Promise<void>;
   cloneCommand(target: RepositoryTarget): string;
@@ -41,33 +61,6 @@ export type RepositorySetupHostProvider = {
   createLabel(target: RepositoryTarget, label: LabelDefinition): Promise<void>;
   createIssue(
     target: RepositoryTarget,
-    issue: HostIssueCreateInput,
+    issue: { title: string; body: string; labels: string[] },
   ): Promise<void>;
-};
-
-export type HostCliCheck =
-  | { ok: true; message: string }
-  | { ok: false; message: string; remediation: string[] };
-
-export type PullRequestBodyHostProvider = {
-  readPullRequestBody(prUrl: string): Promise<string>;
-  updatePullRequestBody(prUrl: string, body: string): Promise<void>;
-};
-
-export type IssueHostProvider = {
-  readonly id: PatchmillHostProviderId;
-  readonly displayName: string;
-  checkCli(): Promise<HostCliCheck>;
-  missingLabelRemediation(label: LabelDefinition): string;
-  listOpenIssues(): Promise<IssueSummary[]>;
-  viewIssue(issueNumber: number): Promise<IssueSummary>;
-  hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]>;
-  trustedTriageCommentAuthors(): Promise<string[]>;
-  listLabels(): Promise<string[]>;
-  createLabel(label: LabelDefinition): Promise<void>;
-  applyLabels(change: LabelChangePlan): Promise<void>;
-  commentIssue(issueNumber: number, body: string): Promise<void>;
-};
-
-export type RunOnceHostProvider = IssueHostProvider &
-  PullRequestBodyHostProvider;
+}

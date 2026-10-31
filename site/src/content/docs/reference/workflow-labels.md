@@ -1,54 +1,41 @@
 ---
 title: Workflow labels
-description: Reference triage labels and legacy compatibility label fields.
+description: Issue lifecycle labels and planning merge gates.
 ---
 
-Patchmill uses triage labels to classify whether an issue is ready for
-automation. Configure `triage.stateMap` to map repository labels to
-`agent-ready`, `needs-info`, `agent-unsuitable`, or `blocked`. The configured
-ready label must map to `agent-ready`.
+Labels show the issue's current state. The names below are defaults from
+`patchmill.config.json`. `patchmill labels setup` creates missing labels and
+leaves existing labels unchanged.
 
-## Planning review-gate settings
+| Label              | Meaning                                               | Set by                    | Removed by              |
+| ------------------ | ----------------------------------------------------- | ------------------------- | ----------------------- |
+| `agent-ready`      | Eligible for a Run attempt.                           | Human or triage           | Kernel on claim         |
+| `in-progress`      | Work is active or waiting for a planning PR merge.    | Kernel on claim           | Kernel on final release |
+| `needs-info`       | The agent asked questions, or the Run attempt failed. | Kernel                    | Kernel on next claim    |
+| `agent-done`       | A ready pull request that closes the issue exists.    | Kernel after verification | Human                   |
+| `agent-unsuitable` | The issue is not suitable for unattended agent work.  | Triage                    | Human                   |
+| `blocked`          | The issue has an unresolved blocker.                  | Triage                    | Human                   |
 
-`workflow.specApproval.required` and `workflow.planApproval.required` are
-planning review-gate settings for a fresh Issue run. At initialization,
-`planning-pr-v1` snapshots their required values. A required gate means the
-assigned spec or plan phase is reviewed in a planning pull request and advances
-only after that exact pull request is merged and verified.
+## Review and resume
 
-```json
-{
-  "workflow": {
-    "specApproval": {
-      "required": true,
-      "reviewLabel": "spec-review",
-      "approvedLabel": "spec-approved"
-    },
-    "planApproval": {
-      "required": true,
-      "reviewLabel": "plan-review",
-      "approvedLabel": "plan-approved"
-    }
-  }
-}
-```
+Spec and plan gates default off. Each required gate uses a separate planning
+pull request. Only merging that PR into the base unlocks the next stage. Review
+approval and issue labels do not grant approval. The issue stays `in-progress`
+while waiting. Rerun after the merge without adding approval or ready labels. An
+open planning PR does not start another Pi session.
 
-The property names remain stable. `reviewLabel` and `approvedLabel` are
-compatibility data for unfinished legacy runs; adding an approval label does not
-authorize a fresh phase. See the four pull-request sequences in
-[Run-once](/using-patchmill/run-once/#gate-matrix).
+Retired spec/plan review and approval labels are not created or used. Old
+configuration keys for these labels are accepted but ignored. Patchmill does not
+delete existing host labels. A planning merge never marks an issue done.
+`agent-done` means that an implementation PR closes the issue, not that it
+merged.
 
-## Blocked triage state
+## Triage outcomes
 
-`blocked` means an otherwise suitable issue waits for specific same-repository
-issues. Triage records the blocker numbers and rechecks them later. When all are
-closed, Patchmill removes `blocked`, restores the ready label, and posts an
-unblock comment.
+Triage returns one configured value from `ready`, `unsuitable`, `blocked`, and
+`needsInfo`. Their defaults are `agent-ready`, `agent-unsuitable`, `blocked`,
+and `needs-info`. `wontfix` is accepted only if configured as one of those four
+values. There is no automatic blocker-resolution pass.
 
-## Legacy approval-label flow
-
-For unfinished legacy Issue runs only, review and approved labels retain their
-previous control meaning. Legacy runs may select ready, spec-approved, or
-plan-approved states and consume deterministic artifact comments. Do not use
-this flow to advance fresh planning state; review, merge, and rerun the exact
-planning pull request instead.
+The kernel changes issue labels and posts run comments. Planning and
+implementation agents own git and pull requests, not issue mutations.

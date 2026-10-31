@@ -1,5 +1,7 @@
 # Third-Party Notices
 
+Patchmill vendors the following third-party components:
+
 ## Anthropic frontend-design
 
 - Repository: <https://github.com/anthropics/skills>
@@ -44,8 +46,6 @@ The renamed reference is not an active skill.
 - Purpose: Offline rules for independent frontend review.
 - Modification status: Both files remain verbatim.
 
-Patchmill vendors the following third-party components:
-
 ## agent-stuff `extensions/todos.ts`
 
 - Source:
@@ -66,12 +66,16 @@ and modification notice.
 - Purpose: Provides the upstream workflow skills that Patchmill references from
   project-local wrapper skills.
 
-Patchmill includes `skills/patchmill-planning`, a lightweight wrapper that
-instructs agents to read the installed sibling Superpowers `brainstorming` and
-`writing-plans` skills, then apply Patchmill-specific worktree,
-artifact-location, and testing-policy guidance. The upstream Superpowers skills
-remain installed from the pinned dependency rather than vendored as modified
-copies in Patchmill's package.
+Patchmill includes these lightweight wrappers:
+
+- `skills/patchmill-planning` references the installed sibling Superpowers
+  `brainstorming` and `writing-plans` skills.
+- `skills/patchmill-implementation` references the installed sibling Superpowers
+  `executing-plans` and `subagent-driven-development` skills.
+
+The wrappers add Patchmill worktree, artifact, result, and testing-policy rules.
+The upstream Superpowers skills remain installed from the pinned dependency
+rather than vendored as modified copies in Patchmill's package.
 
 ## SimpleEnglish skill
 

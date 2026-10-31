@@ -8,6 +8,13 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
-    "useUnknownInCatchVariables": true
-  }
+    "useUnknownInCatchVariables": true,
+    "types": ["node"]
+  },
+  "include": [
+    "bin/**/*.ts",
+    "src/**/*.ts",
+    "test-support/**/*.ts",
+    "scripts/**/*.ts"
+  ]
 }

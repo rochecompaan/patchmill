@@ -72,6 +72,7 @@ async function main() {
       cwd: projectDir,
       env: environment,
     });
+    await run("git", ["init"], { cwd: projectDir, env: environment });
     await run("./node_modules/.bin/patchmill", ["init"], {
       cwd: projectDir,
       env: environment,
@@ -131,54 +132,6 @@ async function main() {
     console.log(
       `${PI_SUBAGENTS_PACKAGE} resolved ${compiledPiPackage.readInstalledPiSubagentsManifest().version} from ${join(piSubagentsRoot, "package.json")}`,
     );
-    const { runOncePlanningPiProfile } = await import(
-      pathToFileURL(
-        join(patchmillPackageRoot, "dist", "src", "pi", "resource-profiles.js"),
-      ).href
-    );
-    const skills = {
-      triage: "triage",
-      planning: "planning",
-      implementation: "implementation",
-      developmentEnvironment: "development-environment",
-      toolchain: "toolchain",
-      review: "review",
-      visualEvidence: "visual-evidence",
-      landing: "landing",
-    };
-    const profile = runOncePlanningPiProfile(skills, patchmillPackageRoot);
-    const installedPi = await import(
-      pathToFileURL(
-        join(
-          nodeModulesDir,
-          "@earendil-works",
-          "pi-coding-agent",
-          "dist",
-          "index.js",
-        ),
-      ).href
-    );
-    const { verifyInstalledRunOnceExtensions } = await import(
-      pathToFileURL(
-        join(
-          patchmillPackageRoot,
-          "fixtures",
-          "run-once-installed-extension-load.mjs",
-        ),
-      ).href
-    );
-    await verifyInstalledRunOnceExtensions({
-      packageRoot: patchmillPackageRoot,
-      profile,
-      pi: installedPi,
-      piSubagentsRoot,
-      piCommand: join(projectDir, "node_modules", ".bin", "pi"),
-      cwd: projectDir,
-      agentDir: join(smokeDir, "pi-agent"),
-      sentinelPath: join(smokeDir, "run-once-extensions-loaded.txt"),
-      env: environment,
-    });
-    console.log("packed run-once extensions loaded before sentinel");
   } finally {
     if (process.env.PATCHMILL_KEEP_SMOKE_ARTIFACTS !== "1") {
       await Promise.all([
