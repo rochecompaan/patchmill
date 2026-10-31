@@ -13,7 +13,6 @@ export default tseslint.config(
       ".pi/**",
       ".tmp/**",
       ".worktrees/**",
-      "extensions/**",
     ],
   },
   js.configs.recommended,

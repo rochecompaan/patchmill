@@ -1,143 +1,88 @@
-#!/usr/bin/env node
-import type { CommandRunner } from "../../../command/types.ts";
-import { cwd } from "node:process";
-import { pathToFileURL } from "node:url";
-import { loadPatchmillConfigState } from "../../../config/load.ts";
-import { parseArgs } from "./args.ts";
-import { createCommandRunner } from "./command.ts";
-import { runTriage } from "./pipeline.ts";
+import { loadConfig } from "../../../config/config.ts";
+import { createHost } from "../../../host/factory.ts";
+import { runTriage, type TriageOptions } from "../../../kernel/triage.ts";
+import { runCommand, type CommandRunner } from "../../../process/command.ts";
+import type { CliOutput } from "../../main.ts";
+import { resolveBundledPiCommand } from "../../pi-cli.ts";
 import { createTriageProgressReporter } from "./progress-output.ts";
-import type {
-  TriageConfig,
-  TriageProgressEvent,
-  TriageResult,
-  TriageToolCallEvent,
-} from "./types.ts";
 
-// TODO: Remove compatibility alias for --tea-login in favor of --host-login
-export const HELP_TEXT = `Usage:
-  patchmill triage [options]
-  npm run triage -- [options]
+const HELP = `Usage: patchmill triage [--issue N] [--dry-run]
+Classify candidate issues. Use --issue to triage any issue.
+Use --dry-run to print the label and comment without applying them.`;
 
-Automated issue triage. Runs the configured triage skill against eligible untriaged open issues by default.
-By default, only open issues without active triage or protection labels are selected.
-Use --dry-run to preview decisions before mutating the configured issue host.
+type Options = {
+  runner?: CommandRunner;
+  output?: CliOutput;
+  repoRoot?: string;
+  runTriage?: typeof runTriage;
+};
 
-Options:
-  --help, -h          Show this help and exit.
-  --dry-run, --dryrun Preview configured triage skill decisions without mutating the configured issue host.
-  --issue <number>    Triage one open issue by number.
-  --all               Re-triage selected open issues and include issues already carrying triage or protection labels such as in-progress.
-  --limit <number>    Triage only the first N selected open issues.
-  --log-dir <path>    Write triage logs to a custom directory.
-  --host-login <name> Use a named host login when the provider supports named logins.
-  --tea-login <name>  Compatibility alias for --host-login.
-
-Environment:
-  PATCHMILL_HOST_LOGIN      Override the default host login name when supported.
-`;
-
-type Env = Record<string, string | undefined>;
-
-export function isHelpOnlyInvocation(args: string[]): boolean {
-  return args.includes("--help") || args.includes("-h");
-}
-
-export function commandText(args: string[]): string {
-  return ["patchmill", "triage", ...args].join(" ").trim();
-}
-
-export async function loadCliConfig(
-  args: string[],
-  repoRoot = cwd(),
-  env: Env = process.env,
-) {
-  if (isHelpOnlyInvocation(args)) {
-    return parseArgs(args, repoRoot, env);
+function parseArgs(args: string[]): TriageOptions {
+  const options: TriageOptions = {};
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--dry-run") options.dryRun = true;
+    else if (arg === "--issue") {
+      const value = args[++i];
+      if (
+        options.issue !== undefined ||
+        !/^[1-9]\d*$/.test(value ?? "") ||
+        !Number.isSafeInteger(Number(value))
+      )
+        throw new Error("Use --issue N with a positive integer issue number.");
+      options.issue = Number(value);
+    } else throw new Error(`Unknown argument: ${arg}. Use --help for options.`);
   }
-
-  const { config: patchmillConfig } = await loadPatchmillConfigState(
-    repoRoot,
-    env,
-    args,
-  );
-  return parseArgs(args, repoRoot, env, patchmillConfig);
+  return options;
 }
-
-export type TriageCliProgressReporter = {
-  onProgress(event: TriageProgressEvent): void;
-  onToolCall?(event: TriageToolCallEvent): void;
-  finish(result: TriageResult): void;
-};
-
-export type TriageCliDependencies = {
-  loadCliConfig(
-    args: string[],
-    repoRoot?: string,
-    env?: Env,
-  ): Promise<TriageConfig>;
-  createCommandRunner(): CommandRunner;
-  runTriage(runner: CommandRunner, config: TriageConfig): Promise<TriageResult>;
-  createProgressReporter(options: {
-    command: string;
-    writeLine: (line: string) => void;
-  }): TriageCliProgressReporter;
-  writeStdout(line: string): void;
-  writeStderr(line: string): void;
-};
-
-const defaultTriageCliDependencies: TriageCliDependencies = {
-  loadCliConfig,
-  createCommandRunner,
-  runTriage,
-  createProgressReporter: createTriageProgressReporter,
-  writeStdout(line) {
-    console.log(line);
-  },
-  writeStderr(line) {
-    console.error(line);
-  },
-};
 
 export async function main(
-  args = process.argv.slice(2),
-  dependencies: TriageCliDependencies = defaultTriageCliDependencies,
+  args: string[] = process.argv.slice(2),
+  options: Options = {},
 ): Promise<number> {
+  const output = options.output ?? {
+    stdout: console.log,
+    stderr: console.error,
+  };
+  if (args.length === 1 && ["--help", "-h", "help"].includes(args[0]!)) {
+    output.stdout(HELP);
+    return 0;
+  }
+  const controller = new AbortController();
+  const abort = () => controller.abort();
   try {
-    const config = await dependencies.loadCliConfig(args);
-    if (config.showHelp) {
-      dependencies.writeStdout(HELP_TEXT);
-      return 0;
-    }
-
-    const reporter = dependencies.createProgressReporter({
-      command: commandText(args),
-      writeLine: dependencies.writeStdout,
+    const runOptions = parseArgs(args);
+    const repoRoot = options.repoRoot ?? process.cwd();
+    const config = await loadConfig(repoRoot);
+    const host = createHost(config, options.runner ?? runCommand, repoRoot);
+    const check = await host.checkCli();
+    if (!check.ok) throw new Error(check.message);
+    const deps = {
+      host,
+      piCommand: resolveBundledPiCommand(),
+      repoRoot,
+      now: () => new Date(),
+      output,
+    };
+    const reporter = createTriageProgressReporter({
+      command: ["patchmill", "triage", ...args].join(" "),
+      dryRun: runOptions.dryRun ?? false,
+      writeLine: output.stdout,
     });
-    const result = await dependencies.runTriage(
-      dependencies.createCommandRunner(),
-      {
-        ...config,
-        onProgress: reporter.onProgress,
-        ...(reporter.onToolCall === undefined
-          ? {}
-          : { onToolCall: reporter.onToolCall }),
-      },
-    );
-    reporter.finish(result);
+    process.on("SIGINT", abort);
+    process.on("SIGTERM", abort);
+    const outcomes = await (options.runTriage ?? runTriage)(config, deps, {
+      ...runOptions,
+      signal: controller.signal,
+      onProgress: reporter.onProgress,
+    });
+    reporter.finish(outcomes.length, controller.signal.aborted);
     return 0;
   } catch (error) {
-    dependencies.writeStderr(
-      error instanceof Error ? error.message : String(error),
-    );
+    output.stderr(error instanceof Error ? error.message : String(error));
     return 1;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
   }
-}
-
-const isMain = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
-
-if (isMain) {
-  process.exitCode = await main();
 }

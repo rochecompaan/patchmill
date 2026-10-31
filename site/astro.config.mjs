@@ -66,10 +66,6 @@ export default defineConfig({
             { label: "Triage", slug: "using-patchmill/triage" },
             { label: "Run-once", slug: "using-patchmill/run-once" },
             {
-              label: "Workflow artifacts",
-              slug: "using-patchmill/workflow-artifacts",
-            },
-            {
               label: "Interactive skills",
               slug: "using-patchmill/interactive-skills",
             },
@@ -99,10 +95,6 @@ export default defineConfig({
             {
               label: "Workflow labels",
               slug: "reference/workflow-labels",
-            },
-            {
-              label: "Task contracts",
-              slug: "reference/task-contracts",
             },
             {
               label: "Agent workflow lifecycle",

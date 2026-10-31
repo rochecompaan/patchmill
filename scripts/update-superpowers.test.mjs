@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
+import {
+  PATCHMILL_SKILLS,
+  SUPERPOWERS_SKILLS,
+  SIMPLE_ENGLISH_SKILLS,
+} from "../src/cli/commands/init/skill-installer.ts";
 import { snapshotTrackedPaths } from "./tracked-files.mjs";
 import {
   commandEnvironment,
@@ -20,7 +26,6 @@ const trackedRoots = [
   "package-lock.json",
   "npm-shrinkwrap.json",
   "nix/package.nix",
-  "src/workflow/skill-pack.ts",
   "THIRD_PARTY_NOTICES.md",
   ".patchmill/skills",
 ];
@@ -84,75 +89,95 @@ async function createFixture() {
   );
   const currentVersion = "6.0.3";
   const spec = tarballUrlForVersion(currentVersion);
-  await Promise.all([
-    mkdir(join(fixture, "nix"), { recursive: true }),
-    mkdir(join(fixture, "src/workflow"), { recursive: true }),
-    mkdir(join(fixture, ".patchmill/skills/demo"), { recursive: true }),
-    mkdir(join(fixture, "node_modules/superpowers/skills/demo"), {
-      recursive: true,
-    }),
-  ]);
+  await mkdir(join(fixture, "nix"), { recursive: true });
+  await mkdir(join(fixture, "src/cli/commands/init"), { recursive: true });
+  await cp(
+    join(rootDir, "src/cli/commands/init/skill-installer.ts"),
+    join(fixture, "src/cli/commands/init/skill-installer.ts"),
+  );
   await Promise.all([
     writeJson(join(fixture, "package.json"), {
       type: "module",
+      version: "0.1.0",
       dependencies: { superpowers: spec },
     }),
     writeJson(join(fixture, "package-lock.json"), lockfile(currentVersion)),
     writeJson(join(fixture, "npm-shrinkwrap.json"), lockfile(currentVersion)),
     writeFile(join(fixture, "nix/package.nix"), "{ }\n"),
     writeFile(
-      join(fixture, "src/workflow/skill-pack.ts"),
-      `export const PATCHMILL_RECOMMENDED_SKILL_PACK = {\n  skills: [{ name: "demo", source: "superpowers" }],\n  source: { tag: "v${currentVersion}", tarballUrl: "${spec}" },\n};\n`,
-    ),
-    writeFile(
       join(fixture, "THIRD_PARTY_NOTICES.md"),
       `https://github.com/obra/superpowers/tree/v${currentVersion}/skills\n`,
     ),
-    writeJson(join(fixture, ".patchmill/skills/patchmill-skill-pack.json"), {
-      pack: {
-        source: {
-          repository: "obra/superpowers",
-          tag: `v${currentVersion}`,
-          tarballUrl: spec,
-        },
-      },
-    }),
-    writeFile(join(fixture, ".patchmill/skills/demo/SKILL.md"), "old skill\n"),
-    writeFile(
-      join(fixture, "node_modules/superpowers/skills/demo/SKILL.md"),
-      "upstream skill\n",
-    ),
   ]);
+  for (const [packRoot, names, version] of [
+    [fixture, PATCHMILL_SKILLS, "0.1.0"],
+    [
+      join(fixture, "node_modules/superpowers"),
+      SUPERPOWERS_SKILLS,
+      currentVersion,
+    ],
+    [
+      join(fixture, "node_modules/simple-english"),
+      SIMPLE_ENGLISH_SKILLS,
+      "1.0.0",
+    ],
+  ]) {
+    await mkdir(packRoot, { recursive: true });
+    if (packRoot !== fixture)
+      await writeJson(join(packRoot, "package.json"), { version });
+    for (const name of names) {
+      const dir = join(packRoot, "skills", name);
+      await mkdir(join(dir, "references"), { recursive: true });
+      await writeFile(join(dir, "SKILL.md"), `${name} skill\n`);
+      await writeFile(join(dir, "references/example.md"), "old resource\n");
+    }
+  }
+  await installFixture(fixture);
   return fixture;
+}
+
+async function installFixture(fixture) {
+  const { installSkills } = await import(
+    pathToFileURL(join(fixture, "src/cli/commands/init/skill-installer.ts"))
+      .href
+  );
+  return installSkills({
+    repoRoot: fixture,
+    skillDir: ".patchmill/skills",
+    packageRoot: fixture,
+  });
 }
 
 async function fixtureRunCommand(command, args, fixture, calls) {
   calls.push([command, ...args]);
   if (command === "npm" && args[0] === "install") {
-    const version = "6.2.0";
     await Promise.all([
-      writeJson(join(fixture, "package-lock.json"), lockfile(version)),
-      writeJson(join(fixture, "npm-shrinkwrap.json"), lockfile(version)),
+      writeJson(join(fixture, "package-lock.json"), lockfile("6.2.0")),
+      writeJson(join(fixture, "npm-shrinkwrap.json"), lockfile("6.2.0")),
     ]);
   }
-  if (command === "node" && args[0] === "bin/patchmill.ts") {
-    const version = "6.2.0";
-    await writeJson(
-      join(fixture, ".patchmill/skills/patchmill-skill-pack.json"),
-      {
-        pack: {
-          source: {
-            repository: "obra/superpowers",
-            tag: `v${version}`,
-            tarballUrl: tarballUrlForVersion(version),
-          },
-        },
-      },
-    );
+  if (command === "npm" && args[0] === "ci") {
+    await writeJson(join(fixture, "node_modules/superpowers/package.json"), {
+      version: "6.2.0",
+    });
     await writeFile(
-      join(fixture, ".patchmill/skills/demo/reference.md"),
-      "new\n",
+      join(
+        fixture,
+        "node_modules/superpowers/skills/brainstorming/references/example.md",
+      ),
+      "new resource\n",
     );
+  }
+  if (command === "node") {
+    assert.equal(args[0], "--input-type=module");
+    assert.equal(args[1], "-e");
+    // Execute the emitted module against the fixture, without touching the host.
+    const { spawnSync } = await import("node:child_process");
+    const result = spawnSync(process.execPath, args, {
+      cwd: fixture,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
   }
 }
 
@@ -187,6 +212,37 @@ test("validate-only no-update checks a synchronized repository without commands"
     assert.equal(summary.currentVersion, "6.0.3");
     assert.deepEqual(summary.changedFiles, []);
     assert.equal(validationCommands[0], "npm ci");
+    const resource = join(
+      fixture,
+      ".patchmill/skills/brainstorming/references/example.md",
+    );
+    await writeFile(resource, "corrupted\n");
+    await assert.rejects(
+      runSuperpowersUpgrade(
+        ["--superpowers-version", "6.2.0", "--validate-only"],
+        {
+          rootDir: fixture,
+          fetchImpl: releaseFetch,
+          runCommand: async () => assert.fail("must not run commands"),
+        },
+      ),
+      /hash|content/i,
+    );
+    await installFixture(fixture);
+    await writeFile(
+      join(
+        fixture,
+        "node_modules/superpowers/skills/brainstorming/references/omitted.md",
+      ),
+      "missing from manifest\n",
+    );
+    await assert.rejects(
+      runSuperpowersUpgrade(
+        ["--superpowers-version", "6.2.0", "--validate-only"],
+        { rootDir: fixture, fetchImpl: releaseFetch },
+      ),
+      /manifest|files/i,
+    );
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
@@ -237,14 +293,32 @@ test("upgrades metadata transactionally and reports nested skill changes without
       },
     );
     assert.equal(summary.targetVersion, "6.2.0");
-    assert.deepEqual(calls, [
+    assert.deepEqual(calls.slice(0, 3), [
       ["npm", "install", "--package-lock-only", "--ignore-scripts"],
       ["npm", "install", "--package-lock-only", "--ignore-scripts"],
       ["npm", "ci"],
-      ["node", "bin/patchmill.ts", "skills", "update"],
     ]);
+    assert.equal(calls.length, 4);
+    assert.equal(
+      await readFile(
+        join(fixture, ".patchmill/skills/brainstorming/references/example.md"),
+        "utf8",
+      ),
+      "new resource\n",
+    );
+    assert.equal(
+      JSON.parse(
+        await readFile(
+          join(fixture, ".patchmill/skills/patchmill-skill-pack.json"),
+          "utf8",
+        ),
+      ).sources.superpowers,
+      "6.2.0",
+    );
     assert.ok(
-      summary.changedFiles.includes(".patchmill/skills/demo/reference.md"),
+      summary.changedFiles.includes(
+        ".patchmill/skills/brainstorming/references/example.md",
+      ),
     );
     assert.equal(
       JSON.parse(await readFile(join(fixture, "package.json"), "utf8"))

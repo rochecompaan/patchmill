@@ -1,719 +1,152 @@
-import type { CommandRunner } from "../../../command/types.ts";
-import { constants } from "node:fs";
-import { access, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { localPiAgentDir } from "../init/pi-agent-settings.ts";
-import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
-import {
-  piAgentCommandEnv,
-  piCommandArgs,
-  resolveBundledPiCommand,
-} from "../../pi-cli.ts";
-import { loadPatchmillConfigState } from "../../../config/load.ts";
-import { createIssueHostProvider } from "../../../host/factory.ts";
-import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
-import {
-  assertCleanWorktree,
-  cleanStatusIgnoredPaths,
-} from "../run-once/git.ts";
-import { missingLabelDefinitions } from "../triage/labels.ts";
-import type { PatchmillConfig } from "../../../config/types.ts";
-import {
-  bundledSkillByConfigReference,
-  bundledSkillPath,
-} from "../../../workflow/bundled-skills.ts";
-import {
-  PATCHMILL_SKILL_KEYS,
-  isPathLikeSkill,
-  resolveConfiguredSkillInvocation,
-  resolvePathLikeSkillPath,
-} from "../../../workflow/skills.ts";
-import { requiredSkillFiles } from "../../../workflow/skill-pack.ts";
-import { retiredManagedImplementationSkill } from "../../../workflow/implementation-skill-migration.ts";
-import {
-  INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
-  INLINE_IMPLEMENTATION_RUNTIME_FILES,
-} from "../../../workflow/skill-runtime-requirements.ts";
-import { assertSkillFile } from "../init/skill-installer.ts";
+import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import type { PatchmillConfig } from "../../../config/config.ts";
+import type { Host } from "../../../host/types.ts";
+import { supervisePi } from "../../../kernel/pi-supervisor.ts";
+import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
+import { commandOutput, type CommandRunner } from "../../../process/command.ts";
+import type { PiCommandSpec } from "../../pi-cli.ts";
 
-export type DoctorCheckStatus = "pass" | "warn" | "fail";
-
-export type DoctorCheckResult = {
+export type DoctorCheck = {
   name: string;
-  status: DoctorCheckStatus;
+  status: "pass" | "warn" | "fail";
   message: string;
-  remediation?: string[];
 };
 
-type DoctorOptions = {
-  repoRoot: string;
-  env?: Record<string, string | undefined>;
-  teaRepoRootForTests?: string;
-  bundledSkillPathForTests?: typeof bundledSkillPath;
-};
-
-type SkillCheckEntry = {
-  status: DoctorCheckStatus;
-  summary: string;
-};
-
-const PROJECT_LOCAL_SKILLS_PROMPT =
-  "Confirm Patchmill project-local skills are discoverable. If the available skills include Patchmill project-local skills from the loaded skill directory, print PATCHMILL_SKILLS_OK and nothing else.";
-
-function pass(name: string, message: string): DoctorCheckResult {
-  return { name, status: "pass", message };
-}
-
-function warn(name: string, message: string): DoctorCheckResult {
-  return { name, status: "warn", message };
-}
-
-function fail(
-  name: string,
-  message: string,
-  remediation?: string[],
-): DoctorCheckResult {
-  return {
-    name,
-    status: "fail",
-    message,
-    ...(remediation ? { remediation } : {}),
-  };
-}
-
-function commandOutput(result: {
-  code: number;
-  stdout: string;
-  stderr: string;
-}): string {
-  return (
-    [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
-    "no output"
-  );
-}
-
-async function checkGit(
-  runner: CommandRunner,
-  repoRoot: string,
-  config?: PatchmillConfig,
-): Promise<DoctorCheckResult> {
-  const inside = await runner.run(
-    "git",
-    ["rev-parse", "--is-inside-work-tree"],
-    { cwd: repoRoot },
-  );
-  if (inside.code !== 0 || inside.stdout.trim() !== "true") {
-    return fail("git", `not inside a git worktree: ${commandOutput(inside)}`);
-  }
-
-  const branch = await runner.run("git", ["branch", "--show-current"], {
-    cwd: repoRoot,
-  });
-  try {
-    await assertCleanWorktree(
-      runner,
-      repoRoot,
-      config
-        ? cleanStatusIgnoredPaths({
-            cleanStatusIgnorePrefixes: config.paths.cleanStatusIgnorePrefixes,
-            todoRoot: config.projectPolicy.pi.taskContract.todoRoot,
-            runStateDir: config.paths.runStateDir,
-          })
-        : [],
-    );
-  } catch (error) {
-    return fail("git", error instanceof Error ? error.message : String(error));
-  }
-
-  const branchName =
-    branch.code === 0 && branch.stdout.trim()
-      ? branch.stdout.trim()
-      : "detached HEAD";
-  return pass("git", `clean worktree on ${branchName}`);
-}
-
-async function pathStatus(
-  path: string,
-): Promise<
-  "exists" | "parent-usable" | "missing" | "not-directory" | "unusable"
-> {
-  const targetStatus = await directoryStatus(path);
-  if (targetStatus !== "missing") return targetStatus;
-
-  const parentStatus = await directoryStatus(dirname(path));
-  if (parentStatus === "exists") return "parent-usable";
-  if (parentStatus === "missing") return "missing";
-  return "unusable";
-}
-
-async function directoryStatus(
-  path: string,
-): Promise<"exists" | "missing" | "not-directory" | "unusable"> {
-  try {
-    const pathStat = await stat(path);
-    if (!pathStat.isDirectory()) return "not-directory";
-    await access(path, constants.W_OK | constants.X_OK);
-    return "exists";
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return "missing";
-    }
-    return "unusable";
-  }
-}
-
-async function checkPiBinary(
-  runner: CommandRunner,
-  repoRoot: string,
-): Promise<DoctorCheckResult> {
-  const piCommand = resolveBundledPiCommand();
-  const result = await runner.run(
-    piCommand.command,
-    piCommandArgs(piCommand, ["--help"]),
-    { cwd: repoRoot },
-  );
-  return result.code === 0
-    ? pass("pi", "binary available")
-    : fail("pi", `binary unavailable: ${commandOutput(result)}`, [
-        "Patchmill could not run its bundled Pi dependency. Reinstall dependencies, then rerun:",
-        "  npm install",
-        "  patchmill doctor",
-      ]);
-}
-
-async function checkPiProvider(
-  runner: CommandRunner,
-  repoRoot: string,
-  piAgentDir: string,
-): Promise<DoctorCheckResult> {
-  const result = await runPiSmokeTest(runner, { repoRoot, piAgentDir });
-  if (result.status === "pass") {
-    return pass("pi provider", "minimal LLM smoke test succeeded");
-  }
-  return fail(
-    "pi provider",
-    "Pi could not complete a minimal LLM smoke test",
-    [
-      "Patchmill doctor did not change the repository or issue host.",
-      "The Pi check made no Patchmill workflow changes, but it could not reach a configured model provider.",
-      "",
-      "Run Patchmill's guided auth repair, then rerun doctor:",
-      "  patchmill auth",
-      "  patchmill doctor",
-      "",
-      result.details ? `Details: ${result.details}` : "",
-    ].filter(Boolean),
-  );
-}
-
-async function checkReadableSkillFile(path: string): Promise<boolean> {
-  try {
-    const pathStat = await stat(path);
-    if (!pathStat.isFile()) return false;
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function parseSkillFrontmatter(
-  text: string,
-): { name: string; description: string } | { error: string } {
-  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
-  const frontmatter = match?.[1];
-  if (frontmatter === undefined) {
-    return { error: "missing frontmatter" };
-  }
-
-  const values = new Map<string, string>();
-  const continuationLines = new Map<string, string[]>();
-  let currentKey: string | undefined;
-  let currentValueAllowsContinuation = false;
-
-  for (const line of frontmatter.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-
-    if (/^[^\s].*:/u.test(line)) {
-      const separatorIndex = line.indexOf(":");
-      if (separatorIndex === -1) {
-        currentKey = undefined;
-        currentValueAllowsContinuation = false;
-        continue;
-      }
-
-      const key = line.slice(0, separatorIndex).trim();
-      const value = line.slice(separatorIndex + 1).trim();
-      values.set(key, value);
-      continuationLines.set(key, []);
-      currentKey = key;
-      currentValueAllowsContinuation =
-        value.length === 0 || /^[>|]/u.test(value);
-      continue;
-    }
-
-    if (
-      currentKey &&
-      currentValueAllowsContinuation &&
-      (/^[ \t]/u.test(line) || trimmed.length === 0)
-    ) {
-      continuationLines.get(currentKey)?.push(trimmed);
-      continue;
-    }
-
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    currentKey = undefined;
-    currentValueAllowsContinuation = false;
-  }
-
-  for (const [key, value] of values) {
-    if (value.length > 0 && !/^[>|]/u.test(value)) continue;
-
-    const continuation = (continuationLines.get(key) ?? []).join("\n").trim();
-    values.set(key, continuation);
-  }
-
-  const missing = ["name", "description"].filter((key) => !values.get(key));
-  if (missing.length > 0) {
-    return { error: `missing ${missing.join(" and ")}` };
-  }
-
-  return {
-    name: values.get("name") ?? "",
-    description: values.get("description") ?? "",
-  };
-}
-
-async function validateRequiredSkillFiles(
-  label: string,
-  configuredPath: string,
-  skillFilePath: string,
-  requiredFiles: string[],
-): Promise<SkillCheckEntry | undefined> {
-  const skillDir = dirname(skillFilePath);
-  for (const relativeFile of requiredFiles) {
-    const requiredPath = join(skillDir, relativeFile);
-    if (await checkReadableSkillFile(requiredPath)) continue;
-    return {
-      status: "fail",
-      summary: `${label}: \`${configuredPath}\` (required skill file unreadable at ${requiredPath})`,
-    };
-  }
-  return undefined;
-}
-
-async function validateInlineRuntime(
-  label: string,
-  configuredPath: string,
-  skillFilePath: string,
-): Promise<SkillCheckEntry | undefined> {
-  const skillDir = dirname(skillFilePath);
-  for (const requirement of INLINE_IMPLEMENTATION_RUNTIME_FILES) {
-    const path =
-      requirement.skillName === INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL
-        ? join(skillDir, requirement.path)
-        : join(dirname(skillDir), requirement.skillName, requirement.path);
+async function missingFiles(paths: string[]): Promise<string[]> {
+  const missing: string[] = [];
+  for (const path of paths) {
     try {
-      await assertSkillFile(path, path, undefined, {
-        executable: requirement.executable,
+      if (!(await stat(path)).isFile()) missing.push(path);
+    } catch (error) {
+      if (
+        ["ENOENT", "ENOTDIR"].includes(
+          (error as NodeJS.ErrnoException).code ?? "",
+        )
+      )
+        missing.push(path);
+      else throw error;
+    }
+  }
+  return missing;
+}
+
+export async function runDoctorChecks(deps: {
+  repoRoot: string;
+  config: PatchmillConfig;
+  host: Host;
+  runner: CommandRunner;
+  piCommand: PiCommandSpec;
+  packageRoot: string;
+}): Promise<DoctorCheck[]> {
+  const { repoRoot, config, host, runner } = deps;
+  const checks: DoctorCheck[] = [];
+  async function check(
+    name: string,
+    severity: "warn" | "fail",
+    probe: () => Promise<string | undefined>,
+  ) {
+    try {
+      const message = await probe();
+      checks.push({
+        name,
+        status: message ? severity : "pass",
+        message: message ?? "Ready",
       });
     } catch (error) {
-      return {
-        status: "fail",
-        summary: `${label}: \`${configuredPath}\` (${error instanceof Error ? error.message : String(error)})`,
-      };
+      checks.push({
+        name,
+        status: severity,
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }
-  return undefined;
-}
-
-async function validateResolvedLocalSkill(
-  label: string,
-  configuredPath: string,
-  resolvedPath: string,
-  requiredFiles: string[] = ["SKILL.md"],
-): Promise<SkillCheckEntry> {
-  try {
-    const pathStat = await stat(resolvedPath);
-    if (!pathStat.isFile()) {
-      return {
-        status: "fail",
-        summary: `${label}: \`${configuredPath}\` (configured path unreadable at ${resolvedPath})`,
-      };
-    }
-
-    await access(resolvedPath, constants.R_OK);
-    const content = await readFile(resolvedPath, "utf8");
-    const frontmatter = parseSkillFrontmatter(content);
-    if ("error" in frontmatter) {
-      return {
-        status: "fail",
-        summary: `${label}: \`${configuredPath}\` (malformed skill frontmatter: ${frontmatter.error} at ${resolvedPath})`,
-      };
-    }
-
-    const resolvedRequiredFiles = [
-      ...new Set([...requiredFiles, ...requiredSkillFiles(frontmatter.name)]),
-    ];
-    const missingRequired = await validateRequiredSkillFiles(
-      label,
-      configuredPath,
-      resolvedPath,
-      resolvedRequiredFiles,
+  await check("host CLI", "fail", async () => {
+    const result = await host.checkCli();
+    return result.ok ? undefined : result.message || "Host CLI check failed";
+  });
+  await check("labels", "fail", async () => {
+    const labels = await host.listLabels();
+    const missing = Object.values(config.labels).filter(
+      (name) => !labels.includes(name),
     );
-    if (missingRequired) return missingRequired;
-    if (frontmatter.name === INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL) {
-      const brokenRuntime = await validateInlineRuntime(
-        label,
-        configuredPath,
-        resolvedPath,
-      );
-      if (brokenRuntime) return brokenRuntime;
+    return missing.length ? `Missing labels: ${missing.join(", ")}` : undefined;
+  });
+  await check("excludes", "warn", async () => {
+    const warnings: string[] = [];
+    for (const path of [
+      config.paths.worktreeDir,
+      config.paths.runsDir,
+      config.pi.agentDir,
+    ]) {
+      try {
+        const result = await runner("git", ["check-ignore", "-q", path], {
+          cwd: repoRoot,
+        });
+        if (result.code !== 0)
+          warnings.push(
+            `${path}: ${result.code === 1 ? "not ignored" : commandOutput(result)}`,
+          );
+      } catch (error) {
+        warnings.push(`${path}: ${String(error)}`);
+      }
     }
-
-    return {
-      status: "pass",
-      summary: `${label}: \`${configuredPath}\` (path verified)`,
-    };
-  } catch {
-    return {
-      status: "fail",
-      summary: `${label}: \`${configuredPath}\` (configured path unreadable at ${resolvedPath})`,
-    };
-  }
-}
-
-async function smokeTestProjectLocalSkills(
-  runner: CommandRunner,
-  repoRoot: string,
-  skillPaths: string[],
-  piAgentDir: string,
-): Promise<SkillCheckEntry> {
-  const piCommand = resolveBundledPiCommand();
-  const args = [
-    "--no-session",
-    "--no-context-files",
-    "--no-prompt-templates",
-    ...skillPaths.flatMap((path) => ["--skill", path]),
-    "-p",
-    PROJECT_LOCAL_SKILLS_PROMPT,
-  ];
-  const result = await runner.run(
-    piCommand.command,
-    piCommandArgs(piCommand, args),
-    { cwd: repoRoot, env: piAgentCommandEnv(piAgentDir) },
-  );
-
-  if (result.code === 0 && result.stdout.includes("PATCHMILL_SKILLS_OK")) {
-    return {
-      status: "pass",
-      summary: "Pi loaded the project-local skill directory",
-    };
-  }
-
-  return {
-    status: "fail",
-    summary: `Pi could not load the project-local skill directory: ${commandOutput(result)}`,
-  };
-}
-
-function configuredSkillName(skill: string): string | undefined {
-  const normalized = skill
-    .replaceAll("\\", "/")
-    .replace(/\/SKILL\.md$/u, "")
-    .replace(/\/+$/u, "");
-  return normalized.split("/").filter(Boolean).at(-1);
-}
-
-function requiredFilesForConfiguredSkill(skill: string): string[] {
-  const skillName = configuredSkillName(skill);
-  return skillName ? requiredSkillFiles(skillName) : ["SKILL.md"];
-}
-
-async function verifyBundledSkill(
-  key: string,
-  skill: string,
-  bundledPath: string,
-  requiredFiles: string[] = ["SKILL.md"],
-): Promise<SkillCheckEntry> {
-  if (!(await checkReadableSkillFile(bundledPath))) {
-    return {
-      status: "fail" as const,
-      summary: `${key}: \`${skill}\` (bundled skill unreadable at ${bundledPath})`,
-    };
-  }
-
-  const missingRequired = await validateRequiredSkillFiles(
-    key,
-    skill,
-    bundledPath,
-    requiredFiles,
-  );
-  if (missingRequired) return missingRequired;
-
-  return {
-    status: "pass" as const,
-    summary: `${key}: \`${skill}\` (bundled skill verified)`,
-  };
-}
-
-async function checkSkills(
-  runner: CommandRunner,
-  config: PatchmillConfig,
-  repoRoot: string,
-  piAgentDir: string,
-  bundledSkillPathResolver: typeof bundledSkillPath = bundledSkillPath,
-): Promise<DoctorCheckResult> {
-  const configuredSkills = PATCHMILL_SKILL_KEYS.flatMap((key) => {
-    const skill = config.skills[key];
-    return skill ? [{ key, skill }] : [];
+    return warnings.length ? warnings.join("; ") : undefined;
   });
-  const configuredSkillValues = PATCHMILL_SKILL_KEYS.flatMap((key) => {
-    const skill = config.skills[key];
-    return skill ? [skill] : [];
-  });
-  const resolution = resolveConfiguredSkillInvocation(
-    configuredSkillValues,
-    repoRoot,
-  );
-
-  const entries: SkillCheckEntry[] = await Promise.all(
-    configuredSkills.map(async ({ key, skill }) => {
-      if (
-        key === "implementation" &&
-        retiredManagedImplementationSkill(skill, repoRoot)
-      ) {
-        return {
-          status: "fail" as const,
-          summary: `${key}: \`${skill}\` is a retired managed implementation skill. Run \`patchmill skills update\`, then explicitly set skills.implementation to \`.patchmill/skills/inline-dev-with-validation-and-pr-checks\`. Updates do not rewrite config or replace customized files.`,
-        };
-      }
-      const bundledSkill = bundledSkillByConfigReference(skill);
-      if (bundledSkill) {
-        return await verifyBundledSkill(
-          key,
-          skill,
-          bundledSkillPathResolver(bundledSkill),
-          bundledSkill.requiredFiles,
-        );
-      }
-
-      if (!isPathLikeSkill(skill)) {
-        return {
-          status: "warn" as const,
-          summary: `${key}: \`${skill}\` (named skill configured; doctor did not verify it)`,
-        };
-      }
-
-      const resolvedPath = resolvePathLikeSkillPath(skill, repoRoot);
-      return validateResolvedLocalSkill(
-        key,
-        skill,
-        resolvedPath,
-        requiredFilesForConfiguredSkill(skill),
-      );
-    }),
-  );
-
-  entries.push(...resolution.diagnostics);
-
-  if (
-    resolution.usedProjectLocalPack &&
-    !entries.some((entry) => entry.status === "fail") &&
-    resolution.paths.length > 0
-  ) {
-    entries.push(
-      await smokeTestProjectLocalSkills(
-        runner,
-        repoRoot,
-        resolution.paths,
-        piAgentDir,
+  await check("skills", "fail", async () => {
+    const missing = await missingFiles(
+      Object.values(config.skills).map((path) =>
+        resolve(repoRoot, path, "SKILL.md"),
       ),
     );
-  }
-
-  const message = entries.map((entry) => entry.summary).join("; ");
-  if (entries.some((entry) => entry.status === "fail")) {
-    return fail("skills", message, [
-      "Patchmill doctor only verifies bundled skills and path-like configured skills.",
-      "Fix missing or unreadable skill paths, then rerun:",
-      "  patchmill doctor",
+    return missing.length
+      ? `Missing skill files: ${missing.join(", ")}`
+      : undefined;
+  });
+  await check("reviewer", "warn", async () => {
+    const missing = await missingFiles([
+      resolve(repoRoot, config.pi.agentDir, "agents/reviewer.md"),
     ]);
-  }
-  if (entries.some((entry) => entry.status === "warn")) {
-    return warn("skills", message);
-  }
-  return pass("skills", message);
-}
-
-export async function runDoctorChecks(
-  runner: CommandRunner,
-  options: DoctorOptions,
-): Promise<DoctorCheckResult[]> {
-  const results: DoctorCheckResult[] = [];
-  const piAgentDir = localPiAgentDir(options.repoRoot);
-  let loaded;
-  try {
-    loaded = await loadPatchmillConfigState(
-      options.repoRoot,
-      options.env ?? process.env,
-      [],
-    );
-    results.push(
-      loaded.hasConfigFile
-        ? pass("config", "patchmill.config.json")
-        : fail("config", "patchmill.config.json not found", [
-            "Create local config, then rerun:",
-            "  patchmill init",
-            "  patchmill doctor",
-          ]),
-    );
-  } catch (error) {
-    results.push(
-      fail("config", error instanceof Error ? error.message : String(error)),
-    );
-  }
-
-  results.push(await checkGit(runner, options.repoRoot, loaded?.config));
-
-  if (!loaded) {
-    results.push(fail("host", "skipped because config did not load"));
-    results.push(fail("issues", "skipped because config did not load"));
-    results.push(fail("labels", "skipped because config did not load"));
-  } else {
-    const config = loaded.config;
-    const hostRepoRoot = options.teaRepoRootForTests ?? options.repoRoot;
-    const host = createIssueHostProvider({
-      runner,
-      repoRoot: hostRepoRoot,
-      host: config.host,
-    });
-    const cliCheck = await host.checkCli();
-    results.push(
-      cliCheck.ok
-        ? pass("host", cliCheck.message)
-        : fail("host", cliCheck.message, cliCheck.remediation),
-    );
-
+    return missing.length ? `Missing reviewer: ${missing[0]}` : undefined;
+  });
+  await check("pi-subagents", "fail", async () => {
+    resolvePiSubagentsPackageRoot();
+    return undefined;
+  });
+  await check("Pi smoke", "fail", async () => {
+    const runs = resolve(repoRoot, config.paths.runsDir);
+    await mkdir(runs, { recursive: true });
+    const runDir = await mkdtemp(join(runs, "doctor-"));
+    const logPath = join(runDir, "pi.log");
     try {
-      const issues = await host.listOpenIssues();
-      results.push(
-        pass("issues", `open issues can be listed (${issues.length})`),
-      );
+      const promptPath = join(runDir, "prompt.md");
+      await writeFile(promptPath, "Reply with exactly OK");
+      const result = await supervisePi({
+        command: deps.piCommand,
+        cwd: repoRoot,
+        agentDir: resolve(repoRoot, config.pi.agentDir),
+        sessionDir: join(runDir, "sessions"),
+        promptPath,
+        logPath,
+        extensionPaths: [],
+        timeoutMs: 120_000,
+      });
+      if (
+        result.exitCode === 0 &&
+        !result.timedOut &&
+        !result.aborted &&
+        result.stdout.includes("OK")
+      )
+        return undefined;
+      return `Pi smoke failed (exit ${result.exitCode}, timeout ${result.timedOut}); log: ${logPath}`;
     } catch (error) {
-      results.push(
-        fail("issues", error instanceof Error ? error.message : String(error)),
-      );
+      return `Pi smoke failed: ${String(error)}; log: ${logPath}`;
     }
-
-    if (config.issueState.provider === "labels") {
-      try {
-        const labelCatalog = createPatchmillLabelCatalog(config);
-        const missing = missingLabelDefinitions(
-          await host.listLabels(),
-          labelCatalog,
-        );
-        if (missing.length === 0) {
-          results.push(
-            pass(
-              "labels",
-              labelCatalog.labelDefinitions
-                .map((label) => label.name)
-                .join(", "),
-            ),
-          );
-        } else {
-          results.push(
-            fail(
-              "labels",
-              `missing ${missing.map((label) => label.name).join(", ")}`,
-              [
-                "Patchmill doctor is read-only and did not create labels.",
-                "",
-                "Run the approved repair flow:",
-                "  patchmill doctor --fix",
-                "",
-                "You can edit label names in patchmill.config.json before running --fix.",
-              ],
-            ),
-          );
-        }
-      } catch (error) {
-        results.push(
-          fail(
-            "labels",
-            error instanceof Error ? error.message : String(error),
-          ),
-        );
-      }
-    } else {
-      try {
-        const trustedAuthors =
-          config.issueState.trustedAuthors ??
-          (await host.trustedTriageCommentAuthors());
-        if (trustedAuthors.length === 0) {
-          results.push(
-            fail("issue-state", "no trusted comment authors resolved", [
-              "Set issueState.trustedAuthors in patchmill.config.json, or authenticate the host CLI.",
-              "Doctor does not write probe comments; comment permission is verified on first state write.",
-            ]),
-          );
-        } else {
-          results.push(
-            pass(
-              "issue-state",
-              `trusted comment authors: ${trustedAuthors.join(", ")}`,
-            ),
-          );
-        }
-      } catch (error) {
-        results.push(
-          fail(
-            "issue-state",
-            error instanceof Error ? error.message : String(error),
-          ),
-        );
-      }
-    }
-
-    results.push(
-      await checkSkills(
-        runner,
-        config,
-        options.repoRoot,
-        piAgentDir,
-        options.bundledSkillPathForTests,
-      ),
-    );
-
-    const paths = [
-      ["plans", config.paths.plansDir],
-      ["run-state", config.paths.runStateDir],
-      ["triage", config.paths.triageLogDir],
-      ["worktree", config.paths.worktreeDir],
-    ] as const;
-    const statuses = await Promise.all(
-      paths.map(async ([name, path]) => `${name}:${await pathStatus(path)}`),
-    );
-    const hasPathFailures = statuses.some(
-      (entry) =>
-        entry.endsWith(":not-directory") || entry.endsWith(":unusable"),
-    );
-    const hasPathWarnings = statuses.some(
-      (entry) => entry.endsWith(":missing") || entry.endsWith(":parent-usable"),
-    );
-    results.push(
-      hasPathFailures
-        ? fail("paths", statuses.join(", "))
-        : hasPathWarnings
-          ? warn("paths", statuses.join(", "))
-          : pass("paths", statuses.join(", ")),
-    );
-  }
-
-  results.push(await checkPiBinary(runner, options.repoRoot));
-  results.push(await checkPiProvider(runner, options.repoRoot, piAgentDir));
-
-  return results;
+  });
+  await check("trusted authors", "warn", async () =>
+    config.host.trustedAuthors.length
+      ? undefined
+      : "No trusted authors configured",
+  );
+  return checks;
 }

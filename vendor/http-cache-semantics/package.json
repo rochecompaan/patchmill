@@ -1,6 +1,6 @@
 {
     "name": "http-cache-semantics",
-    "version": "4.2.0",
+    "version": "4.3.0",
     "private": true,
     "description": "Parses Cache-Control and other headers. Helps building correct HTTP caches and proxies",
     "repository": {
@@ -12,6 +12,6 @@
     "files": [
         "index.js"
     ],
-    "author": "Kornel Lesiński <npms2@geekhood.net> (https://kornel.ski/)",
+    "author": "Kornel Lesiński <kornel@geekhood.net> (https://kornel.ski/)",
     "license": "BSD-2-Clause"
 }

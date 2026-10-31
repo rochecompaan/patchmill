@@ -141,7 +141,7 @@ the new head, like #271.
 
 1. Copy `fixtures/e2e/` (except `issue.md`) into a new temp Git repository.
    Write the `.patchmill-e2e` marker file. Set `origin` to the test repository.
-2. Run the PR build's `patchmill init --yes --skills project`. The installed
+2. Run the PR build's `patchmill init --provider github-gh`. The installed
    skills therefore match the PR. Without a terminal, `--yes` selects the "add
    to git" policy. Init commits `chore: initialize Patchmill` locally and
    creates the required labels on the host. It does not push.
@@ -149,11 +149,8 @@ the new head, like #271.
    driver runs init without `OPENROUTER_API_KEY`, so the smoke test can't call a
    model. The driver checks init's exit code and the setup commit. It ignores
    the smoke result.
-4. Set `workflow.specApproval.required` and `workflow.planApproval.required` to
-   `true` in the new config, and commit. Without both gates, the spec and plan
-   ship inside the final PR and no planning PRs open.
-5. Force-push `main` to the test repository.
-6. Create issue #N from `issue.md`.
+4. Force-push `main` to the test repository.
+5. Create issue #N from `issue.md`.
 
 ### Rules
 
@@ -254,7 +251,7 @@ less clear. #317 fixes this. It must land before any blocked-path scenario.
 
 The implementation plan must confirm these before it relies on them:
 
-- `patchmill init --yes` works with an App installation token.
+- `patchmill init --provider github-gh` works with an App installation token.
 - No installed skill calls `gh api user` on the happy path.
 - The implementation skill's PR-check wait works on a repository with no CI.
   Find the smallest App permission set that allows it.

@@ -1,15 +1,14 @@
-import type { PatchmillHostProviderId } from "../../../config/types.ts";
-import type { RepositoryTarget } from "../../../host/types.ts";
+import type { HostProviderId, RepositoryTarget } from "../../../host/types.ts";
 
 export type SetupTestRepoConfig = {
   showHelp: boolean;
-  provider?: PatchmillHostProviderId;
+  provider?: HostProviderId;
   target?: RepositoryTarget;
   login?: string;
   reset: boolean;
 };
 
-const SUPPORTED_PROVIDERS = new Set<PatchmillHostProviderId>([
+const SUPPORTED_PROVIDERS = new Set<HostProviderId>([
   "github-gh",
   "forgejo-tea",
 ]);
@@ -29,9 +28,9 @@ function parseRepo(value: string): RepositoryTarget {
   return { owner, repo, slug: value };
 }
 
-function parseProvider(value: string): PatchmillHostProviderId {
-  if (SUPPORTED_PROVIDERS.has(value as PatchmillHostProviderId)) {
-    return value as PatchmillHostProviderId;
+function parseProvider(value: string): HostProviderId {
+  if (SUPPORTED_PROVIDERS.has(value as HostProviderId)) {
+    return value as HostProviderId;
   }
   throw new Error(`Unsupported provider: ${value}`);
 }

@@ -1,582 +1,457 @@
-import type {
-  LabelChangePlan,
-  LabelDefinition,
-  IssueSummary,
-} from "../issue/types.ts";
-import type { CommandResult, CommandRunner } from "../command/types.ts";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
-import { ForgejoTeaHostProvider } from "./forgejo-tea.ts";
+import { recordingRunner } from "../../test-support/recording-runner.ts";
+import { CommandFailedError } from "../process/command.ts";
+import { createHostForProvider } from "./factory.ts";
+import { ForgejoHost } from "./forgejo-tea.ts";
 
-type RecordedCall = {
-  command: string;
-  args: string[];
-  cwd?: string;
+const target = { owner: "owner", repo: "repo", slug: "owner/repo" };
+const label = { name: "bug", color: "ff0000", description: "Broken" };
+const rawIssue = {
+  number: 3,
+  title: "Fix",
+  body: "Details",
+  labels: [{ name: "bug" }],
+  state: "open",
+  html_url: "https://host/3",
+  user: { login: "author" },
+  created_at: "today",
 };
-
-const repoRoot = "/repo";
-const login = "bot";
-const target = {
-  owner: "OWNER",
-  repo: "patchmill-test",
-  slug: "OWNER/patchmill-test",
-};
-
-function createFakeRunner(
-  respond: (
-    command: string,
-    args: string[],
-    cwd?: string,
-  ) => CommandResult | Promise<CommandResult>,
-): CommandRunner & { calls: RecordedCall[] } {
-  const calls: RecordedCall[] = [];
-  return {
-    calls,
-    async run(command, args, options = {}) {
-      calls.push({ command, args: [...args], cwd: options.cwd });
-      return respond(command, args, options.cwd);
-    },
-  };
-}
-
-function createProvider(runner: CommandRunner): ForgejoTeaHostProvider {
-  return new ForgejoTeaHostProvider({ runner, repoRoot, login });
-}
-
-function createProviderWithResponses(responses: CommandResult[]): {
-  provider: ForgejoTeaHostProvider;
-  calls: RecordedCall[];
-} {
-  const calls: RecordedCall[] = [];
-  let index = 0;
-  const runner: CommandRunner = {
-    async run(command, args, options = {}) {
-      calls.push({ command, args: [...args], cwd: options.cwd });
-      const response = responses[index];
-      index += 1;
-      if (!response)
-        throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-      return response;
-    },
-  };
-  return {
-    provider: new ForgejoTeaHostProvider({
-      runner,
-      repoRoot,
-      login: "triage-agent",
-    }),
-    calls,
-  };
-}
-
-function assertTeaContext(call: RecordedCall): void {
-  assert.equal(call.command, "tea");
-  assert.equal(call.cwd, repoRoot);
-  assert.ok(call.args.includes("--repo"));
-  assert.ok(call.args.includes(repoRoot));
-  assert.ok(call.args.includes("--login"));
-  assert.ok(call.args.includes(login));
-
-  const separatorIndex = call.args.indexOf("--");
-  const repoIndex = call.args.indexOf("--repo");
-  const loginIndex = call.args.indexOf("--login");
-  if (separatorIndex !== -1) {
-    assert.ok(repoIndex >= 0 && repoIndex < separatorIndex);
-    assert.ok(loginIndex >= 0 && loginIndex < separatorIndex);
-  }
-}
-
-function flagValue(args: string[], flag: string): string | undefined {
-  const index = args.indexOf(flag);
-  return index === -1 ? undefined : args[index + 1];
-}
-
-test("ForgejoTeaHostProvider reports CLI readiness", async () => {
-  const calls: string[] = [];
-  const provider = new ForgejoTeaHostProvider({
-    repoRoot,
-    login: "triage-agent",
-    runner: {
-      async run(command, args) {
-        calls.push([command, ...args].join(" "));
-        return { code: 0, stdout: "tea help", stderr: "" };
-      },
-    },
-  });
-
-  const result = await provider.checkCli();
-
-  assert.deepEqual(result, {
-    ok: true,
-    message: "forgejo via tea as triage-agent",
-  });
-  assert.deepEqual(calls, ["tea --help"]);
-});
-
-test("ForgejoTeaHostProvider trusts configured and default tea login authors", async () => {
-  const runner = createFakeRunner((_command, args) => {
-    if (args.join(" ") === "logins list --output json") {
-      return {
-        code: 0,
-        stdout: JSON.stringify([
-          { name: "bot", user: "triage-agent", default: "false" },
-          { name: "roche", user: "roche", default: "true" },
-        ]),
-        stderr: "",
-      };
-    }
-    throw new Error(`Unexpected command: ${args.join(" ")}`);
-  });
-
-  const authors = await createProvider(runner).trustedTriageCommentAuthors();
-
-  assert.deepEqual(authors, ["triage-agent", "roche"]);
-  assert.deepEqual(runner.calls[0]?.args, [
-    "logins",
-    "list",
-    "--output",
-    "json",
+function fixture(
+  stdout = "[]",
+  login = "name",
+  origin = "git@host:owner/repo.git",
+) {
+  const runner = recordingRunner([
+    { match: /^git remote get-url origin$/, result: { stdout: origin } },
+    { match: /^tea /, result: { stdout } },
   ]);
-  assert.equal(runner.calls[0]?.cwd, repoRoot);
-});
+  return {
+    runner,
+    host: new ForgejoHost({ runner, repoRoot: "/repo", login }),
+  };
+}
 
-test("ForgejoTeaHostProvider reports CLI failures with remediation", async () => {
-  const provider = new ForgejoTeaHostProvider({
-    repoRoot,
-    runner: {
-      async run() {
-        return { code: 127, stdout: "", stderr: "tea: command not found" };
-      },
-    },
-  });
-
-  const result = await provider.checkCli();
-
-  assert.deepEqual(result, {
-    ok: false,
-    message: "tea unavailable: tea: command not found",
-    remediation: [
-      "Install and authenticate tea, then rerun:",
-      "  patchmill doctor",
-    ],
-  });
-});
-
-test("ForgejoTeaHostProvider delegates open issue listing to tea", async () => {
-  const runner = createFakeRunner((_command, args) => {
-    const page = flagValue(args, "--page");
-    if (args[0] === "issues" && args[1] === "list" && page === "1") {
-      return {
-        code: 0,
-        stdout: JSON.stringify([
-          {
-            index: 7,
-            title: "Needs docs",
-            body: "Update docs",
-            state: "open",
-            labels: [{ name: "docs" }],
-            created: "2026-05-27T09:00:00Z",
-          },
-        ]),
-        stderr: "",
-      };
-    }
-    if (args[0] === "issues" && args[1] === "list" && page === "2") {
-      return { code: 0, stdout: JSON.stringify([]), stderr: "" };
-    }
-    throw new Error(`Unexpected command: ${args.join(" ")}`);
-  });
-
-  const issues = await createProvider(runner).listOpenIssues();
-
-  assert.deepEqual(issues, [
-    {
-      number: 7,
-      title: "Needs docs",
-      body: "Update docs",
-      state: "open",
-      labels: ["docs"],
-      author: undefined,
-      created: "2026-05-27T09:00:00Z",
-      updated: undefined,
-      comments: undefined,
-    },
-  ]);
-  assert.equal(runner.calls.length, 2);
-  assertTeaContext(runner.calls[0]!);
-  assert.deepEqual(runner.calls[0]!.args.slice(0, 2), ["issues", "list"]);
-  assert.equal(flagValue(runner.calls[0]!.args, "--state"), "open");
+test("clone guidance preserves the no-login command", () => {
   assert.equal(
-    flagValue(runner.calls[0]!.args, "--fields"),
-    "index,title,body,state,labels,author,created,updated,comments,url",
+    fixture("[]", "").host.cloneCommand(target),
+    "tea clone owner/repo",
   );
-  assert.equal(flagValue(runner.calls[0]!.args, "--output"), "json");
-  assert.equal(flagValue(runner.calls[0]!.args, "--page"), "1");
-  assertTeaContext(runner.calls[1]!);
-  assert.equal(flagValue(runner.calls[1]!.args, "--page"), "2");
 });
 
-test("ForgejoTeaHostProvider hydrates issue comments through Forgejo API JSON and returns the hydrated array", async () => {
-  const issues: IssueSummary[] = [
-    { number: 7, title: "First", body: "", state: "open", labels: [] },
-    { number: 8, title: "Second", body: "", state: "open", labels: [] },
-  ];
-  const runner = createFakeRunner((_command, args) => {
-    if (
-      args[0] === "api" &&
-      args[1] === "/repos/{owner}/{repo}/issues/7/comments?page=1&limit=1000"
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify([
-          {
-            body: "Spec attached.\n\nPlan path: docs/plans/example.md",
-            user: { login: "ana" },
-            created_at: "2026-05-08T10:30:00Z",
-            updated_at: "2026-05-08T10:45:00Z",
-          },
-        ]),
-        stderr: "",
-      };
-    }
-    if (
-      args[0] === "api" &&
-      args[1] === "/repos/{owner}/{repo}/issues/8/comments?page=1&limit=1000"
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify([
-          {
-            body: "Second comment.",
-            user: { login: "sam" },
-            created_at: "2026-05-08T11:45:00Z",
-          },
-        ]),
-        stderr: "",
-      };
-    }
-    throw new Error(`Unexpected command: ${args.join(" ")}`);
+for (const login of [
+  "selected",
+  'team\'s sandbox; $(printf injected)\n"quoted"\\path',
+]) {
+  test(`clone guidance selects the named login safely through a shell: ${JSON.stringify(login)}`, () => {
+    const command = fixture("[]", login).host.cloneCommand(target);
+    // Capture shell-parsed argv locally, without ever invoking the tea binary.
+    const output = execFileSync(
+      "/bin/sh",
+      ["-c", `tea() { printf '%s\\000' "$@"; }\n${command}`],
+      { encoding: "utf8" },
+    );
+    assert.deepEqual(output.split("\0").slice(0, -1), [
+      "clone",
+      "--login",
+      login,
+      "owner/repo",
+    ]);
   });
+}
 
-  const hydrated = await createProvider(runner).hydrateIssueComments(issues);
+test("factory constructs Forgejo", () => {
+  assert.ok(
+    createHostForProvider(
+      "forgejo-tea",
+      "name",
+      recordingRunner([]),
+      "/repo",
+    ) instanceof ForgejoHost,
+  );
+});
 
-  assert.strictEqual(hydrated, issues);
-  assert.deepEqual(hydrated[0]?.comments, [
+for (const login of ["name", ""]) {
+  test(`repository operations carry repo context and login ${JSON.stringify(login)}`, async () => {
+    const { runner, host } = fixture("[]", login);
+    await host.listOpenIssues();
+    await host.listLabels();
+    await host.createLabel(label);
+    await host.commentIssue(3, "hello");
+    await host.setLabels(3, ["bug"], ["old"]);
+    await host.listPullRequests("topic");
+    for (const [i, call] of runner.calls.entries()) {
+      assert.equal(runner.options[i]?.cwd, "/repo");
+      if (call[0] !== "tea") continue;
+      assert.deepEqual(
+        call.slice(call.indexOf("--repo"), call.indexOf("--repo") + 2),
+        ["--repo", "owner/repo"],
+      );
+      assert.equal(call.includes("--login"), Boolean(login));
+      if (login)
+        assert.deepEqual(
+          call.slice(call.indexOf("--login"), call.indexOf("--login") + 2),
+          ["--login", "name"],
+        );
+    }
+    const edits = runner.calls.filter(
+      (c) => c[1] === "issues" && c[2] === "edit",
+    );
+    assert.equal(edits.length, 2);
+    assert.ok(edits[0]?.includes("--add-labels"));
+    assert.ok(!edits[0]?.includes("--remove-labels"));
+    assert.ok(edits[1]?.includes("--remove-labels"));
+    assert.ok(!edits[1]?.includes("--add-labels"));
+    assert.ok(
+      runner.calls.some(
+        (c) =>
+          c[1] === "comment" &&
+          c[2] === "3" &&
+          c.slice(-2).join(" ") === "-- hello",
+      ),
+    );
+  });
+}
+
+function labelFixture(failing: "add" | "remove") {
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
     {
-      authorLogin: "ana",
-      created: "2026-05-08T10:30:00Z",
-      body: "Spec attached.\n\nPlan path: docs/plans/example.md",
+      match: new RegExp(`--${failing}-labels`),
+      result: { code: 1, stderr: "label service unavailable" },
+    },
+    { match: /^tea /, result: {} },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "" });
+  const edits = () =>
+    runner.calls.filter((c) => c[1] === "issues" && c[2] === "edit");
+  return { host, edits };
+}
+
+test("a failed replacement leaves the previous workflow labels in place", async () => {
+  const { host, edits } = labelFixture("add");
+  await assert.rejects(
+    host.setLabels(3, ["agent-done"], ["in-progress"]),
+    CommandFailedError,
+  );
+  assert.equal(edits().length, 1);
+  assert.ok(!edits()[0]?.includes("--remove-labels"));
+});
+
+test("a failed removal after replacement reports the partial transition", async () => {
+  const { host } = labelFixture("remove");
+  await assert.rejects(
+    host.setLabels(3, ["agent-done"], ["in-progress"]),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /#3/);
+      assert.match(error.message, /added agent-done/);
+      assert.match(error.message, /in-progress/);
+      assert.match(error.message, /label service unavailable/);
+      assert.ok(error.cause instanceof CommandFailedError);
+      return true;
+    },
+  );
+});
+
+test("labels being added are never removed in the same transition", async () => {
+  const { runner, host } = fixture();
+  await host.setLabels(3, ["in-progress"], ["in-progress", "agent-ready"]);
+  const removal = runner.calls.find((c) => c.includes("--remove-labels"));
+  assert.equal(
+    removal?.[removal.indexOf("--remove-labels") + 1],
+    "agent-ready",
+  );
+});
+
+test("empty label edits do not even look up origin", async () => {
+  const { host, runner } = fixture();
+  await host.setLabels(3, [], []);
+  assert.deepEqual(runner.calls, []);
+});
+
+for (const origin of [
+  "https://host/owner/repo.git",
+  "ssh://git@host/owner/repo.git",
+  "git@host:owner/repo.git",
+]) {
+  test(`repository resolves ${origin}`, async () => {
+    const { host } = fixture('{"default_branch":"main"}', "", origin);
+    assert.deepEqual(await host.repository(), {
+      owner: "owner",
+      repo: "repo",
+      defaultBranch: "main",
+    });
+  });
+}
+for (const origin of [
+  "/tmp/repo",
+  "https://host/a/b/c",
+  "https://host/only",
+  "nonsense",
+]) {
+  test(`invalid origin fails clearly: ${origin}`, async () => {
+    await assert.rejects(
+      fixture("[]", "", origin).host.repository(),
+      /origin.*owner\/repo/i,
+    );
+  });
+}
+
+test("issues exclude PRs and map API fields", async () => {
+  const { host } = fixture(
+    JSON.stringify([rawIssue, { ...rawIssue, pull_request: {} }]),
+  );
+  assert.deepEqual(await host.listOpenIssues(), [
+    {
+      number: 3,
+      title: "Fix",
+      body: "Details",
+      labels: ["bug"],
+      state: "open",
+      url: "https://host/3",
+      author: "author",
+      createdAt: "today",
+      comments: [],
     },
   ]);
-  assert.deepEqual(hydrated[1]?.comments, [
+});
+
+test("viewIssue preserves all comment pages", async () => {
+  const comment = {
+    user: { login: "reviewer" },
+    body: "yes",
+    created_at: "later",
+  };
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
     {
-      authorLogin: "sam",
-      created: "2026-05-08T11:45:00Z",
-      body: "Second comment.",
+      match: /comments\?page=1&limit=50/,
+      result: {
+        stdout: JSON.stringify(Array.from({ length: 50 }, () => comment)),
+      },
     },
+    {
+      match: /comments\?page=2&limit=50/,
+      result: { stdout: JSON.stringify([comment]) },
+    },
+    { match: /issues\/3/, result: { stdout: JSON.stringify(rawIssue) } },
   ]);
-  assert.equal(runner.calls.length, 2);
-  for (const [index, issueNumber] of ["7", "8"].entries()) {
-    assertTeaContext(runner.calls[index]!);
-    assert.equal(runner.calls[index]!.args[0], "api");
+  const issue = await new ForgejoHost({
+    runner,
+    repoRoot: "/repo",
+    login: "",
+  }).viewIssue(3);
+  assert.equal(issue.comments.length, 51);
+  assert.deepEqual(issue.comments[50], {
+    author: "reviewer",
+    body: "yes",
+    createdAt: "later",
+  });
+});
+
+const pr = {
+  number: 1,
+  html_url: "https://host/pr/1",
+  state: "closed",
+  merged: false,
+  body: "body",
+  title: "Change",
+  head: { ref: "topic", repo: { full_name: "outsider/repo" } },
+  base: { ref: "release" },
+};
+for (const [raw, state, draft, headRepository] of [
+  [{ ...pr, state: "open", draft: true }, "open", true, "outsider/repo"],
+  [{ ...pr, merged: true }, "merged", false, "outsider/repo"],
+  [
+    { ...pr, title: "WIP: Change", head: { ref: "topic", repo: null } },
+    "closed",
+    true,
+    null,
+  ],
+] as const) {
+  test(`listPullRequests maps ${state}, draft, head repository, and base`, async () => {
+    const { host } = fixture(
+      JSON.stringify([{ ...pr, state: "open", head: { ref: "other" } }, raw]),
+    );
+    assert.deepEqual(await host.listPullRequests("topic"), [
+      {
+        number: 1,
+        url: "https://host/pr/1",
+        state,
+        draft,
+        body: "body",
+        headRepository,
+        headBranch: "topic",
+        baseBranch: "release",
+      },
+    ]);
+    assert.deepEqual(await host.listPullRequests("missing"), []);
+  });
+}
+
+test("pushRepository is origin's owner/repo", async () => {
+  const { host } = fixture("[]", "", "forgejo-alias:owner/repo.git");
+  assert.equal(await host.pushRepository(), "owner/repo");
+});
+
+test("setup operations use explicit target without origin and valid unscoped repo commands", async () => {
+  const { host, runner } = fixture(
+    JSON.stringify([
+      { owner: { login: "owner" }, name: "repo", url: "web", ssh: "ssh" },
+    ]),
+  );
+  assert.deepEqual(await host.getRepository(target), {
+    publicUrl: "web",
+    gitRemoteUrl: "ssh",
+  });
+  await host.createPublicRepo(target);
+  await host.deleteRepo(target);
+  await host.createLabel(target, label);
+  await host.listLabels(target);
+  await host.createIssue(target, {
+    title: "Fix",
+    body: "Body",
+    labels: ["bug"],
+  });
+  assert.ok(runner.calls.every((c) => c[0] === "tea"));
+  for (const call of runner.calls.filter((c) => c[1] === "repos")) {
+    assert.ok(!call.includes("--repo"));
+    assert.ok(call.includes("--owner"));
+    assert.deepEqual(call.slice(-2), ["--login", "name"]);
+  }
+  assert.ok(
+    runner.calls.some((c) => c.includes("--labels") && c.includes("bug")),
+  );
+});
+
+test("repository absence is only a successful empty search; command and JSON errors propagate", async () => {
+  assert.equal(await fixture().host.getRepository(target), undefined);
+  const runner = recordingRunner([
+    { match: /tea /, result: { code: 1, stderr: "authentication failed" } },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "" });
+  await assert.rejects(host.getRepository(target), CommandFailedError);
+  await assert.rejects(host.createPublicRepo(target), CommandFailedError);
+  await assert.rejects(
+    fixture("not JSON").host.listOpenIssues(),
+    /invalid JSON/,
+  );
+});
+
+for (const login of ["selected", ""]) {
+  test(`checkCli resolves authenticated user without origin for ${login || "default"}`, async () => {
+    const runner = recordingRunner([
+      { match: /tea --help/, result: {} },
+      {
+        match: /tea logins list --output json/,
+        result: {
+          stdout: JSON.stringify([
+            { name: "selected", user: "alice", default: false },
+            { name: "other", user: "bob", default: "true" },
+          ]),
+        },
+      },
+    ]);
     assert.equal(
-      runner.calls[index]!.args[1],
-      `/repos/{owner}/{repo}/issues/${issueNumber}/comments?page=1&limit=1000`,
+      (await new ForgejoHost({ runner, repoRoot: "/repo", login }).checkCli())
+        .login,
+      login ? "alice" : "bob",
+    );
+    assert.deepEqual(runner.calls, [
+      ["tea", "--help"],
+      ["tea", "logins", "list", "--output", "json"],
+    ]);
+  });
+}
+test("checkCli returns false for unavailable tea or missing login", async () => {
+  for (const responses of [
+    [{ match: /tea /, result: { code: -1, stderr: "ENOENT" } }],
+    [
+      { match: /tea --help/, result: {} },
+      { match: /tea logins/, result: { stdout: "[]" } },
+    ],
+  ]) {
+    const host = new ForgejoHost({
+      runner: recordingRunner(responses),
+      repoRoot: "/repo",
+      login: "missing",
+    });
+    assert.equal((await host.checkCli()).ok, false);
+  }
+});
+
+test("repository search checks later full pages and stops at a short final page", async () => {
+  for (const found of [true, false]) {
+    const runner = recordingRunner([
+      {
+        match: /--page 1/,
+        result: {
+          stdout: JSON.stringify(
+            Array.from({ length: 50 }, () => ({
+              owner: "owner",
+              name: "similar",
+              url: "other",
+              ssh: "other",
+            })),
+          ),
+        },
+      },
+      {
+        match: /--page 2/,
+        result: {
+          stdout: JSON.stringify(
+            found
+              ? [{ owner: "owner", name: "repo", url: "web", ssh: "ssh" }]
+              : [],
+          ),
+        },
+      },
+      { match: /tea repos search/, result: { stdout: "[]" } },
+    ]);
+    const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "name" });
+    assert.deepEqual(
+      await host.getRepository(target),
+      found ? { publicUrl: "web", gitRemoteUrl: "ssh" } : undefined,
+    );
+    assert.equal(runner.calls.length, 2);
+    assert.ok(
+      runner.calls.every(
+        (c) =>
+          c.includes("--owner") &&
+          c.includes("--login") &&
+          !c.includes("--repo"),
+      ),
     );
   }
 });
 
-test("ForgejoTeaHostProvider delegates label listing to tea", async () => {
-  const runner = createFakeRunner((_command, args) => {
-    if (args[0] === "labels" && args[1] === "list") {
-      return {
-        code: 0,
-        stdout: JSON.stringify([{ name: "agent-ready" }, { name: "bug" }]),
-        stderr: "",
-      };
-    }
-    throw new Error(`Unexpected command: ${args.join(" ")}`);
+test("failed issue, comment, label, PR and origin commands retain operational diagnostics", async () => {
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    { match: /^tea /, result: { code: 1, stderr: "server unavailable" } },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "" });
+  for (const operation of [
+    () => host.listOpenIssues(),
+    () => host.viewIssue(3),
+    () => host.commentIssue(3, "body"),
+    () => host.setLabels(3, ["bug"], []),
+    () => host.listPullRequests("topic"),
+  ]) {
+    await assert.rejects(operation(), (error) => {
+      assert.ok(error instanceof CommandFailedError);
+      assert.match(error.message, /server unavailable/);
+      return true;
+    });
+  }
+  const failedOrigin = new ForgejoHost({
+    runner: recordingRunner([
+      { match: /^git /, result: { code: 1, stderr: "no origin" } },
+    ]),
+    repoRoot: "/repo",
+    login: "",
   });
-
-  const labels = await createProvider(runner).listLabels();
-
-  assert.deepEqual(labels, ["agent-ready", "bug"]);
-  assert.equal(runner.calls.length, 1);
-  assertTeaContext(runner.calls[0]!);
-  assert.deepEqual(runner.calls[0]!.args.slice(0, 2), ["labels", "list"]);
-  assert.equal(flagValue(runner.calls[0]!.args, "--output"), "json");
-});
-
-test("Forgejo setup provider lists labels on an explicit repository", async () => {
-  const { provider, calls } = createProviderWithResponses([
-    {
-      code: 0,
-      stdout: JSON.stringify([{ name: "feature" }, { name: "bug" }]),
-      stderr: "",
-    },
-  ]);
-
-  const labels = await provider.listLabels(target);
-
-  assert.deepEqual(labels, ["bug", "feature"]);
-  assert.deepEqual(calls[0]?.args, [
-    "labels",
-    "list",
-    "--repo",
-    "OWNER/patchmill-test",
-    "--limit",
-    "1000",
-    "--output",
-    "json",
-    "--login",
-    "triage-agent",
-  ]);
-});
-
-test("ForgejoTeaHostProvider emits shell-safe missing-label remediation", () => {
-  const label: LabelDefinition = {
-    name: "agent ready; echo 'owned'",
-    color: "#2ea043",
-    description: "Ready for $(implementation) & review",
-  };
-
-  assert.equal(
-    createProvider(
-      createFakeRunner(() => ({ code: 0, stdout: "", stderr: "" })),
-    ).missingLabelRemediation(label),
-    "  tea labels create --name 'agent ready; echo '\"'\"'owned'\"'\"'' --color '#2ea043' --description 'Ready for $(implementation) & review'",
-  );
-});
-
-test("ForgejoTeaHostProvider delegates label creation to tea", async () => {
-  const label: LabelDefinition = {
-    name: "agent-ready",
-    color: "#2ea043",
-    description: "Ready for implementation",
-  };
-  const runner = createFakeRunner((_command, args) => {
-    if (args[0] === "labels" && args[1] === "create")
-      return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`Unexpected command: ${args.join(" ")}`);
-  });
-
-  await createProvider(runner).createLabel(label);
-
-  assert.equal(runner.calls.length, 1);
-  assertTeaContext(runner.calls[0]!);
-  assert.deepEqual(runner.calls[0]!.args.slice(0, 2), ["labels", "create"]);
-  assert.equal(flagValue(runner.calls[0]!.args, "--name"), label.name);
-  assert.equal(flagValue(runner.calls[0]!.args, "--color"), label.color);
-  assert.equal(
-    flagValue(runner.calls[0]!.args, "--description"),
-    label.description,
-  );
-});
-
-test("Forgejo setup provider creates labels on an explicit repository", async () => {
-  const label: LabelDefinition = {
-    name: "feature",
-    color: "0e8a16",
-    description: "New functionality",
-  };
-  const { provider, calls } = createProviderWithResponses([
-    { code: 0, stdout: "", stderr: "" },
-  ]);
-
-  await provider.createLabel(target, label);
-
-  assert.deepEqual(calls[0]?.args, [
-    "labels",
-    "create",
-    "--repo",
-    "OWNER/patchmill-test",
-    "--name",
-    "feature",
-    "--color",
-    "0e8a16",
-    "--description",
-    "New functionality",
-    "--login",
-    "triage-agent",
-  ]);
-});
-
-test("ForgejoTeaHostProvider delegates label application to tea", async () => {
-  const change: LabelChangePlan = {
-    issueNumber: 12,
-    oldLabels: ["bug"],
-    newLabels: ["agent-ready"],
-    addLabels: ["agent-ready"],
-    removeLabels: ["bug"],
-  };
-  const runner = createFakeRunner((_command, args) => {
-    if (args[0] === "issues" && args[1] === "edit")
-      return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`Unexpected command: ${args.join(" ")}`);
-  });
-
-  await createProvider(runner).applyLabels(change);
-
-  assert.equal(runner.calls.length, 1);
-  assertTeaContext(runner.calls[0]!);
-  assert.deepEqual(runner.calls[0]!.args.slice(0, 2), ["issues", "edit"]);
-  assert.equal(runner.calls[0]!.args[2], String(change.issueNumber));
-  assert.equal(flagValue(runner.calls[0]!.args, "--remove-labels"), "bug");
-  assert.equal(flagValue(runner.calls[0]!.args, "--add-labels"), "agent-ready");
-});
-
-test("ForgejoTeaHostProvider delegates issue comments to tea", async () => {
-  const issueNumber = 9;
-  const body = "Automated triage needs more information.";
-  const runner = createFakeRunner((_command, args) => {
-    if (args[0] === "comment" && args[1] === String(issueNumber))
-      return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`Unexpected command: ${args.join(" ")}`);
-  });
-
-  await createProvider(runner).commentIssue(issueNumber, body);
-
-  assert.equal(runner.calls.length, 1);
-  assertTeaContext(runner.calls[0]!);
-  assert.deepEqual(runner.calls[0]!.args.slice(0, 2), [
-    "comment",
-    String(issueNumber),
-  ]);
-  const separatorIndex = runner.calls[0]!.args.indexOf("--");
-  assert.ok(separatorIndex >= 0);
-  assert.equal(runner.calls[0]!.args[separatorIndex + 1], body);
-});
-
-test("Forgejo setup provider returns repository info with tea repos search", async () => {
-  const { provider, calls } = createProviderWithResponses([
-    {
-      code: 0,
-      stdout: JSON.stringify([
-        {
-          owner: { login: "OWNER" },
-          name: "patchmill-test",
-          url: "https://forgejo.example/OWNER/patchmill-test",
-          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
-        },
-      ]),
-      stderr: "",
-    },
-  ]);
-
-  assert.deepEqual(await provider.getRepository(target), {
-    publicUrl: "https://forgejo.example/OWNER/patchmill-test",
-    gitRemoteUrl: "git@forgejo.example:OWNER/patchmill-test.git",
-  });
-  assert.deepEqual(calls[0]?.args, [
-    "repos",
-    "search",
-    "patchmill-test",
-    "--owner",
-    "OWNER",
-    "--fields",
-    "owner,name,ssh,url",
-    "--limit",
-    "50",
-    "--output",
-    "json",
-    "--login",
-    "triage-agent",
-  ]);
-});
-
-test("Forgejo setup provider returns undefined when tea search finds no repository", async () => {
-  const { provider } = createProviderWithResponses([
-    { code: 0, stdout: "[]", stderr: "" },
-  ]);
-
-  assert.equal(await provider.getRepository(target), undefined);
-});
-
-test("Forgejo provider creates and deletes public repositories", async () => {
-  const { provider, calls } = createProviderWithResponses([
-    { code: 0, stdout: "{}", stderr: "" },
-    { code: 0, stdout: "", stderr: "" },
-  ]);
-
-  await provider.createPublicRepo(target);
-  await provider.deleteRepo(target);
-
-  assert.deepEqual(
-    calls.map((call) => call.args),
-    [
-      [
-        "repos",
-        "create",
-        "--name",
-        "patchmill-test",
-        "--owner",
-        "OWNER",
-        "--output",
-        "json",
-        "--login",
-        "triage-agent",
-      ],
-      [
-        "repos",
-        "delete",
-        "--name",
-        "patchmill-test",
-        "--owner",
-        "OWNER",
-        "--force",
-        "--login",
-        "triage-agent",
-      ],
-    ],
-  );
-});
-
-test("Forgejo provider reads repository info and clone command", async () => {
-  const { provider } = createProviderWithResponses([
-    {
-      code: 0,
-      stdout: JSON.stringify([
-        {
-          owner: "OWNER",
-          name: "patchmill-test",
-          url: "https://forgejo.example/OWNER/patchmill-test",
-          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
-        },
-      ]),
-      stderr: "",
-    },
-  ]);
-
-  assert.deepEqual(await provider.getRepository(target), {
-    publicUrl: "https://forgejo.example/OWNER/patchmill-test",
-    gitRemoteUrl: "git@forgejo.example:OWNER/patchmill-test.git",
-  });
-  assert.equal(provider.cloneCommand(target), "tea clone OWNER/patchmill-test");
-});
-
-test("Forgejo setup provider creates issues with labels on an explicit repository", async () => {
-  const { provider, calls } = createProviderWithResponses([
-    { code: 0, stdout: "", stderr: "" },
-  ]);
-
-  await provider.createIssue(target, {
-    title: "Build the form",
-    body: "Create a useful form.\n",
-    labels: ["feature", "polish"],
-  });
-
-  assert.deepEqual(calls[0]?.args, [
-    "issues",
-    "create",
-    "--repo",
-    "OWNER/patchmill-test",
-    "--title",
-    "Build the form",
-    "--description",
-    "Create a useful form.\n",
-    "--labels",
-    "feature,polish",
-    "--login",
-    "triage-agent",
-  ]);
+  await assert.rejects(failedOrigin.repository(), CommandFailedError);
 });

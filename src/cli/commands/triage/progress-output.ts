@@ -1,8 +1,4 @@
-import type {
-  TriageProgressEvent,
-  TriageResult,
-  TriageToolCallEvent,
-} from "./types.ts";
+import type { TriageProgressEvent } from "../../../kernel/triage.ts";
 
 const DIVIDER =
   "──────────────────────────────────────────────────────────────────────────────";
@@ -11,157 +7,51 @@ function formatLabels(labels: string[]): string {
   return labels.length > 0 ? labels.join(", ") : "(none)";
 }
 
-function firstLine(value: string): string {
-  return value.split(/\r?\n/u, 1)[0] ?? "";
-}
-
-function truncateLines(lines: string[], maxLines: number): string[] {
-  return lines.slice(0, maxLines);
-}
-
-function truncate(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value;
-  return `${value.slice(0, maxLength - 3)}...`;
-}
-
-function formatArgumentValue(value: unknown): string {
-  const rendered = typeof value === "string" ? value : JSON.stringify(value);
-  return truncate(rendered ?? String(value), 50);
-}
-
-function subagentLabel(task: unknown): string | undefined {
-  if (typeof task !== "object" || task === null || Array.isArray(task)) {
-    return undefined;
-  }
-  const agent = (task as Record<string, unknown>).agent;
-  if (typeof agent !== "string") return undefined;
-  const count = (task as Record<string, unknown>).count;
-  return typeof count === "number" && count > 1 ? `${agent}×${count}` : agent;
-}
-
-function subagentLabels(args: Record<string, unknown> | undefined): string[] {
-  if (!args) return [];
-  const direct = subagentLabel(args);
-  if (direct) return [direct];
-
-  const tasks = args.tasks;
-  if (Array.isArray(tasks)) {
-    return tasks.flatMap((task) => subagentLabel(task) ?? []);
-  }
-
-  return [];
-}
-
-function formatSubagentCall(
-  args: Record<string, unknown> | undefined,
-): string | undefined {
-  const agents = subagentLabels(args);
-  if (agents.length === 1) return `🤖 subagent (agent=${agents[0]})`;
-  if (agents.length > 1) return `🤖 subagent (agents=${agents.join(", ")})`;
-  return undefined;
-}
-
-export function formatToolCallLine(event: TriageToolCallEvent): string {
-  const name = event.toolName ?? "tool";
-  const subagentCall =
-    name === "subagent" ? formatSubagentCall(event.arguments) : undefined;
-  if (subagentCall) return subagentCall;
-  const argPairs = Object.entries(event.arguments ?? {})
-    .map(([key, value]) => `${key}=${formatArgumentValue(value)}`)
-    .join(", ");
-  return argPairs ? `🔧 ${name} (${argPairs})` : `🔧 ${name}`;
-}
-
-export function formatProgressIssueLines(
-  issue: TriageResult["issues"][number],
-  completed: number,
-  total: number,
-): string[] {
-  const lines = [DIVIDER, `#${issue.issueNumber} ${issue.title}`];
-
-  if (issue.url) lines.push(`  link: ${issue.url}`);
-
-  lines.push(
-    `  labels: ${formatLabels(issue.previousLabels)} -> ${formatLabels(issue.finalLabels)}`,
-  );
-
-  if (
-    issue.previousState &&
-    issue.finalState &&
-    issue.previousState !== issue.finalState
-  ) {
-    lines.push(`  state: ${issue.previousState} -> ${issue.finalState}`);
-  }
-
-  if (issue.comment) {
-    lines.push(
-      issue.mutationStatus === "observed" ? "  comment added:" : "  comment:",
-    );
-    lines.push(
-      ...truncateLines(issue.comment.split(/\r?\n/u), 5).map(
-        (line) => `  ${line}`,
-      ),
-    );
-  }
-
-  lines.push("", `progress: ${completed}/${total} triaged`, "");
-  return lines;
-}
-
 export function createTriageProgressReporter(options: {
   command: string;
+  dryRun: boolean;
   writeLine: (line: string) => void;
 }) {
+  let total = 0;
+  const write = options.writeLine;
   return {
     onProgress(event: TriageProgressEvent) {
       if (event.type === "selected") {
-        options.writeLine(`> ${options.command}`);
-        options.writeLine("");
-        options.writeLine(`issues: ${event.total}`);
-        options.writeLine("");
-        return;
-      }
-
-      for (const line of formatProgressIssueLines(
-        event.issue,
-        event.completed,
-        event.total,
-      )) {
-        options.writeLine(line);
+        total = event.total;
+        write(`> ${options.command}`);
+        write("");
+        write(`issues: ${total}`);
+        write("");
+      } else if (event.type === "started") {
+        write(DIVIDER);
+        write(`#${event.issue.number} ${event.issue.title}`);
+        if (event.issue.url) write(`  link: ${event.issue.url}`);
+        write(`  log: ${event.logPath}`);
+      } else {
+        write(
+          `  labels: ${formatLabels(event.previousLabels)} -> ${formatLabels(event.finalLabels)}`,
+        );
+        if (event.comment) {
+          write(event.applied ? "  comment added:" : "  comment:");
+          for (const line of event.comment.split(/\r?\n/u).slice(0, 5))
+            write(`  ${line}`);
+        }
+        write("");
+        write(`progress: ${event.completed}/${event.total} triaged`);
+        write("");
       }
     },
-    onToolCall(event: TriageToolCallEvent) {
-      options.writeLine(formatToolCallLine(event));
-    },
-    finish(result: TriageResult) {
-      options.writeLine(`agent issue triage: ${result.status}`);
-      options.writeLine(`log: ${result.logPath}`);
+    finish(completed: number, cancelled: boolean) {
+      const status = cancelled
+        ? "cancelled"
+        : total === 0
+          ? "no-issues"
+          : completed < total
+            ? "partial"
+            : options.dryRun
+              ? "dry-run"
+              : "applied";
+      write(`agent issue triage: ${status}`);
     },
   };
-}
-
-export function formatResultLines(result: TriageResult): string[] {
-  if (result.status === "no-issues") return [];
-
-  return result.issues.flatMap((issue) => {
-    const bucket = issue.primaryBucket ?? "unmapped";
-    const lines = [
-      `#${issue.issueNumber} ${bucket} ${issue.mutationStatus}`,
-      `  labels: ${formatLabels(issue.previousLabels)} -> ${formatLabels(issue.finalLabels)}`,
-    ];
-
-    if (
-      issue.previousState &&
-      issue.finalState &&
-      issue.previousState !== issue.finalState
-    ) {
-      lines.push(`  state: ${issue.previousState} -> ${issue.finalState}`);
-    }
-
-    if (issue.comment) {
-      lines.push(`  comment: ${firstLine(issue.comment)}`);
-    }
-
-    return lines;
-  });
 }

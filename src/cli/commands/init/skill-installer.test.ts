@@ -1,992 +1,152 @@
-import {
-  writeFrontendWorkflowFiles,
-  frontendWorkflowFiles,
-} from "../../../../test-support/frontend-workflow-files.ts";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
-  access,
   chmod,
   cp,
   mkdtemp,
   mkdir,
   readFile,
   readdir,
-  rename,
   rm,
-  symlink,
-  unlink,
-  writeFile,
   stat,
+  writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import test from "node:test";
-import {
-  SKILL_PACK_METADATA_FILE,
-  buildRecommendedProjectSkillConfig,
-  buildSkillPackMetadata,
-  hashText,
-  type SkillPackSkill,
-} from "../../../workflow/skill-pack.ts";
-import {
-  defaultSkillSourceRoots,
-  installProjectSkills,
-  type SkillInstallerDependencies,
-} from "./skill-installer.ts";
+import { dirname, join, relative } from "node:path";
+import { test } from "node:test";
 
-const skillInstallerDependencies: SkillInstallerDependencies = {
-  access,
-  chmod,
-  cp,
-  mkdtemp,
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  stat,
-  writeFile,
-};
+import * as installer from "./skill-installer.ts";
 
-async function tempRoot(prefix: string): Promise<string> {
-  return mkdtemp(join(tmpdir(), prefix));
-}
-
-async function writeSkill(
-  root: string,
-  skillPath: string,
-  skillBody: string,
-  extraFiles: Record<string, string> = {},
-): Promise<void> {
-  const skillDir = join(root, skillPath);
-  await mkdir(skillDir, { recursive: true });
-  await writeFile(join(skillDir, "SKILL.md"), skillBody);
-  for (const [relativePath, content] of Object.entries(extraFiles)) {
-    const fullPath = join(skillDir, relativePath);
-    await mkdir(join(fullPath, ".."), { recursive: true });
-    await writeFile(fullPath, content);
-  }
-}
-
-const triageSkill = `---
-name: patchmill-issue-triage
-description: Triage issues.
----
-# Triage
-`;
-
-const planningSkill = `---
-name: writing-plans
-description: Write plans.
----
-# Planning
-`;
-
-const patchmillPlanningSkill = `---
-name: patchmill-planning
-description: Wrap Superpowers planning for Patchmill.
----
-# Patchmill Planning
-`;
-
-const brainstormingSkill = `---
-name: brainstorming
-description: Brainstorm.
----
-# Brainstorming
-`;
-
-const simpleEnglishSkill = `---
-name: simple-english
-description: Write clear technical English.
----
-# Simple English
-`;
-
-const tddSkill = `---
-name: test-driven-development
-description: TDD.
----
-# Test-Driven Development
-`;
-
-const implementationSkill = `---
-name: subagent-driven-development
-description: Execute plans.
----
-# Implementation
-`;
-
-const validationReadyImplementationSkill = `---
-name: subagent-dev-with-validation-and-pr-checks
-description: Execute plans with final validation and PR readiness.
----
-# Subagent Dev with Validation and PR Checks
-`;
-
-const finalReviewedImplementationSkill = `---
-name: subagent-dev-with-codex-and-thermo-reviews
-description: Use when executing Patchmill implementation plans that require final full-worktree readiness review before landing
----
-# Subagent Dev with Codex and Thermo Reviews
-`;
-
-const singleSubagentReviewedImplementationSkill = `---
-name: single-subagent-dev-with-codex-and-thermo-reviews
-description: Use when executing Patchmill implementation plans with one implementation subagent and final full-worktree readiness review before landing
----
-# Single Subagent Dev with Codex and Thermo Reviews
-`;
-
-const fixturePackSkills: SkillPackSkill[] = [
-  { name: "patchmill-issue-triage", source: "patchmill" },
-  { name: "subagent-dev-with-validation-and-pr-checks", source: "patchmill" },
-  { name: "subagent-dev-with-codex-and-thermo-reviews", source: "patchmill" },
-  {
-    name: "single-subagent-dev-with-codex-and-thermo-reviews",
-    source: "patchmill",
-  },
-  { name: "frontend-design", source: "patchmill" },
-  { name: "patchmill-planning", source: "patchmill" },
-  { name: "simple-english", source: "simple-english" },
-  { name: "brainstorming", source: "superpowers" },
-  { name: "writing-plans", source: "superpowers" },
-  { name: "test-driven-development", source: "superpowers" },
-  { name: "subagent-driven-development", source: "superpowers" },
-];
-
-test("installProjectSkills copies skills and writes metadata", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
-  const simpleEnglishSource = await tempRoot(
-    "patchmill-install-simple-english-",
-  );
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
-  await writeSkill(
-    patchmillSource,
-    "subagent-dev-with-validation-and-pr-checks",
-    validationReadyImplementationSkill,
-  );
-  await writeSkill(
-    patchmillSource,
-    "subagent-dev-with-codex-and-thermo-reviews",
-    finalReviewedImplementationSkill,
-    {
-      "prompts/final-review.md": "review the final worktree\n",
-      "prompts/final-validation-review.md": "review final validation\n",
-      "prompts/fix-pr-checks.md": "repair failed PR checks\n",
-      "rubrics/armin-codex-review-prompt.md":
-        "review using Armin's Codex adaptation\n",
-    },
-  );
-  await writeSkill(
-    patchmillSource,
-    "single-subagent-dev-with-codex-and-thermo-reviews",
-    singleSubagentReviewedImplementationSkill,
-    {
-      "prompts/implement-plan.md": "implement the full plan with one worker\n",
-    },
-  );
-  await writeSkill(
-    patchmillSource,
-    "patchmill-planning",
-    patchmillPlanningSkill,
-  );
-  await writeFrontendWorkflowFiles(patchmillSource);
-  await writeSkill(simpleEnglishSource, "simple-english", simpleEnglishSkill, {
-    "references/checklist.md": "run the checklist\n",
-    "references/use-cases.md": "adapt the rules\n",
-  });
-  await writeSkill(superpowersSource, "brainstorming", brainstormingSkill, {
-    "visual-companion.md": "visual companion instructions\n",
-    "scripts/server.cjs": "console.log('server');\n",
-  });
-  await writeSkill(superpowersSource, "writing-plans", planningSkill, {
-    "plan-document-reviewer-prompt.md": "review plans carefully\n",
-  });
-  await writeSkill(superpowersSource, "test-driven-development", tddSkill, {
-    "testing-anti-patterns.md": "avoid mock-only tests\n",
-  });
-  await writeSkill(
-    superpowersSource,
-    "subagent-driven-development",
-    implementationSkill,
-    {
-      "scripts/sdd-workspace": "#!/usr/bin/env bash\n",
-      "scripts/task-brief": "#!/usr/bin/env bash\n",
-      "scripts/review-package": "#!/usr/bin/env bash\n",
-    },
-  );
-  for (const script of ["sdd-workspace", "task-brief", "review-package"]) {
-    await chmod(
-      join(superpowersSource, "subagent-driven-development", "scripts", script),
-      0o755,
-    );
-  }
-
-  const result = await installProjectSkills({
-    repoRoot,
-    sourceRoots: {
-      patchmillSkillsDir: patchmillSource,
-      superpowersSkillsDir: superpowersSource,
-      simpleEnglishSkillsDir: simpleEnglishSource,
-    },
-    installedAt: "2026-05-29T00:00:00.000Z",
-    packSkills: fixturePackSkills,
-  });
-
-  assert.equal(result.skillDir, ".patchmill/skills");
-  assert.deepEqual(result.skillConfig, buildRecommendedProjectSkillConfig());
-  assert.deepEqual(result.installedSkills, [
-    ".patchmill/skills/patchmill-issue-triage",
-    ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
-    ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
-    ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
-    ".patchmill/skills/frontend-design",
-    ".patchmill/skills/patchmill-planning",
-    ".patchmill/skills/simple-english",
-    ".patchmill/skills/brainstorming",
-    ".patchmill/skills/writing-plans",
-    ".patchmill/skills/test-driven-development",
-    ".patchmill/skills/subagent-driven-development",
-  ]);
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "subagent-dev-with-validation-and-pr-checks",
-        "SKILL.md",
-      ),
-      "utf8",
-    ),
-    validationReadyImplementationSkill,
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "subagent-dev-with-codex-and-thermo-reviews",
-        "SKILL.md",
-      ),
-      "utf8",
-    ),
-    finalReviewedImplementationSkill,
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "single-subagent-dev-with-codex-and-thermo-reviews",
-        "SKILL.md",
-      ),
-      "utf8",
-    ),
-    singleSubagentReviewedImplementationSkill,
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "single-subagent-dev-with-codex-and-thermo-reviews",
-        "prompts",
-        "implement-plan.md",
-      ),
-      "utf8",
-    ),
-    "implement the full plan with one worker\n",
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "subagent-dev-with-codex-and-thermo-reviews",
-        "prompts",
-        "final-review.md",
-      ),
-      "utf8",
-    ),
-    "review the final worktree\n",
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "subagent-dev-with-codex-and-thermo-reviews",
-        "prompts",
-        "final-validation-review.md",
-      ),
-      "utf8",
-    ),
-    "review final validation\n",
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "subagent-dev-with-codex-and-thermo-reviews",
-        "prompts",
-        "fix-pr-checks.md",
-      ),
-      "utf8",
-    ),
-    "repair failed PR checks\n",
-  );
-  assert.equal(
-    await readFile(
-      join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
-      "utf8",
-    ),
-    patchmillPlanningSkill,
-  );
-  assert.equal(
-    await readFile(
-      join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
-      "utf8",
-    ),
-    planningSkill,
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "subagent-dev-with-codex-and-thermo-reviews",
-        "rubrics",
-        "armin-codex-review-prompt.md",
-      ),
-      "utf8",
-    ),
-    "review using Armin's Codex adaptation\n",
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "brainstorming",
-        "visual-companion.md",
-      ),
-      "utf8",
-    ),
-    "visual companion instructions\n",
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "writing-plans",
-        "plan-document-reviewer-prompt.md",
-      ),
-      "utf8",
-    ),
-    "review plans carefully\n",
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "test-driven-development",
-        "testing-anti-patterns.md",
-      ),
-      "utf8",
-    ),
-    "avoid mock-only tests\n",
-  );
-
-  const metadata = JSON.parse(
-    await readFile(result.metadataPath, "utf8"),
-  ) as ReturnType<typeof buildSkillPackMetadata>;
-  const expectedMetadata = buildSkillPackMetadata(
+test("installs complete real packs with hashes, repairs files and preserves unchanged bytes and mtimes", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-skills-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const skillDir = ".patchmill/skills";
+  const options = { repoRoot: root, skillDir, packageRoot: process.cwd() };
+  const first = await installer.installSkills(options);
+  assert.ok(first.written > 20);
+  const destination = join(root, skillDir);
+  const manifestPath = join(destination, "patchmill-skill-pack.json");
+  const manifestBytes = await readFile(manifestPath, "utf8");
+  const manifest = JSON.parse(manifestBytes);
+  const require = createRequire(join(process.cwd(), "package.json"));
+  const packs = [
+    [process.cwd(), installer.PATCHMILL_SKILLS, "patchmill"],
     [
-      ...["frontend-design/SKILL.md", "frontend-design/LICENSE.txt"].map(
-        (path) => ({
-          path: `.patchmill/skills/${path}`,
-          sha256: hashText(frontendWorkflowFiles[path]),
-        }),
-      ),
-      {
-        path: ".patchmill/skills/patchmill-issue-triage/SKILL.md",
-        sha256: hashText(triageSkill),
-      },
-      {
-        path: ".patchmill/skills/subagent-dev-with-validation-and-pr-checks/SKILL.md",
-        sha256: hashText(validationReadyImplementationSkill),
-      },
-      {
-        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
-        sha256: hashText(finalReviewedImplementationSkill),
-      },
-      {
-        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md",
-        sha256: hashText("review the final worktree\n"),
-      },
-      {
-        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-validation-review.md",
-        sha256: hashText("review final validation\n"),
-      },
-      {
-        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-pr-checks.md",
-        sha256: hashText("repair failed PR checks\n"),
-      },
-      {
-        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md",
-        sha256: hashText("review using Armin's Codex adaptation\n"),
-      },
-      {
-        path: ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
-        sha256: hashText(singleSubagentReviewedImplementationSkill),
-      },
-      {
-        path: ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/prompts/implement-plan.md",
-        sha256: hashText("implement the full plan with one worker\n"),
-      },
-      {
-        path: ".patchmill/skills/patchmill-planning/SKILL.md",
-        sha256: hashText(patchmillPlanningSkill),
-      },
-      {
-        path: ".patchmill/skills/simple-english/SKILL.md",
-        sha256: hashText(simpleEnglishSkill),
-      },
-      {
-        path: ".patchmill/skills/simple-english/references/checklist.md",
-        sha256: hashText("run the checklist\n"),
-      },
-      {
-        path: ".patchmill/skills/simple-english/references/use-cases.md",
-        sha256: hashText("adapt the rules\n"),
-      },
-      {
-        path: ".patchmill/skills/brainstorming/SKILL.md",
-        sha256: hashText(brainstormingSkill),
-      },
-      {
-        path: ".patchmill/skills/brainstorming/scripts/server.cjs",
-        sha256: hashText("console.log('server');\n"),
-      },
-      {
-        path: ".patchmill/skills/brainstorming/visual-companion.md",
-        sha256: hashText("visual companion instructions\n"),
-      },
-      {
-        path: ".patchmill/skills/writing-plans/SKILL.md",
-        sha256: hashText(planningSkill),
-      },
-      {
-        path: ".patchmill/skills/writing-plans/plan-document-reviewer-prompt.md",
-        sha256: hashText("review plans carefully\n"),
-      },
-      {
-        path: ".patchmill/skills/test-driven-development/SKILL.md",
-        sha256: hashText(tddSkill),
-      },
-      {
-        path: ".patchmill/skills/test-driven-development/testing-anti-patterns.md",
-        sha256: hashText("avoid mock-only tests\n"),
-      },
-      {
-        path: ".patchmill/skills/subagent-driven-development/SKILL.md",
-        sha256: hashText(implementationSkill),
-      },
-      {
-        path: ".patchmill/skills/subagent-driven-development/scripts/review-package",
-        sha256: hashText("#!/usr/bin/env bash\n"),
-      },
-      {
-        path: ".patchmill/skills/subagent-driven-development/scripts/sdd-workspace",
-        sha256: hashText("#!/usr/bin/env bash\n"),
-      },
-      {
-        path: ".patchmill/skills/subagent-driven-development/scripts/task-brief",
-        sha256: hashText("#!/usr/bin/env bash\n"),
-      },
+      dirname(require.resolve("superpowers/package.json")),
+      installer.SUPERPOWERS_SKILLS,
+      "superpowers",
     ],
-    {
-      installedAt: "2026-05-29T00:00:00.000Z",
-      skillDir: ".patchmill/skills",
-      skills: fixturePackSkills,
-    },
+    [
+      dirname(require.resolve("simple-english/package.json")),
+      installer.SIMPLE_ENGLISH_SKILLS,
+      "simpleEnglish",
+    ],
+  ] as const;
+  const expected: string[] = [];
+  async function checkTree(source: string, target: string) {
+    for (const entry of await readdir(source, { withFileTypes: true })) {
+      const from = join(source, entry.name);
+      const to = join(target, entry.name);
+      if (entry.isDirectory()) await checkTree(from, to);
+      else {
+        assert.deepEqual(await readFile(to), await readFile(from));
+        expected.push(relative(destination, to));
+      }
+    }
+  }
+  for (const [packRoot, names, key] of packs) {
+    assert.equal(
+      manifest.sources[key],
+      JSON.parse(await readFile(join(packRoot, "package.json"), "utf8"))
+        .version,
+    );
+    for (const name of names)
+      await checkTree(join(packRoot, "skills", name), join(destination, name));
+  }
+  // These resources guard the R51 regressions through actual installation.
+  await stat(join(destination, "using-git-worktrees/SKILL.md"));
+  await stat(join(destination, "finishing-a-development-branch/SKILL.md"));
+  await stat(
+    join(destination, "subagent-driven-development/implementer-prompt.md"),
   );
-
-  assert.equal(
-    result.metadataPath,
-    join(repoRoot, ".patchmill", "skills", SKILL_PACK_METADATA_FILE),
-  );
+  // Planning and implementation stop when these frontend files are missing.
+  for (const path of [
+    "frontend-design/SKILL.md",
+    "frontend-design/LICENSE.txt",
+    "patchmill-frontend-review/SKILL.md",
+    "patchmill-frontend-review/LICENSE",
+    "patchmill-frontend-review/references/web-interface-guidelines.md",
+  ])
+    await stat(join(destination, path));
   assert.deepEqual(
-    metadata.files,
-    expectedMetadata.files.toSorted((a, b) =>
-      a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
-    ),
+    manifest.files.map((file: { path: string }) => file.path).sort(),
+    expected.sort(),
   );
-  assert.deepEqual(
-    { ...metadata, files: undefined },
-    { ...expectedMetadata, files: undefined },
-  );
-});
-
-test("installProjectSkills installs module-size from the recommended pack", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-
-  const result = await installProjectSkills({
-    repoRoot,
-    installedAt: "2026-06-13T00:00:00.000Z",
-  });
-
-  assert.equal(
-    result.installedSkills.includes(".patchmill/skills/module-size"),
-    true,
-  );
-  assert.match(
-    await readFile(
-      join(repoRoot, ".patchmill", "skills", "module-size", "SKILL.md"),
-      "utf8",
-    ),
-    /^---\nname: module-size\n/mu,
-  );
-
-  const metadata = JSON.parse(
-    await readFile(result.metadataPath, "utf8"),
-  ) as ReturnType<typeof buildSkillPackMetadata>;
-  assert.equal(
-    metadata.files.some(
-      (file) => file.path === ".patchmill/skills/module-size/SKILL.md",
-    ),
-    true,
-  );
-});
-
-test("installProjectSkills installs simple-english from the recommended pack", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-
-  const result = await installProjectSkills({
-    repoRoot,
-    installedAt: "2026-09-26T00:00:00.000Z",
-  });
-
-  assert.equal(
-    result.installedSkills.includes(".patchmill/skills/simple-english"),
-    true,
-  );
-  for (const relativeFile of [
-    "SKILL.md",
-    "references/checklist.md",
-    "references/use-cases.md",
-  ]) {
-    assert.match(
-      await readFile(
-        join(repoRoot, ".patchmill", "skills", "simple-english", relativeFile),
-        "utf8",
-      ),
-      /\S/u,
-      `${relativeFile} must be installed and non-empty`,
+  for (const file of manifest.files) {
+    assert.equal(
+      file.sha256,
+      createHash("sha256")
+        .update(await readFile(join(destination, file.path)))
+        .digest("hex"),
     );
   }
-
-  const metadata = JSON.parse(
-    await readFile(result.metadataPath, "utf8"),
-  ) as ReturnType<typeof buildSkillPackMetadata>;
-  assert.equal(
-    metadata.files.some(
-      (file) => file.path === ".patchmill/skills/simple-english/SKILL.md",
-    ),
-    true,
+  const paths = [
+    manifestPath,
+    ...expected.map((path) => join(destination, path)),
+  ];
+  const times = await Promise.all(
+    paths.map(async (path) => (await stat(path)).mtimeMs),
   );
-});
-
-test("installProjectSkills installs the default Patchmill visual evidence skill", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-
-  const result = await installProjectSkills({
-    repoRoot,
-    installedAt: "2026-06-13T00:00:00.000Z",
+  await writeFile(join(destination, "unrelated.txt"), "keep");
+  assert.deepEqual(await installer.installSkills(options), {
+    written: 0,
+    unchanged: first.written,
   });
-
+  assert.deepEqual(
+    await Promise.all(paths.map(async (path) => (await stat(path)).mtimeMs)),
+    times,
+  );
+  assert.equal(await readFile(manifestPath, "utf8"), manifestBytes);
+  await writeFile(paths[1]!, "damaged");
+  assert.equal((await installer.installSkills(options)).written, 1);
   assert.equal(
-    result.installedSkills.includes(
-      ".patchmill/skills/patchmill-visual-evidence",
-    ),
-    true,
-  );
-  const skill = await readFile(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "patchmill-visual-evidence",
-      "SKILL.md",
-    ),
-    "utf8",
-  );
-  assert.match(skill, /^---\nname: patchmill-visual-evidence\n/mu);
-  assert.match(skill, /final `pr-created` JSON/u);
-  assert.match(skill, /"visualEvidence"/u);
-  assert.doesNotMatch(skill, /Forgejo|Gitea|tea|Nix|nix/u);
-  const script = await readFile(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "patchmill-visual-evidence",
-      "scripts",
-      "capture-visual-evidence.cjs",
-    ),
-    "utf8",
-  );
-  assert.match(script, /@playwright\/test/u);
-  assert.doesNotMatch(
-    script,
-    /NODE_PATH|command -v playwright|PLAYWRIGHT_BROWSERS_PATH|Nix|nix/u,
+    await readFile(join(destination, "unrelated.txt"), "utf8"),
+    "keep",
   );
 });
 
-test("installProjectSkills makes copied skill pack owner-writable", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill, {
-    "scripts/check.md": "check things\n",
-  });
-
-  await chmod(
-    join(patchmillSource, "patchmill-issue-triage", "scripts", "check.md"),
-    0o444,
-  );
-  await chmod(
-    join(patchmillSource, "patchmill-issue-triage", "scripts"),
-    0o555,
-  );
-  await chmod(
-    join(patchmillSource, "patchmill-issue-triage", "SKILL.md"),
-    0o444,
-  );
-  await chmod(join(patchmillSource, "patchmill-issue-triage"), 0o555);
-
-  await installProjectSkills({
-    repoRoot,
-    sourceRoots: {
-      patchmillSkillsDir: patchmillSource,
-      superpowersSkillsDir: superpowersSource,
-      simpleEnglishSkillsDir: await tempRoot(
-        "patchmill-skills-simple-english-",
-      ),
-    },
-    packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
-  });
-
-  const installedSkillDir = join(
-    repoRoot,
-    ".patchmill",
-    "skills",
-    "patchmill-issue-triage",
-  );
-  const installedSkill = await stat(join(installedSkillDir, "SKILL.md"));
-  const installedNestedDir = await stat(join(installedSkillDir, "scripts"));
-  const installedNestedFile = await stat(
-    join(installedSkillDir, "scripts", "check.md"),
-  );
-
-  assert.equal(installedSkill.mode & 0o200, 0o200);
-  assert.equal(installedNestedDir.mode & 0o200, 0o200);
-  assert.equal(installedNestedFile.mode & 0o200, 0o200);
-  await rm(join(repoRoot, ".patchmill"), { recursive: true });
-});
-
-test("installProjectSkills refuses to overwrite existing skill files/directories", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
-  await mkdir(
-    join(repoRoot, ".patchmill", "skills", "patchmill-issue-triage"),
-    {
-      recursive: true,
-    },
-  );
-  await writeFile(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "patchmill-issue-triage",
-      "SKILL.md",
-    ),
-    "existing\n",
-  );
-
-  await assert.rejects(
-    installProjectSkills({
-      repoRoot,
-      sourceRoots: {
-        patchmillSkillsDir: patchmillSource,
-        superpowersSkillsDir: superpowersSource,
-        simpleEnglishSkillsDir: await tempRoot(
-          "patchmill-skills-simple-english-",
-        ),
-      },
-      packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
-    }),
-    /Refusing to overwrite existing skill path: \.patchmill\/skills\/patchmill-issue-triage/,
-  );
-  assert.equal(
-    await readFile(
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "patchmill-issue-triage",
-        "SKILL.md",
-      ),
-      "utf8",
-    ),
-    "existing\n",
-  );
-});
-
-test("installProjectSkills preflights all targets before copying any skill", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
-  await writeSkill(superpowersSource, "writing-plans", planningSkill);
-  await mkdir(join(repoRoot, ".patchmill", "skills", "writing-plans"), {
+test("resolves from the supplied package and copies read-only executable resources as writable files", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-resource-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const packageRoot = join(root, "package");
+  await mkdir(packageRoot);
+  await cp(join(process.cwd(), "skills"), join(packageRoot, "skills"), {
     recursive: true,
   });
-
-  await assert.rejects(
-    installProjectSkills({
-      repoRoot,
-      sourceRoots: {
-        patchmillSkillsDir: patchmillSource,
-        superpowersSkillsDir: superpowersSource,
-        simpleEnglishSkillsDir: await tempRoot(
-          "patchmill-skills-simple-english-",
-        ),
-      },
-      packSkills: [
-        { name: "patchmill-issue-triage", source: "patchmill" },
-        { name: "writing-plans", source: "superpowers" },
-      ],
-    }),
-    /Refusing to overwrite existing skill path: \.patchmill\/skills\/writing-plans/,
-  );
-
-  await assert.rejects(
-    access(join(repoRoot, ".patchmill", "skills", "patchmill-issue-triage")),
-  );
-});
-
-test("installProjectSkills preflights later source trees before copying any skill", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
-  await writeSkill(superpowersSource, "writing-plans", planningSkill);
-  await symlink(
-    "missing-plan-template.md",
-    join(superpowersSource, "writing-plans", "broken-link.md"),
-  );
-
-  await assert.rejects(
-    installProjectSkills({
-      repoRoot,
-      sourceRoots: {
-        patchmillSkillsDir: patchmillSource,
-        superpowersSkillsDir: superpowersSource,
-        simpleEnglishSkillsDir: await tempRoot(
-          "patchmill-skills-simple-english-",
-        ),
-      },
-      packSkills: [
-        { name: "patchmill-issue-triage", source: "patchmill" },
-        { name: "writing-plans", source: "superpowers" },
-      ],
-    }),
-    /Unsupported skill source entry: writing-plans\/broken-link\.md/,
-  );
-
-  await assert.rejects(
-    access(join(repoRoot, ".patchmill", "skills", "patchmill-issue-triage")),
-  );
-});
-
-test("installProjectSkills does not publish partial targets when staging fails", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill, {
-    "triage-notes.md": "take notes\n",
-  });
-  await writeSkill(superpowersSource, "writing-plans", planningSkill);
-
-  const secondSkillDir = join(superpowersSource, "writing-plans");
-  const secondSkillPath = join(secondSkillDir, "SKILL.md");
-  let copyCalls = 0;
-
-  await assert.rejects(
-    installProjectSkills({
-      repoRoot,
-      sourceRoots: {
-        patchmillSkillsDir: patchmillSource,
-        superpowersSkillsDir: superpowersSource,
-        simpleEnglishSkillsDir: await tempRoot(
-          "patchmill-skills-simple-english-",
-        ),
-      },
-      packSkills: [
-        { name: "patchmill-issue-triage", source: "patchmill" },
-        { name: "writing-plans", source: "superpowers" },
-      ],
-      dependencies: {
-        ...skillInstallerDependencies,
-        async cp(source, destination, options) {
-          copyCalls += 1;
-          if (copyCalls === 1) {
-            await unlink(secondSkillPath);
-            await symlink("missing-skill.md", secondSkillPath);
-          }
-          if (source === secondSkillDir) {
-            throw new Error(
-              `ENOENT: no such file or directory, copyfile '${secondSkillPath}'`,
-            );
-          }
-
-          return cp(source, destination, options);
-        },
-      },
-    }),
-    /ENOENT: no such file or directory, copyfile .*writing-plans\/SKILL\.md/,
-  );
-
-  await assert.rejects(access(join(repoRoot, ".patchmill", "skills")));
-});
-
-test("installProjectSkills can install two skills and publish metadata in one directory publish", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
-  await writeSkill(superpowersSource, "writing-plans", planningSkill, {
-    "plan-template.md": "template\n",
-  });
-
-  const publishedSkillDir = join(repoRoot, ".patchmill", "skills");
-  let renameCalls = 0;
-
-  const result = await installProjectSkills({
-    repoRoot,
-    sourceRoots: {
-      patchmillSkillsDir: patchmillSource,
-      superpowersSkillsDir: superpowersSource,
-      simpleEnglishSkillsDir: await tempRoot(
-        "patchmill-skills-simple-english-",
-      ),
-    },
-    installedAt: "2026-05-29T00:00:00.000Z",
-    packSkills: [
-      { name: "patchmill-issue-triage", source: "patchmill" },
-      { name: "writing-plans", source: "superpowers" },
-    ],
-    dependencies: {
-      ...skillInstallerDependencies,
-      async rename(from, to) {
-        renameCalls += 1;
-        assert.equal(to, publishedSkillDir);
-        await assert.rejects(access(publishedSkillDir));
-        assert.equal(
-          await readFile(
-            join(from, "patchmill-issue-triage", "SKILL.md"),
-            "utf8",
-          ),
-          triageSkill,
-        );
-        assert.equal(
-          await readFile(join(from, "writing-plans", "SKILL.md"), "utf8"),
-          planningSkill,
-        );
-
-        const metadata = JSON.parse(
-          await readFile(join(from, SKILL_PACK_METADATA_FILE), "utf8"),
-        ) as ReturnType<typeof buildSkillPackMetadata>;
-        assert.deepEqual(
-          metadata.files.map((file) => file.path),
-          [
-            ".patchmill/skills/patchmill-issue-triage/SKILL.md",
-            ".patchmill/skills/writing-plans/SKILL.md",
-            ".patchmill/skills/writing-plans/plan-template.md",
-          ],
-        );
-
-        return rename(from, to);
-      },
-    },
-  });
-
-  assert.equal(renameCalls, 1);
-  assert.deepEqual(result.installedSkills, [
-    ".patchmill/skills/patchmill-issue-triage",
-    ".patchmill/skills/writing-plans",
-  ]);
+  await writeFile(join(packageRoot, "package.json"), '{"version":"fixture"}');
+  for (const name of ["superpowers", "simple-english"]) {
+    await cp(
+      join(process.cwd(), "node_modules", name),
+      join(packageRoot, "node_modules", name),
+      { recursive: true },
+    );
+  }
+  const source = join(packageRoot, "skills/module-size/tool.sh");
+  await writeFile(source, "#!/bin/sh\necho resource\n");
+  await chmod(source, 0o555);
+  const options = { repoRoot: root, skillDir: "installed", packageRoot };
+  await installer.installSkills(options);
+  const target = join(root, "installed/module-size/tool.sh");
+  assert.equal((await stat(target)).mode & 0o700, 0o700);
+  await writeFile(target, "damage");
+  await installer.installSkills(options);
+  assert.equal(await readFile(target, "utf8"), "#!/bin/sh\necho resource\n");
+  assert.equal((await stat(source)).mode & 0o777, 0o555);
   assert.equal(
-    await readFile(join(publishedSkillDir, SKILL_PACK_METADATA_FILE), "utf8"),
-    await readFile(result.metadataPath, "utf8"),
+    JSON.parse(
+      await readFile(join(root, "installed/patchmill-skill-pack.json"), "utf8"),
+    ).sources.patchmill,
+    "fixture",
   );
-});
-
-test("installProjectSkills refuses to overwrite existing skill root", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
-  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
-  await mkdir(join(repoRoot, ".patchmill", "skills"), { recursive: true });
-
-  await assert.rejects(
-    installProjectSkills({
-      repoRoot,
-      sourceRoots: {
-        patchmillSkillsDir: patchmillSource,
-        superpowersSkillsDir: await tempRoot("patchmill-install-superpowers-"),
-        simpleEnglishSkillsDir: await tempRoot(
-          "patchmill-skills-simple-english-",
-        ),
-      },
-      packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
-    }),
-    /Refusing to overwrite existing skill path: \.patchmill\/skills/,
-  );
-});
-
-test("defaultSkillSourceRoots resolves bundled and dependency skill roots", async () => {
-  const roots = defaultSkillSourceRoots();
-
-  await access(
-    join(roots.patchmillSkillsDir, "patchmill-issue-triage", "SKILL.md"),
-  );
-  await access(
-    join(
-      roots.patchmillSkillsDir,
-      "inline-dev-with-validation-and-pr-checks",
-      "SKILL.md",
-    ),
-  );
-  await access(join(roots.superpowersSkillsDir, "writing-plans", "SKILL.md"));
 });

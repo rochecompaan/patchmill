@@ -7,6 +7,13 @@ description: >-
 
 # Patchmill Label
 
+Required planning gates use separate pull requests. Only merging those pull
+requests unlocks later stages. Label changes do not grant spec or plan approval,
+create branches, move artifacts, or remove worktrees. This interactive skill is
+not available to kernel planning, implementation, or triage agents. Read
+`patchmill.config.json` for the current provider and configured label names. Do
+not infer approval or readiness from a local artifact or a completed command.
+
 ## Parse and context
 
 Use only in a human-controlled interactive coding-agent session; stop in

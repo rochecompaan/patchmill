@@ -5,17 +5,19 @@ safety, policy, and human-control boundaries.
 
 ## Language
 
-**Planning review gate**: An immutable per-Issue-run decision that a spec or
-plan phase requires human review through a planning pull request. _Avoid_:
-Approval label, plan-only stop.
+**Spec gate**: A required pause until a human merges the specification pull
+request. Review approval alone does not unlock it. _Avoid_: Approval label
 
-**Planning pull request**: A non-closing pull request containing one spec or
-plan phase. Its verified merge unlocks the next phase. _Avoid_: Artifact
-comment, approval comment.
+**Plan gate**: A required pause until a human merges the implementation-plan
+pull request. Review approval alone does not unlock it. _Avoid_: Approval label
 
-**Phase workspace**: The owned worktree and branch for one spec, plan, or
-implementation phase, pinned to saved remote-base evidence. _Avoid_: Shared
-issue worktree.
+**Planning pull request**: A pull request for documents that must merge before
+the next required stage. It does not complete the issue. _Avoid_: Implementation
+PR
+
+**Issue branch**: The implementation branch for one issue. Ungated planning
+documents accompany its code. Required planning gates use separate branches.
+_Avoid_: One branch for every stage
 
 **Run-once workflow**: The atomic processing of one selected issue from claim
 through its terminal or resumable outcome. _Avoid_: Run loop, coordinator
@@ -47,10 +49,6 @@ A later Run attempt may resume the same Issue run. _Avoid_: Issue run
 **Normalized run outcome**: The small coordinator-facing result of one Run
 attempt — completed, no work, deferred, cancelled, or failed — produced from a
 rich Run-once workflow result. _Avoid_: Pipeline status
-
-**Run recovery state**: The durable current checkpoint needed to resume one
-run-once workflow. It is authoritative for resume mechanics, not coordinator
-policy or audit history. _Avoid_: Event ledger, Coordinator activity
 
 **Pi session log**: A raw, potentially sensitive Pi execution transcript used as
 evidence and as input when normalizing usage. It is not a coordinator policy or

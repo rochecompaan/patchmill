@@ -1,497 +1,137 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { HELP_TEXT, runInit } from "./main.ts";
+import { test, type TestContext } from "node:test";
+import { CONFIG_FILE } from "../../../config/config.ts";
+import { runCommand } from "../../../process/command.ts";
 
-const PROJECT_LOCAL_SKILLS = {
-  triage: ".patchmill/skills/patchmill-issue-triage",
-  planning: ".patchmill/skills/patchmill-planning",
-  implementation: ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
-  visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
-};
-
-const GLOBAL_SKILLS = {
-  triage: "patchmill-issue-triage",
-  planning: "superpowers:writing-plans",
-  implementation: "superpowers:executing-plans",
-  visualEvidence: "patchmill-visual-evidence",
-};
-
-async function tempRepo(): Promise<string> {
-  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-init-main-"));
-  await mkdir(join(repoRoot, ".git", "info"), { recursive: true });
-  return repoRoot;
-}
-
-async function readConfig(repoRoot: string): Promise<Record<string, unknown>> {
-  return JSON.parse(
-    await readFile(join(repoRoot, "patchmill.config.json"), "utf8"),
-  );
-}
-
-function missingPiReadiness() {
-  return {
-    status: "missing" as const,
-    message: "Pi did not report any provider/model with configured auth.",
-    models: [],
-  };
-}
-
-async function failingPiSmokeTest() {
-  return {
-    status: "fail" as const,
-    message: "Pi could not complete the provider smoke test.",
-    command:
-      "pi --no-session --no-context-files --no-prompt-templates -p Reply with PATCHMILL_PI_OK and nothing else.",
-    details: "missing key",
-  };
-}
-
-test("runInit prints help", async () => {
+import * as init from "./main.ts";
+async function harness(t: TestContext) {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-init-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.equal((await runCommand("git", ["init"], { cwd: root })).code, 0);
   const stdout: string[] = [];
   const stderr: string[] = [];
-
-  assert.equal(
-    await runInit(["--help"], await tempRepo(), {
-      stdout: (line) => stdout.push(line),
-      stderr: (line) => stderr.push(line),
-    }),
-    0,
-  );
-  assert.deepEqual(stdout, [HELP_TEXT]);
-  assert.deepEqual(stderr, []);
-});
-
-test("HELP_TEXT documents project as the default --skills mode", () => {
-  assert.match(HELP_TEXT, /--skills <mode>[\s\S]*Default: project\./);
-});
-
-test("HELP_TEXT documents yes", () => {
-  assert.match(HELP_TEXT, /--yes[\s\S]*Approve setup prompts/);
-});
-
-test("runInit installs project-local skills by default", async () => {
-  const repoRoot = await tempRepo();
-  const stdout: string[] = [];
-
-  assert.equal(
-    await runInit(
-      [],
-      repoRoot,
-      {
-        stdout: (line) => stdout.push(line),
-        stderr: () => undefined,
+  return {
+    root,
+    stdout,
+    stderr,
+    options: {
+      repoRoot: root,
+      host: {
+        checkCli: async () => ({ ok: true, message: "ready", login: "alice" }),
       },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
-        checkPiAvailable: async () => false,
+      output: {
+        stdout: (line: string) => stdout.push(line),
+        stderr: (line: string) => stderr.push(line),
       },
-    ),
-    0,
-  );
-
-  assert.deepEqual((await readConfig(repoRoot)).skills, PROJECT_LOCAL_SKILLS);
-  await access(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "patchmill-issue-triage",
-      "SKILL.md",
-    ),
-  );
-  await access(
-    join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
-  );
-  await access(
-    join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
-  );
-  await access(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "subagent-driven-development",
-      "SKILL.md",
-    ),
-  );
-  await access(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "inline-dev-with-validation-and-pr-checks",
-      "SKILL.md",
-    ),
-  );
-  await access(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "patchmill-visual-evidence",
-      "SKILL.md",
-    ),
-  );
-  await access(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "patchmill-visual-evidence",
-      "scripts",
-      "capture-visual-evidence.cjs",
-    ),
-  );
-  await access(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "inline-dev-with-validation-and-pr-checks",
-      "SKILL.md",
-    ),
-  );
-  await access(
-    join(
-      repoRoot,
-      ".patchmill",
-      "skills",
-      "inline-dev-with-validation-and-pr-checks",
-      "SKILL.md",
-    ),
-  );
-  assert.match(stdout.join("\n"), /Installed project-local skills/);
-  assert.match(
-    stdout.join("\n"),
-    /Added local Patchmill runtime directories to \.gitignore/,
-  );
-  assert.match(
-    await readFile(join(repoRoot, ".gitignore"), "utf8"),
-    /\.patchmill\/runs\n\.patchmill\/triage-runs/u,
-  );
-  assert.doesNotMatch(stdout.join("\n"), /local-only by default/u);
-  assert.doesNotMatch(stdout.join("\n"), /Commit \.patchmill\/skills\//);
-  assert.match(
-    stdout.join("\n"),
-    /Run `patchmill auth` in an interactive terminal/,
-  );
-});
-
-test("runInit explicit local exclude preserves existing exclude entries and does not touch gitignore", async () => {
-  const repoRoot = await tempRepo();
-  await writeFile(join(repoRoot, ".gitignore"), "node_modules\n");
-  await writeFile(
-    join(repoRoot, ".git", "info", "exclude"),
-    "node_modules\n.patchmill\n",
-  );
-
-  assert.equal(
-    await runInit(
-      ["--skills", "none"],
-      repoRoot,
-      {
-        stdout: () => undefined,
-        stderr: () => undefined,
-      },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: true,
-        prompt: async () => "3",
-        checkPiAvailable: async () => false,
-        resolvePiInitSetup: async () => ({
-          status: "incomplete",
-          readiness: missingPiReadiness(),
-          selection: {
-            status: "unavailable",
-            message: "Pi model selection unavailable.",
-            reason: "not-ready",
-          },
-          smoke: await failingPiSmokeTest(),
-        }),
-      },
-    ),
-    0,
-  );
-
-  assert.equal(
-    await readFile(join(repoRoot, ".gitignore"), "utf8"),
-    "node_modules\n",
-  );
-  assert.equal(
-    await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    "node_modules\n.patchmill\npatchmill.config.json\n.worktrees/\n.pi/todos/\n",
-  );
-});
-
-test("runInit --skills none skips skill installation and omits skills config", async () => {
-  const repoRoot = await tempRepo();
-  const stdout: string[] = [];
-  let installCalled = false;
-
-  assert.equal(
-    await runInit(
-      ["--skills", "none"],
-      repoRoot,
-      {
-        stdout: (line) => stdout.push(line),
-        stderr: () => undefined,
-      },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
-        checkPiAvailable: async () => false,
-        installProjectSkills: async () => {
-          installCalled = true;
-          throw new Error("should not install skills");
-        },
-      },
-    ),
-    0,
-  );
-
-  assert.equal(installCalled, false);
-  assert.equal(Object.hasOwn(await readConfig(repoRoot), "skills"), false);
-  assert.match(
-    stdout.join("\n"),
-    /Skipped default project-local skill installation/,
-  );
-});
-
-test("runInit --skills global writes default global skill names", async () => {
-  const repoRoot = await tempRepo();
-  let installCalled = false;
-
-  assert.equal(
-    await runInit(
-      ["--skills", "global"],
-      repoRoot,
-      {
-        stdout: () => undefined,
-        stderr: () => undefined,
-      },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
-        checkPiAvailable: async () => false,
-        installProjectSkills: async () => {
-          installCalled = true;
-          throw new Error("should not install skills");
-        },
-      },
-    ),
-    0,
-  );
-
-  assert.equal(installCalled, false);
-  assert.deepEqual((await readConfig(repoRoot)).skills, GLOBAL_SKILLS);
-});
-
-test("runInit --skills path validates existing local skill directory", async () => {
-  const repoRoot = await tempRepo();
-  let validatedPath: string | undefined;
-  let installCalled = false;
-  const localSkills = {
-    triage: "vendor/skills/patchmill-issue-triage",
-    planning: "vendor/skills/patchmill-planning",
-    implementation: "vendor/skills/subagent-driven-development",
-    visualEvidence: "vendor/skills/patchmill-visual-evidence",
+    },
   };
+}
 
+for (const [provider, login, expected] of [
+  ["github-gh", undefined, "alice"],
+  ["forgejo-tea", undefined, ""],
+  ["github-gh", "explicit", "explicit"],
+  ["forgejo-tea", "work", "work"],
+] as const) {
+  test(`${provider} stores ${expected || "the empty default"} with login flag ${login}`, async (t) => {
+    const f = await harness(t);
+    const args = ["--provider", provider, ...(login ? ["--login", login] : [])];
+    assert.equal(await init.main(args, f.options), 0, f.stderr.join("\n"));
+    const path = join(f.root, CONFIG_FILE);
+    const bytes = await readFile(path, "utf8");
+    assert.equal(JSON.parse(bytes).host.provider, provider);
+    assert.equal(JSON.parse(bytes).host.login, expected);
+    const before = (await stat(path)).mtimeMs;
+    f.stdout.length = 0;
+    assert.equal(await init.main(args, f.options), 0);
+    assert.equal(await readFile(path, "utf8"), bytes);
+    assert.equal((await stat(path)).mtimeMs, before);
+    assert.equal(f.stdout.length, 5);
+    assert.ok(
+      f.stdout.every((line) => /unchanged|ready/i.test(line)),
+      f.stdout.join("\n"),
+    );
+  });
+}
+
+test("existing configuration bytes and host flags win, with configured agent and runtime excludes", async (t) => {
+  const f = await harness(t);
+  const bytes =
+    '{ "host": {"provider":"forgejo-tea","login":"work"}, "pi":{"agentDir":"local/agent"}, "paths":{"worktreeDir":"local/trees","runsDir":"local/runs"}}\n';
+  await writeFile(join(f.root, CONFIG_FILE), bytes);
   assert.equal(
-    await runInit(
-      ["--skills", "path:vendor/skills"],
-      repoRoot,
-      {
-        stdout: () => undefined,
-        stderr: () => undefined,
-      },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
-        checkPiAvailable: async () => false,
-        installProjectSkills: async () => {
-          installCalled = true;
-          throw new Error("should not install skills");
-        },
-        validateExistingSkillDirectory: async (validateRepoRoot, skillDir) => {
-          assert.equal(validateRepoRoot, repoRoot);
-          validatedPath = skillDir;
-          return localSkills;
-        },
-      },
+    await init.main(
+      ["--provider", "github-gh", "--login", "ignored"],
+      f.options,
     ),
     0,
   );
-
-  assert.equal(installCalled, false);
-  assert.equal(validatedPath, "vendor/skills");
-  assert.deepEqual((await readConfig(repoRoot)).skills, localSkills);
+  assert.equal(await readFile(join(f.root, CONFIG_FILE), "utf8"), bytes);
+  await stat(join(f.root, "local/agent/agents/reviewer.md"));
+  await stat(join(f.root, ".patchmill/skills/patchmill-planning/SKILL.md"));
+  const excludes = await readFile(join(f.root, ".git/info/exclude"), "utf8");
+  for (const path of ["local/agent/", "local/trees/", "local/runs/"])
+    assert.ok(excludes.split("\n").includes(path));
 });
 
-test("runInit creates config and prints next step", async () => {
-  const repoRoot = await tempRepo();
-  const stdout: string[] = [];
-
+test("invalid configuration fails before host probes and provisioning", async (t) => {
+  const f = await harness(t);
+  await writeFile(join(f.root, CONFIG_FILE), '{"host":{"wrong":true}}');
   assert.equal(
-    await runInit(
-      ["--skills", "none"],
-      repoRoot,
-      {
-        stdout: (line) => stdout.push(line),
-        stderr: () => undefined,
-      },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
-        checkPiAvailable: async () => false,
-      },
-    ),
-    0,
-  );
-
-  assert.match(stdout.join("\n"), /Created patchmill\.config\.json/);
-  assert.match(stdout.join("\n"), /provider: forgejo-tea/);
-  assert.match(stdout.join("\n"), /PATCHMILL_HOST_LOGIN/);
-  assert.match(
-    stdout.join("\n"),
-    /Run `patchmill auth` in an interactive terminal/,
-  );
-  assert.match(stdout.join("\n"), /patchmill doctor/);
-});
-
-test("runInit prints missing label review and edit guidance when label setup is skipped", async () => {
-  const repoRoot = await tempRepo();
-  const stdout: string[] = [];
-  let labelSetupCalled = false;
-
-  assert.equal(
-    await runInit(
-      ["--skills", "none"],
-      repoRoot,
-      { stdout: (line) => stdout.push(line), stderr: () => undefined },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
-        checkPiAvailable: async () => false,
-        setupLabels: async (options) => {
-          labelSetupCalled = true;
-          assert.deepEqual(
-            options.labelCatalog.workflowApprovalPolicy.labelDefinitions.map(
-              (label) => label.name,
-            ),
-            ["spec-review", "spec-approved", "plan-review", "plan-approved"],
-          );
-          return {
-            status: "skipped",
-            missingCount: 1,
-            createdCount: 0,
-            message:
-              "Patchmill needs these labels:\n  agent-ready — Ready for automated agent processing\n\nSkipped label creation.\nYou can edit label names in patchmill.config.json after init, then run:\n  patchmill doctor --fix",
-          };
-        },
-      },
-    ),
-    0,
-  );
-
-  assert.equal(labelSetupCalled, true);
-  assert.match(
-    stdout.join("\n"),
-    /agent-ready — Ready for automated agent processing/,
-  );
-  assert.match(stdout.join("\n"), /patchmill doctor --fix/);
-});
-
-test("runInit --yes approves setup-time label creation", async () => {
-  const repoRoot = await tempRepo();
-  let assumeYes: boolean | undefined;
-
-  assert.equal(
-    await runInit(
-      ["--yes", "--skills", "none"],
-      repoRoot,
-      { stdout: () => undefined, stderr: () => undefined },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        detectPiReadiness: missingPiReadiness,
-        runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
-        checkPiAvailable: async () => false,
-        setupLabels: async (options) => {
-          assumeYes = options.assumeYes;
-          assert.deepEqual(
-            options.labelCatalog.workflowApprovalPolicy.labelDefinitions.map(
-              (label) => label.name,
-            ),
-            ["spec-review", "spec-approved", "plan-review", "plan-approved"],
-          );
-          return {
-            status: "satisfied",
-            missingCount: 0,
-            createdCount: 0,
-            message: "Required labels already exist.",
-          };
-        },
-      },
-    ),
-    0,
-  );
-
-  assert.equal(assumeYes, true);
-});
-
-test("runInit refuses existing config without installing skills", async () => {
-  const repoRoot = await tempRepo();
-  await writeFile(join(repoRoot, "patchmill.config.json"), "{}\n");
-  const stdout: string[] = [];
-  let installCalled = false;
-
-  assert.equal(
-    await runInit(
-      [],
-      repoRoot,
-      {
-        stdout: (line) => stdout.push(line),
-        stderr: () => undefined,
-      },
-      {
-        installProjectSkills: async () => {
-          installCalled = true;
-          throw new Error("should not install skills");
-        },
-      },
-    ),
+    await init.main([], {
+      ...f.options,
+      host: { checkCli: async () => assert.fail("host probed") },
+    }),
     1,
   );
-  assert.equal(installCalled, false);
-  assert.match(stdout.join("\n"), /already exists/);
-  assert.match(stdout.join("\n"), /did not overwrite/);
-  assert.match(stdout.join("\n"), /patchmill auth/);
-  assert.match(stdout.join("\n"), /patchmill doctor/);
+  assert.match(f.stderr.join("\n"), /host.wrong/);
+  await assert.rejects(stat(join(f.root, ".patchmill")));
+});
+
+for (const thrown of [false, true]) {
+  test(`host readiness failure warns without blocking local provisioning (thrown=${thrown})`, async (t) => {
+    const f = await harness(t);
+    assert.equal(
+      await init.main([], {
+        ...f.options,
+        host: {
+          checkCli: async () => {
+            if (thrown) throw new Error("offline");
+            return { ok: false, message: "offline" };
+          },
+        },
+      }),
+      0,
+    );
+    assert.match(f.stderr.join("\n"), /warning.*offline/i);
+    assert.equal(
+      JSON.parse(await readFile(join(f.root, CONFIG_FILE), "utf8")).host.login,
+      "",
+    );
+    await stat(join(f.root, ".patchmill/pi-agent/agents/reviewer.md"));
+  });
+}
+
+test("registered init rejects invalid flags before provisioning and serves help", async (t) => {
+  const f = await harness(t);
+  for (const args of [["--provider", "bad"], ["--login"], ["--wat"]]) {
+    const result = await runCommand(
+      process.execPath,
+      [join(process.cwd(), "bin/patchmill.ts"), "init", ...args],
+      { cwd: f.root },
+    );
+    assert.equal(result.code, 1);
+    assert.doesNotMatch(result.stderr, /Unknown command: init/);
+    await assert.rejects(stat(join(f.root, CONFIG_FILE)));
+  }
+  const result = await runCommand(
+    process.execPath,
+    [join(process.cwd(), "bin/patchmill.ts"), "init", "--help"],
+    { cwd: f.root },
+  );
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /Usage: patchmill init/);
 });

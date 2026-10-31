@@ -1,17 +1,12 @@
 import { main as authMain } from "./commands/auth/main.ts";
 import { main as doctorMain } from "./commands/doctor/main.ts";
 import { main as initMain } from "./commands/init/main.ts";
-import { main as runOnceMain } from "./commands/run-once/main.ts";
-import { main as runMain } from "./commands/run/main.ts";
-import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
-import {
-  planMain as setPlanMain,
-  specMain as setSpecMain,
-} from "./commands/set-artifact/main.ts";
-import { main as skillsMain } from "./commands/skills/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
+import { main as runOnceMain } from "./commands/run-once/main.ts";
+import { main as releaseMain } from "./commands/release/main.ts";
+import { main as labelsMain } from "./commands/labels/main.ts";
+import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
-import { legacyPlanningDeprecation } from "./legacy-planning-deprecations.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill <command> [options]
@@ -19,13 +14,11 @@ export const HELP_TEXT = `Usage:
 Commands:
   init        Create a minimal patchmill.config.json.
   auth        Configure or repair repo-local Pi provider authentication.
-  doctor      Run read-only readiness checks.
+  doctor      Perform read-only readiness checks.
+  labels      Manage repository labels.
   triage      Classify repository issues for agent readiness.
-  run-once    Claim and process one agent-ready issue.
-  run         Recovery commands (reset and lease repair).
-  skills      Manage Patchmill project-local skills.
-  set-spec    ${legacyPlanningDeprecation("set-spec").help}
-  set-plan    ${legacyPlanningDeprecation("set-plan").help}
+  run-once    Advance one issue.
+  release     Reset an issue from in-progress to ready.
   version     Print the Patchmill CLI version.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;
@@ -109,10 +102,8 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["doctor", doctorMain],
   ["triage", triageMain],
   ["run-once", runOnceMain],
-  ["run", runMain],
-  ["skills", skillsMain],
-  ["set-spec", setSpecMain],
-  ["set-plan", setPlanMain],
+  ["release", releaseMain],
+  ["labels", labelsMain],
   ["version", versionMain],
   ["setup-test-repo", setupTestRepoMain],
 ]);

@@ -1,291 +1,93 @@
-#!/usr/bin/env node
-import type { CommandRunner } from "../../../command/types.ts";
-import { mkdir, link, unlink } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import { dirname } from "node:path";
-import { cwd } from "node:process";
-import { pathToFileURL } from "node:url";
-import { loadPatchmillConfigState } from "../../../config/load.ts";
-import { parseArgs } from "./args.ts";
-import { AgentIssueConsoleProgressReporter } from "./console-progress.ts";
-import { runOneIssue } from "./pipeline.ts";
-import {
-  JsonlProgressReporter,
-  compositeProgressReporter,
-  runLogPath,
-} from "./progress.ts";
-import { createCommandRunner } from "../triage/command.ts";
-import { detectDefaultBaseBranch } from "./git.ts";
-import { appendPiErrorCause, formatErrorWithCauses } from "./pi-errors.ts";
-import {
-  summarizeErrorResult,
-  summarizePipelineFailure,
-  summarizeResult,
-} from "./result-summary.ts";
-import {
-  exitCodeForRunOnceResult,
-  writeRunOnceResult,
-} from "./result-output.ts";
-import type { WriteRunOnceResultOptions } from "./result-output.ts";
-import type { AgentIssuePipelineResult } from "./types.ts";
-import { legacyPlanningDeprecation } from "../../legacy-planning-deprecations.ts";
+import { loadConfig } from "../../../config/config.ts";
+import { createHost } from "../../../host/factory.ts";
+import { createKernelGit } from "../../../kernel/git.ts";
+import { runOneIssue, type RunOnceOptions } from "../../../kernel/run-once.ts";
+import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
+import { runCommand, type CommandRunner } from "../../../process/command.ts";
+import type { CliOutput } from "../../main.ts";
+import { resolveBundledPiCommand } from "../../pi-cli.ts";
 
-export { summarizeResult } from "./result-summary.ts";
+const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only]
+Advance one issue. Use --dry-run to show the next phase without claiming it.
+Use --plan-only to stop after planning.`;
 
-export const HELP_TEXT = `Usage:
-  patchmill run-once [options]
-  npm run run-once -- [options]
+type Options = {
+  runner?: CommandRunner;
+  output?: CliOutput;
+  repoRoot?: string;
+  runOneIssue?: typeof runOneIssue;
+};
 
-Advance one actionable issue through spec, plan, or implementation workflow states.
-Claims and processes one eligible issue by default.
-Use --dry-run to preview the next eligible issue without mutating the configured issue host or git.
-Progress is written to stderr by default. Interactive stdout ends with a readable formatted result; redirected stdout remains compact JSON.
---quiet suppresses progress but not the final result. NO_COLOR disables result styling without changing output mode.
-Run logs are written under the configured run state directory (default: .patchmill/runs/) and end with a structured result event.
-Independent explicit issues can run concurrently in one clone. Automatic selection remains serial.
-An owned issue stops with "issue already in progress." and exit code 0. Retry a busy Git transaction after its owner stops.
-Implementation publishes a PR, not the target branch. After the PR merges, rerun the same explicit issue to finish its checkpoints.
-Use one version and bound configuration namespace. Manage spending, CPU, ports, and test databases per issue.
-Do not remove another run's locks or mutate shared Git/configuration during active attempts.
-
-Options:
-  --help, -h          Show this help and exit.
-  --dry-run, --dryrun Preview the next actionable issue without mutations.
-  --plan-only         ${legacyPlanningDeprecation("--plan-only").help}
-  --quiet             Suppress terminal progress; still write JSONL run log.
-  --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
-  --issue <number>    Process or resume only this issue, including verified PR finish recovery.
-  --host-login <name> Use a named host login when the provider supports named logins.
-  --tea-login <name>  Compatibility alias for --host-login.
-
-Environment:
-  PATCHMILL_HOST_LOGIN               Override the default host login name when supported.
-`;
-
-type Env = Record<string, string | undefined>;
-
-function isHelpOnlyInvocation(args: string[]): boolean {
-  return args.includes("--help") || args.includes("-h");
-}
-
-function issueNumberFromResult(
-  result: AgentIssuePipelineResult,
-): number | undefined {
-  return "issue" in result ? result.issue.number : undefined;
-}
-
-export async function finalLogPath(
-  preliminaryLogPath: string,
-  runStateDir: string,
-  timestamp: string,
-  result: AgentIssuePipelineResult,
-  attemptId: string,
-): Promise<string> {
-  const issueNumber = issueNumberFromResult(result);
-  if (issueNumber === undefined) return preliminaryLogPath;
-
-  const issueLogPath = runLogPath(
-    runStateDir,
-    timestamp,
-    attemptId,
-    issueNumber,
-  );
-  if (issueLogPath === preliminaryLogPath) return preliminaryLogPath;
-
-  await mkdir(dirname(issueLogPath), { recursive: true });
-  await link(preliminaryLogPath, issueLogPath);
-  await unlink(preliminaryLogPath);
-  return issueLogPath;
-}
-
-export async function writePipelineFailureResult(
-  error: unknown,
-  logPath: string,
-  options: Omit<WriteRunOnceResultOptions, "logPath">,
-): Promise<0 | 1> {
-  const summary = summarizePipelineFailure(error, logPath);
-  try {
-    await writeRunOnceResult(summary, { ...options, logPath });
-  } catch (reportingError) {
-    throw appendPiErrorCause(error, "result reporting", reportingError);
+function parseArgs(args: string[]): RunOnceOptions {
+  const options: RunOnceOptions = {};
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--dry-run") options.dryRun = true;
+    else if (arg === "--plan-only") options.planOnly = true;
+    else if (arg === "--issue") {
+      const value = args[++i];
+      if (
+        options.issue !== undefined ||
+        !/^[1-9]\d*$/.test(value ?? "") ||
+        !Number.isSafeInteger(Number(value))
+      ) {
+        throw new Error("Use --issue N with a positive integer issue number.");
+      }
+      options.issue = Number(value);
+    } else throw new Error(`Unknown argument: ${arg}. Use --help for options.`);
   }
-  return exitCodeForRunOnceResult(summary);
-}
-
-async function resolveRunOnceConfigBaseBranch(
-  patchmillConfig: Awaited<
-    ReturnType<typeof loadPatchmillConfigState>
-  >["config"],
-  explicitGitBaseBranch: boolean,
-  runner: CommandRunner,
-  repoRoot: string,
-): Promise<typeof patchmillConfig> {
-  if (explicitGitBaseBranch) return patchmillConfig;
-
-  const detection = await detectDefaultBaseBranch(
-    runner,
-    repoRoot,
-    patchmillConfig.git.remote,
-    patchmillConfig.git.baseBranch,
-  );
-  return {
-    ...patchmillConfig,
-    git: { ...patchmillConfig.git, baseBranch: detection.branch },
-  };
-}
-
-export async function loadCliConfig(
-  args: string[],
-  repoRoot = cwd(),
-  env: Env = process.env,
-  runner: CommandRunner = createCommandRunner(),
-) {
-  if (isHelpOnlyInvocation(args)) {
-    return parseArgs(args, repoRoot, env);
-  }
-
-  const { config: patchmillConfig, explicitConfig } =
-    await loadPatchmillConfigState(repoRoot, env, args);
-  const runOnceConfig = await resolveRunOnceConfigBaseBranch(
-    patchmillConfig,
-    explicitConfig.gitBaseBranch,
-    runner,
-    repoRoot,
-  );
-  return parseArgs(args, repoRoot, env, runOnceConfig);
+  return options;
 }
 
 export async function main(
-  args = process.argv.slice(2),
-  dependencies: Partial<{
-    loadConfig: typeof loadCliConfig;
-    createRunner: typeof createCommandRunner;
-  }> = {},
+  args: string[] = process.argv.slice(2),
+  options: Options = {},
 ): Promise<number> {
-  if (!isHelpOnlyInvocation(args) && args.includes("--plan-only")) {
-    process.stderr.write(
-      `${legacyPlanningDeprecation("--plan-only").warning}\n`,
-    );
+  const output = options.output ?? {
+    stdout: console.log,
+    stderr: console.error,
+  };
+  if (args.length === 1 && ["--help", "-h", "help"].includes(args[0]!)) {
+    output.stdout(HELP);
+    return 0;
   }
-  const startedAt = new Date();
-  const timestamp = startedAt.toISOString();
-  const attemptId = randomUUID();
-
+  const controller = new AbortController();
+  const abort = () => controller.abort();
   try {
-    const runner = (dependencies.createRunner ?? createCommandRunner)();
-    const config = await (dependencies.loadConfig ?? loadCliConfig)(
-      args,
-      cwd(),
-      process.env,
+    const runOptions = parseArgs(args);
+    const repoRoot = options.repoRoot ?? process.cwd();
+    const config = await loadConfig(repoRoot);
+    const runner = options.runner ?? runCommand;
+    const deps = {
+      host: createHost(config, runner, repoRoot),
       runner,
-    );
-    if (config.showHelp) {
-      console.log(HELP_TEXT);
-      return 0;
-    }
-
-    const logPath = runLogPath(config.runStateDir, timestamp, attemptId);
-    const interactiveOutput = process.stdout.isTTY === true;
-    const consoleProgress = config.quiet
-      ? undefined
-      : new AgentIssueConsoleProgressReporter({
-          startedAt,
-          deferFinalResult: interactiveOutput,
-        });
-    const progress = compositeProgressReporter([
-      new JsonlProgressReporter(logPath),
-      ...(consoleProgress ? [consoleProgress] : []),
-    ]);
-
-    await progress.event({
-      time: timestamp,
-      level: "debug",
-      stage: "run-attempt",
-      message: "run attempt started",
-      attemptId,
+      git: createKernelGit(runner, repoRoot),
+      piCommand: resolveBundledPiCommand(),
+      extensionPaths: [resolvePiSubagentsPackageRoot()],
+      repoRoot,
+      now: () => new Date(),
+      output,
+    };
+    process.on("SIGINT", abort);
+    process.on("SIGTERM", abort);
+    const outcome = await (options.runOneIssue ?? runOneIssue)(config, deps, {
+      ...runOptions,
+      signal: controller.signal,
     });
-    let result: AgentIssuePipelineResult;
-    try {
-      result = await runOneIssue(runner, config, {
-        now: startedAt,
-        attemptId,
-        progress,
-        logPath,
-        verbosePiOutput: config.verbosePiOutput,
-        streamPiOutput:
-          !config.quiet && config.verbosePiOutput
-            ? (chunk) => {
-                process.stderr.write(chunk);
-              }
-            : undefined,
-      });
-    } catch (error) {
-      const formatted = formatErrorWithCauses(error);
-      const failure = summarizePipelineFailure(error, logPath);
-      const stopped = failure.status === "stopped";
-      let terminalError = error;
-      try {
-        await progress.event({
-          time: new Date().toISOString(),
-          level: stopped ? "warning" : "error",
-          stage: stopped ? "admission" : "error",
-          message: stopped
-            ? `stopped: ${failure.diagnostic.summary}`
-            : `blocked: ${formatted.message}`,
-          data: stopped
-            ? failure
-            : { error: formatted.message, causes: formatted.causes },
-        });
-      } catch (reportingError) {
-        terminalError = appendPiErrorCause(
-          error,
-          "error reporting",
-          reportingError,
-        );
-      }
-      return writePipelineFailureResult(terminalError, logPath, {
-        stdout: process.stdout,
-        env: process.env,
-        elapsedSeconds: Math.max(
-          0,
-          Math.round((Date.now() - startedAt.getTime()) / 1000),
-        ),
-      });
-    }
-
-    const outputLogPath = await finalLogPath(
-      logPath,
-      config.runStateDir,
-      timestamp,
-      result,
-      attemptId,
-    );
-    const summary = summarizeResult({ ...result, logPath: outputLogPath });
-    await writeRunOnceResult(summary, {
-      stdout: process.stdout,
-      env: process.env,
-      logPath: outputLogPath,
-      progress: consoleProgress?.finalResultSnapshot(),
-      elapsedSeconds: Math.max(
-        0,
-        Math.round((Date.now() - startedAt.getTime()) / 1000),
-      ),
-    });
-    return exitCodeForRunOnceResult(summary);
+    if (outcome.status === "refused") output.stderr(outcome.reason);
+    if (outcome.status === "claimed-elsewhere")
+      output.stderr(`Issue #${outcome.issue} was claimed elsewhere.`);
+    // Publication errors leave remote labels or comments for an operator to fix.
+    return outcome.status === "refused" ||
+      outcome.status === "claimed-elsewhere" ||
+      "publicationErrors" in outcome
+      ? 1
+      : 0;
   } catch (error) {
-    const summary = summarizeErrorResult(error);
-    await writeRunOnceResult(summary, {
-      stdout: process.stdout,
-      env: process.env,
-    });
-    return exitCodeForRunOnceResult(summary);
+    output.stderr(error instanceof Error ? error.message : String(error));
+    return 1;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
   }
-}
-
-const isMain = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
-
-if (isMain) {
-  process.exitCode = await main();
 }

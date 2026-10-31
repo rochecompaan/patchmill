@@ -1,434 +1,263 @@
+import { CommandFailedError, commandOutput } from "../process/command.ts";
 import type {
-  IssueCommentSummary,
-  IssueSummary,
-  LabelChangePlan,
-  LabelDefinition,
-} from "../issue/types.ts";
-import type { CommandResult, CommandRunner } from "../command/types.ts";
-import {
-  readGitHubPullRequestBody,
-  updateGitHubPullRequestBody,
-} from "./github-pr-body.ts";
+  CommandResult,
+  CommandRunner,
+  CommandRunOptions,
+} from "../process/command.ts";
 import type {
+  Host,
   HostCliCheck,
-  HostIssueCreateInput,
-  IssueHostProvider,
-  RepositoryInfo,
-  RepositorySetupHostProvider,
+  Issue,
+  LabelDefinition,
+  PullRequest,
+  Repository,
+  RepositorySetupHost,
   RepositoryTarget,
-  PullRequestBodyHostProvider,
 } from "./types.ts";
+import { originRepository } from "./origin.ts";
 
-const ISSUE_LIST_JSON_FIELDS =
-  "number,title,body,state,labels,author,createdAt,updatedAt,url";
-const ISSUE_LIST_SAFE_SELECTION_LIMIT = 1000;
-const ISSUE_LIST_FETCH_LIMIT = ISSUE_LIST_SAFE_SELECTION_LIMIT + 1;
-const ISSUE_VIEW_JSON_FIELDS = `${ISSUE_LIST_JSON_FIELDS},comments`;
-const REPOSITORY_VIEW_JSON_FIELDS = "name,url,sshUrl";
-
-export type GitHubGhHostOptions = {
-  runner: CommandRunner;
-  repoRoot: string;
+type RawIssue = Omit<Issue, "labels" | "author" | "comments" | "state"> & {
+  labels: { name: string }[];
+  author: { login: string };
+  state: string;
+  comments?: { author: { login: string }; body: string; createdAt: string }[];
 };
-
-function commandOutput(result: CommandResult): string {
-  return (
-    [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
-    "no output"
-  );
-}
-
-function stripLeadingHash(color: string): string {
-  return color.replace(/^#/u, "");
-}
-
-function shellQuote(value: string): string {
-  if (/^[A-Za-z0-9_./:=@%+-]+$/u.test(value)) return value;
-  if (value.length === 0) return "''";
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
-
-function parseJson(stdout: string, context: string): unknown {
+type RawPullRequest = Pick<PullRequest, "number" | "url" | "body"> & {
+  isDraft: boolean;
+  headRefName: string;
+  // gh reports null for both once the head repository is deleted.
+  headRepository: { name: string } | null;
+  headRepositoryOwner: { login: string } | null;
+  baseRefName: string;
+  state: string;
+};
+type RawRepository = {
+  nameWithOwner: string;
+  defaultBranchRef: { name: string };
+};
+const issueFields = "number,title,body,labels,state,url,author,createdAt";
+function parseJson(stdout: string, label: string): unknown {
   try {
     return JSON.parse(stdout);
-  } catch (error) {
-    throw new Error(
-      `${context} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
+  } catch {
+    throw new Error(`${label} returned invalid JSON`);
   }
 }
-
-function labelNames(labels: unknown): string[] {
-  if (labels === undefined || labels === null) return [];
-  if (typeof labels === "string") {
-    return labels
-      .split(/[,\s]+/u)
-      .map((label) => label.trim())
-      .filter((label) => label.length > 0);
-  }
-  if (!Array.isArray(labels)) throw new Error("Unexpected labels payload");
-  return labels.map((label) => {
-    if (typeof label === "string") return label;
-    if (
-      label &&
-      typeof label === "object" &&
-      "name" in label &&
-      typeof label.name === "string"
-    )
-      return label.name;
-    throw new Error(`Unexpected label payload: ${JSON.stringify(label)}`);
-  });
-}
-
-function issueNumber(value: unknown): number | undefined {
-  if (Number.isInteger(value) && Number(value) > 0) return Number(value);
-  if (typeof value === "string" && /^[1-9]\d*$/u.test(value))
-    return Number(value);
-  return undefined;
-}
-
-function authorName(author: unknown): string | undefined {
-  if (typeof author === "string") return author;
-  if (
-    author &&
-    typeof author === "object" &&
-    "login" in author &&
-    typeof author.login === "string"
-  )
-    return author.login;
-  return undefined;
-}
-
-function parseIssueComment(comment: unknown): IssueCommentSummary | undefined {
-  if (!comment || typeof comment !== "object") return undefined;
-  const entry = comment as Record<string, unknown>;
-  if (typeof entry.body !== "string") return undefined;
-
-  const parsed: IssueCommentSummary = { body: entry.body };
-  const authorLogin = authorName(entry.author);
-  if (authorLogin !== undefined) parsed.authorLogin = authorLogin;
-  if (typeof entry.createdAt === "string") parsed.created = entry.createdAt;
-  if (typeof entry.created === "string" && !parsed.created) {
-    parsed.created = entry.created;
-  }
-  return parsed;
-}
-
-function issueComments(comments: unknown): IssueCommentSummary[] | undefined {
-  if (!Array.isArray(comments)) return undefined;
-  return comments.flatMap((comment) => {
-    const parsed = parseIssueComment(comment);
-    return parsed ? [parsed] : [];
-  });
-}
-
-function parseIssuePayload(payload: unknown, context: string): IssueSummary {
-  if (!payload || typeof payload !== "object")
-    throw new Error(`${context} returned unexpected issue payload`);
-
-  const issue = payload as Record<string, unknown>;
-  const number = issueNumber(issue.number);
-  if (number === undefined || typeof issue.title !== "string") {
-    throw new Error(`${context} returned unexpected issue payload`);
-  }
-
-  const parsed: IssueSummary = {
-    number,
-    title: issue.title,
-    body: typeof issue.body === "string" ? issue.body : "",
-    state: typeof issue.state === "string" ? issue.state.toLowerCase() : "open",
-    labels: labelNames(issue.labels),
-  };
-
-  const author = authorName(issue.author);
-  if (author !== undefined) parsed.author = author;
-  if (typeof issue.createdAt === "string") parsed.created = issue.createdAt;
-  if (typeof issue.updatedAt === "string") parsed.updated = issue.updatedAt;
-  const comments = issueComments(issue.comments);
-  if (comments !== undefined) parsed.comments = comments;
-  if (typeof issue.url === "string") parsed.url = issue.url;
-  if (typeof issue.html_url === "string" && !parsed.url) {
-    parsed.url = issue.html_url;
-  }
-
-  return parsed;
-}
-
-function parseIssueArray(stdout: string, context: string): IssueSummary[] {
-  const parsed = parseJson(stdout, context);
-  if (!Array.isArray(parsed))
-    throw new Error(`${context} returned a non-array payload`);
-  return parsed.map((entry) => parseIssuePayload(entry, context));
-}
-
-function parseIssueObject(stdout: string, context: string): IssueSummary {
-  return parseIssuePayload(parseJson(stdout, context), context);
-}
-
-function parseLabelNames(stdout: string, context: string): string[] {
-  const parsed = parseJson(stdout, context);
-  if (!Array.isArray(parsed))
-    throw new Error(`${context} returned a non-array payload`);
-  return parsed
-    .map((entry) => {
-      if (typeof entry === "string") return entry;
-      if (
-        entry &&
-        typeof entry === "object" &&
-        "name" in entry &&
-        typeof entry.name === "string"
-      )
-        return entry.name;
-      throw new Error(`Unexpected label payload: ${JSON.stringify(entry)}`);
-    })
-    .sort((a, b) => a.localeCompare(b));
-}
-
-function parseRepositoryInfo(
-  stdout: string,
-  target: RepositoryTarget,
-): RepositoryInfo {
-  const parsed = parseJson(stdout, "gh repo view");
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("gh repo view returned unexpected repository payload");
-  }
-  const repository = parsed as Record<string, unknown>;
-  if (typeof repository.url !== "string") {
-    throw new Error(
-      `gh repo view did not return a public URL for ${target.slug}`,
-    );
-  }
-  if (typeof repository.sshUrl !== "string") {
-    throw new Error(
-      `gh repo view did not return an SSH URL for ${target.slug}`,
-    );
-  }
+const mapIssue = (raw: RawIssue): Issue => ({
+  ...raw,
+  labels: raw.labels.map((label) => label.name),
+  author: raw.author.login,
+  state: raw.state.toLowerCase() as Issue["state"],
+  comments: (raw.comments ?? []).map((comment) => ({
+    ...comment,
+    author: comment.author.login,
+  })),
+});
+const mapPullRequest = (raw: RawPullRequest): PullRequest => ({
+  number: raw.number,
+  url: raw.url,
+  state: raw.state.toLowerCase() as PullRequest["state"],
+  draft: raw.isDraft,
+  body: raw.body,
+  headRepository:
+    raw.headRepository && raw.headRepositoryOwner
+      ? `${raw.headRepositoryOwner.login}/${raw.headRepository.name}`
+      : null,
+  headBranch: raw.headRefName,
+  baseBranch: raw.baseRefName,
+});
+const mapRepository = (raw: RawRepository): Repository => {
+  const slash = raw.nameWithOwner.indexOf("/");
   return {
-    publicUrl: repository.url,
-    gitRemoteUrl: repository.sshUrl,
+    owner: raw.nameWithOwner.slice(0, slash),
+    repo: raw.nameWithOwner.slice(slash + 1),
+    defaultBranch: raw.defaultBranchRef.name,
   };
-}
+};
 
-function isRepositoryNotFound(result: CommandResult): boolean {
-  return /Could not resolve to a Repository|Not Found|repository not found/iu.test(
-    commandOutput(result),
-  );
-}
-
-export class GitHubGhHostProvider
-  implements
-    IssueHostProvider,
-    RepositorySetupHostProvider,
-    PullRequestBodyHostProvider
-{
-  readonly id = "github-gh" as const;
-  readonly displayName = "GitHub via gh";
-
-  private readonly options: GitHubGhHostOptions;
-
-  constructor(options: GitHubGhHostOptions) {
-    this.options = options;
+export class GitHubHost implements Host, RepositorySetupHost {
+  readonly displayName = "GitHub (gh)";
+  private readonly runner: CommandRunner;
+  private readonly repoRoot: string;
+  constructor(options: { runner: CommandRunner; repoRoot: string }) {
+    this.runner = options.runner;
+    this.repoRoot = options.repoRoot;
   }
-
-  readPullRequestBody(prUrl: string): Promise<string> {
-    return readGitHubPullRequestBody(this.options, prUrl);
+  private gh(args: string[], options: CommandRunOptions = {}) {
+    return this.runner("gh", args, { ...options, cwd: this.repoRoot });
   }
-
-  updatePullRequestBody(prUrl: string, body: string): Promise<void> {
-    return updateGitHubPullRequestBody(this.options, prUrl, body);
+  private async ghOk(args: string[], options?: CommandRunOptions) {
+    const result = await this.gh(args, options);
+    if (result.code !== 0) throw new CommandFailedError("gh", args, result);
+    return result;
   }
-
   async checkCli(): Promise<HostCliCheck> {
-    const version = await this.runGh(["--version"]);
-    if (version.code !== 0) return this.cliFailure("gh --version", version);
-
-    const auth = await this.runGh(["auth", "status"]);
-    if (auth.code !== 0) return this.cliFailure("gh auth status", auth);
-
-    return { ok: true, message: "github via gh" };
+    const fail = (label: string, result: CommandResult): HostCliCheck => ({
+      ok: false,
+      message: `${label} failed: ${commandOutput(result)}`,
+    });
+    const version = await this.gh(["--version"]);
+    if (version.code !== 0) return fail("gh --version", version);
+    const auth = await this.gh(["auth", "status"]);
+    if (auth.code !== 0) return fail("gh auth status", auth);
+    const user = await this.gh(["api", "user", "--jq", ".login"]);
+    if (user.code !== 0) return fail("gh api user", user);
+    const login = user.stdout.trim();
+    return { ok: true, message: `gh authenticated as ${login}`, login };
   }
-
-  missingLabelRemediation(label: LabelDefinition): string {
-    return [
-      "  gh label create",
-      shellQuote(label.name),
-      "--color",
-      shellQuote(stripLeadingHash(label.color)),
-      "--description",
-      shellQuote(label.description),
-    ].join(" ");
-  }
-
-  async listOpenIssues(): Promise<IssueSummary[]> {
-    const result = await this.runGh([
-      "issue",
-      "list",
-      "--state",
-      "open",
-      "--limit",
-      String(ISSUE_LIST_FETCH_LIMIT),
-      "--json",
-      ISSUE_LIST_JSON_FIELDS,
-    ]);
-    if (result.code !== 0)
-      throw new Error(
-        `gh issue list failed; check GitHub authentication, repository remote, and repository permissions: ${commandOutput(result)}`,
-      );
-
-    const issues = parseIssueArray(result.stdout, "gh issue list");
-    if (issues.length >= ISSUE_LIST_FETCH_LIMIT) {
-      throw new Error(
-        `gh issue list returned at least ${ISSUE_LIST_FETCH_LIMIT} open issues; Patchmill cannot safely apply oldest-first triage ordering after a capped GitHub CLI response without risking silently skipped older issues. Reduce open issues below ${ISSUE_LIST_SAFE_SELECTION_LIMIT + 1}, target a specific issue with --issue, or update the repository triage workflow before rerunning.`,
-      );
-    }
-    return issues;
-  }
-
-  async hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]> {
-    for (const issue of issues) {
-      const viewed = await this.viewIssue(issue.number);
-      issue.comments = viewed.comments ?? [];
-    }
-    return issues;
-  }
-
-  async trustedTriageCommentAuthors(): Promise<string[]> {
-    const result = await this.runGh(["api", "user", "--jq", ".login"]);
-    if (result.code !== 0) {
-      throw new Error(
-        `gh api user failed while resolving trusted triage author: ${commandOutput(result)}`,
-      );
-    }
-
-    const login = result.stdout.trim();
-    return login ? [login] : [];
-  }
-
-  async listLabels(): Promise<string[]>;
-  async listLabels(target: RepositoryTarget): Promise<string[]>;
-  async listLabels(target?: RepositoryTarget): Promise<string[]> {
-    const args = ["label", "list"];
-    if (target) args.push("--repo", target.slug);
-    args.push("--limit", "1000", "--json", "name");
-
-    const result = await this.runGh(args);
-    if (result.code !== 0)
-      throw new Error(`gh label list failed: ${commandOutput(result)}`);
-    return parseLabelNames(result.stdout, "gh label list");
-  }
-
-  async createLabel(label: LabelDefinition): Promise<void>;
-  async createLabel(
-    target: RepositoryTarget,
-    label: LabelDefinition,
-  ): Promise<void>;
-  async createLabel(
-    first: RepositoryTarget | LabelDefinition,
-    second?: LabelDefinition,
-  ): Promise<void> {
-    const target = second ? (first as RepositoryTarget) : undefined;
-    const label = second ?? (first as LabelDefinition);
-    const args = ["label", "create", label.name];
-    if (target) args.push("--repo", target.slug);
-    args.push(
-      "--color",
-      stripLeadingHash(label.color),
-      "--description",
-      label.description,
-    );
-
-    const result = await this.runGh(args);
-    if (result.code !== 0)
-      throw new Error(
-        `gh label create failed for ${label.name}: ${commandOutput(result)}`,
-      );
-  }
-
-  async applyLabels(change: LabelChangePlan): Promise<void> {
-    if (change.addLabels.length === 0 && change.removeLabels.length === 0)
-      return;
-
-    const args = ["issue", "edit", String(change.issueNumber)];
-    if (change.addLabels.length > 0) {
-      args.push("--add-label", change.addLabels.join(","));
-    }
-    if (change.removeLabels.length > 0) {
-      args.push("--remove-label", change.removeLabels.join(","));
-    }
-
-    const result = await this.runGh(args);
-    if (result.code !== 0)
-      throw new Error(
-        `gh issue edit labels failed for #${change.issueNumber}: ${commandOutput(result)}`,
-      );
-  }
-
-  async commentIssue(issueNumber: number, body: string): Promise<void> {
-    const result = await this.runGh([
-      "issue",
-      "comment",
-      String(issueNumber),
-      "--body",
-      body,
-    ]);
-    if (result.code !== 0)
-      throw new Error(
-        `gh issue comment failed for #${issueNumber}: ${commandOutput(result)}`,
-      );
-  }
-
-  async getRepository(
-    target: RepositoryTarget,
-  ): Promise<RepositoryInfo | undefined> {
-    const result = await this.runGh([
+  async repository(): Promise<Repository> {
+    const result = await this.ghOk([
       "repo",
       "view",
-      target.slug,
       "--json",
-      REPOSITORY_VIEW_JSON_FIELDS,
+      "nameWithOwner,defaultBranchRef",
     ]);
-    if (result.code !== 0) {
-      if (isRepositoryNotFound(result)) return undefined;
-      throw new Error(
-        `gh repo view failed for ${target.slug}: ${commandOutput(result)}`,
+    return mapRepository(
+      parseJson(result.stdout, "gh repo view") as RawRepository,
+    );
+  }
+  async listOpenIssues(): Promise<Issue[]> {
+    const result = await this.ghOk([
+      "api",
+      "--paginate",
+      "--slurp",
+      "repos/{owner}/{repo}/issues?state=open&per_page=100",
+    ]);
+    type ApiIssue = Omit<RawIssue, "comments"> & {
+      user: { login: string };
+      html_url: string;
+      created_at: string;
+      pull_request?: unknown;
+    };
+    return (parseJson(result.stdout, "gh api issues") as ApiIssue[][])
+      .flat()
+      .filter((raw) => !raw.pull_request)
+      .map((raw) =>
+        mapIssue({
+          ...raw,
+          author: raw.user,
+          comments: [],
+          url: raw.html_url,
+          createdAt: raw.created_at,
+        }),
       );
-    }
-    return parseRepositoryInfo(result.stdout, target);
   }
 
-  async createPublicRepo(target: RepositoryTarget): Promise<void> {
-    const result = await this.runGh([
-      "repo",
+  async viewIssue(n: number): Promise<Issue> {
+    const result = await this.ghOk([
+      "issue",
+      "view",
+      String(n),
+      "--json",
+      `${issueFields},comments`,
+    ]);
+    return mapIssue(parseJson(result.stdout, "gh issue view") as RawIssue);
+  }
+  async listLabels(target?: RepositoryTarget): Promise<string[]> {
+    const result = await this.ghOk([
+      "label",
+      "list",
+      "--limit",
+      "200",
+      "--json",
+      "name",
+      ...(target ? ["--repo", target.slug] : []),
+    ]);
+    return (
+      parseJson(result.stdout, "gh label list") as { name: string }[]
+    ).map((label) => label.name);
+  }
+  async createLabel(
+    first: LabelDefinition | RepositoryTarget,
+    second?: LabelDefinition,
+  ): Promise<void> {
+    const label = second ?? (first as LabelDefinition);
+    await this.ghOk([
+      "label",
       "create",
-      target.slug,
-      "--public",
+      label.name,
+      "--color",
+      label.color.replace(/^#/, ""),
+      "--description",
+      label.description,
+      ...(second ? ["--repo", (first as RepositoryTarget).slug] : []),
     ]);
-    if (result.code !== 0) {
-      throw new Error(
-        `gh repo create failed for ${target.slug}: ${commandOutput(result)}`,
-      );
-    }
   }
-
+  async setLabels(n: number, add: string[], remove: string[]): Promise<void> {
+    if (!add.length && !remove.length) return;
+    await this.ghOk([
+      "issue",
+      "edit",
+      String(n),
+      ...(add.length ? ["--add-label", add.join(",")] : []),
+      ...(remove.length ? ["--remove-label", remove.join(",")] : []),
+    ]);
+  }
+  async commentIssue(n: number, body: string): Promise<void> {
+    await this.ghOk(["issue", "comment", String(n), "--body-file", "-"], {
+      stdin: body,
+    });
+  }
+  async updatePullRequestBody(n: number, body: string): Promise<void> {
+    await this.ghOk(["pr", "edit", String(n), "--body-file", "-"], {
+      stdin: body,
+    });
+  }
+  async pushRepository(): Promise<string> {
+    return originRepository(this.runner, this.repoRoot);
+  }
+  async listPullRequests(branch: string): Promise<PullRequest[]> {
+    // --head cannot name a fork, so same-named branches from every fork appear.
+    const result = await this.ghOk([
+      "pr",
+      "list",
+      "--head",
+      branch,
+      "--state",
+      "all",
+      "--limit",
+      "100",
+      "--json",
+      "number,url,state,isDraft,body,headRefName,headRepository,headRepositoryOwner,baseRefName",
+    ]);
+    return (parseJson(result.stdout, "gh pr list") as RawPullRequest[])
+      .filter((entry) => entry.headRefName === branch)
+      .map(mapPullRequest);
+  }
+  async getRepository(
+    target: RepositoryTarget,
+  ): Promise<{ publicUrl: string; gitRemoteUrl: string } | undefined> {
+    const args = ["repo", "view", target.slug, "--json", "url,sshUrl"];
+    const result = await this.gh(args);
+    if (result.code !== 0) {
+      if (
+        /Could not resolve to a Repository|Not Found|repository not found/i.test(
+          `${result.stderr}\n${result.stdout}`,
+        )
+      )
+        return undefined;
+      throw new CommandFailedError("gh", args, result);
+    }
+    const raw = parseJson(result.stdout, "gh repo view") as {
+      url: string;
+      sshUrl: string;
+    };
+    return { publicUrl: raw.url, gitRemoteUrl: raw.sshUrl };
+  }
+  async createPublicRepo(target: RepositoryTarget): Promise<void> {
+    await this.ghOk(["repo", "create", target.slug, "--public"]);
+  }
   async deleteRepo(target: RepositoryTarget): Promise<void> {
-    const result = await this.runGh(["repo", "delete", target.slug, "--yes"]);
-    if (result.code !== 0) {
-      throw new Error(
-        `gh repo delete failed for ${target.slug}: ${commandOutput(result)}`,
-      );
-    }
+    await this.ghOk(["repo", "delete", target.slug, "--yes"]);
   }
-
   cloneCommand(target: RepositoryTarget): string {
     return `gh repo clone ${target.slug}`;
   }
-
   async createIssue(
     target: RepositoryTarget,
-    issue: HostIssueCreateInput,
+    issue: { title: string; body: string; labels: string[] },
   ): Promise<void> {
-    const args = [
+    await this.ghOk([
       "issue",
       "create",
       "--repo",
@@ -437,48 +266,7 @@ export class GitHubGhHostProvider
       issue.title,
       "--body",
       issue.body,
-    ];
-    if (issue.labels.length > 0) args.push("--label", issue.labels.join(","));
-
-    const result = await this.runGh(args);
-    if (result.code !== 0) {
-      throw new Error(
-        `gh issue create failed for ${issue.title}: ${commandOutput(result)}`,
-      );
-    }
-  }
-
-  async viewIssue(issueNumber: number): Promise<IssueSummary> {
-    const result = await this.runGh([
-      "issue",
-      "view",
-      String(issueNumber),
-      "--json",
-      ISSUE_VIEW_JSON_FIELDS,
+      ...(issue.labels.length ? ["--label", issue.labels.join(",")] : []),
     ]);
-    if (result.code !== 0)
-      throw new Error(
-        `gh issue view failed for #${issueNumber}: ${commandOutput(result)}`,
-      );
-    return parseIssueObject(result.stdout, `gh issue view #${issueNumber}`);
-  }
-
-  private runGh(args: string[]): Promise<CommandResult> {
-    return this.options.runner.run("gh", args, {
-      cwd: this.options.repoRoot,
-      env: { GH_REPO: undefined },
-    });
-  }
-
-  private cliFailure(command: string, result: CommandResult): HostCliCheck {
-    return {
-      ok: false,
-      message: `${command} failed: ${commandOutput(result)}`,
-      remediation: [
-        "Install and authenticate gh, then rerun:",
-        "  gh auth login",
-        "  patchmill doctor",
-      ],
-    };
   }
 }

@@ -1,449 +1,167 @@
-import type { LabelDefinition } from "../../../issue/types.ts";
-import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { HELP_TEXT, runSetupTestRepo } from "./main.ts";
-import type {
-  HostCliCheck,
-  HostIssueCreateInput,
-  RepositoryInfo,
-  RepositorySetupHostProvider,
-  RepositoryTarget,
-} from "../../../host/types.ts";
+import { test, type TestContext } from "node:test";
+import type { RepositorySetupHost } from "../../../host/types.ts";
+import type { CommandRunner } from "../../../process/command.ts";
+import { main as cliMain } from "../../main.ts";
+import { main } from "./main.ts";
 
-function okCli(): HostCliCheck {
-  return { ok: true, message: "ok" };
-}
-
-function createProvider(
-  options: {
-    exists?: boolean;
-    cli?: HostCliCheck;
-    existingLabels?: string[];
-    failCreateIssue?: boolean;
-    events?: string[];
-  } = {},
-): {
-  provider: RepositorySetupHostProvider;
-  calls: string[];
-  issues: Array<{ target: RepositoryTarget; issue: HostIssueCreateInput }>;
-  labels: Array<{ target: RepositoryTarget; label: LabelDefinition }>;
-} {
-  const calls: string[] = [];
-  const events = options.events;
-  const issues: Array<{
-    target: RepositoryTarget;
-    issue: HostIssueCreateInput;
-  }> = [];
-  const labels: Array<{ target: RepositoryTarget; label: LabelDefinition }> =
-    [];
-  let repositoryExists = options.exists ?? false;
-  const info = (target: RepositoryTarget): RepositoryInfo => ({
-    publicUrl: `https://example.test/${target.slug}`,
-    gitRemoteUrl: `https://example.test/${target.slug}.git`,
-  });
-  const provider: RepositorySetupHostProvider = {
-    id: "github-gh",
-    displayName: "GitHub via gh",
-    async checkCli() {
-      calls.push("checkCli");
-      events?.push("checkCli");
-      return options.cli ?? okCli();
+async function harness(
+  t: TestContext,
+  options: { exists?: boolean; fail?: string } = {},
+) {
+  const parent = await mkdtemp(join(tmpdir(), "setup-test-"));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const events: string[] = [];
+  const errors: string[] = [];
+  let exists = options.exists ?? false;
+  const host: RepositorySetupHost = {
+    displayName: "Fake",
+    checkCli: async () => ({ ok: true, message: "ready" }),
+    getRepository: async () =>
+      exists
+        ? { publicUrl: "https://host/o/r", gitRemoteUrl: "git@host:o/r.git" }
+        : undefined,
+    createPublicRepo: async () => {
+      events.push("create");
+      if (options.fail === "create") throw new Error("create failed");
+      exists = true;
     },
-    async getRepository(target: RepositoryTarget) {
-      calls.push(`getRepository:${target.slug}`);
-      events?.push(`getRepository:${target.slug}`);
-      return repositoryExists ? info(target) : undefined;
+    deleteRepo: async () => {
+      events.push("delete");
+      exists = false;
     },
-    async listLabels(target: RepositoryTarget) {
-      calls.push(`listLabels:${target.slug}`);
-      return options.existingLabels ?? [];
+    cloneCommand: () => "clone o/r",
+    listLabels: async () => ["bug"],
+    createLabel: async (_, label) => {
+      events.push(`label:${label.name}`);
     },
-    async createPublicRepo(target: RepositoryTarget) {
-      repositoryExists = true;
-      events?.push(`createPublicRepo:${target.slug}`);
-      calls.push(`createPublicRepo:${target.slug}`);
-    },
-    async deleteRepo(target: RepositoryTarget) {
-      repositoryExists = false;
-      events?.push(`deleteRepo:${target.slug}`);
-      calls.push(`deleteRepo:${target.slug}`);
-    },
-    cloneCommand(target: RepositoryTarget) {
-      return `gh repo clone ${target.slug}`;
-    },
-    async createLabel(target: RepositoryTarget, label: LabelDefinition) {
-      events?.push(`createLabel:${label.name}`);
-      labels.push({ target, label });
-    },
-    async createIssue(target: RepositoryTarget, issue: HostIssueCreateInput) {
-      events?.push(`createIssue:${issue.title}`);
-      if (options.failCreateIssue) throw new Error("issue create failed");
-      issues.push({ target, issue });
+    createIssue: async (_, issue) => {
+      events.push(`issue:${issue.title}`);
+      if (options.fail === "issue") throw new Error("issue failed");
     },
   };
-  return { provider, calls, issues, labels };
-}
-
-function createGitRunner(options: { failOn?: string } = {}): {
-  runner: CommandRunner;
-  gitCalls: string[][];
-} {
-  const gitCalls: string[][] = [];
-  return {
-    gitCalls,
-    runner: {
-      async run(command, args) {
-        if (command !== "git")
-          throw new Error(`Unexpected command: ${command}`);
-        gitCalls.push(args);
-        if (args[0] === options.failOn) {
-          return { code: 1, stdout: "", stderr: `git ${args[0]} failed` };
-        }
-        return { code: 0, stdout: "", stderr: "" };
-      },
-    },
+  const runner: CommandRunner = async (command, args, runOptions) => {
+    assert.equal(command, "git");
+    events.push(args.join(" "));
+    if (args[0] === "add")
+      assert.match(
+        await readFile(join(runOptions!.cwd!, "README.md"), "utf8"),
+        /.+/,
+      );
+    return {
+      code: options.fail === args[0] ? 1 : 0,
+      stdout: "",
+      stderr: "git failed",
+    };
   };
-}
-
-function createEventedGitRunner(
-  events: string[],
-  options: { failOn?: string } = {},
-): CommandRunner {
-  return {
-    async run(command, args) {
-      if (command !== "git") throw new Error(`Unexpected command: ${command}`);
-      events.push(`git:${args[0]}`);
-      if (args[0] === options.failOn) {
-        return { code: 1, stdout: "", stderr: `git ${args[0]} failed` };
-      }
-      return { code: 0, stdout: "", stderr: "" };
-    },
-  };
-}
-
-test("runSetupTestRepo creates a new repo, pushes fixtures, labels, and issues", async () => {
-  const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
-  const { provider, calls, labels, issues } = createProvider({ exists: false });
-  const { runner, gitCalls } = createGitRunner();
-  const stdout: string[] = [];
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
+  const run = (
+    args = [
+      "--provider",
+      "forgejo-tea",
+      "--repo",
+      "o/r",
+      "--login",
+      "selected",
+    ],
+  ) =>
+    main(args, {
       runner,
-      tempParent,
-      output: { stdout: (line) => stdout.push(line), stderr: () => undefined },
-      createProvider: () => provider,
-    },
-  );
+      tempParent: parent,
+      output: { stdout: () => {}, stderr: (line: string) => errors.push(line) },
+      createProvider: (provider, login, actualRunner, repoRoot) => {
+        assert.equal(provider, "forgejo-tea");
+        assert.equal(login, "selected");
+        assert.equal(actualRunner, runner);
+        assert.ok(repoRoot.startsWith(parent));
+        return host;
+      },
+    });
+  return { run, events, errors, parent };
+}
 
-  assert.equal(code, 0);
-  assert.deepEqual(calls, [
-    "checkCli",
-    "getRepository:OWNER/patchmill-test",
-    "createPublicRepo:OWNER/patchmill-test",
-    "getRepository:OWNER/patchmill-test",
-    "listLabels:OWNER/patchmill-test",
-  ]);
-  assert.deepEqual(
-    gitCalls.map((args) => args[0]),
-    ["--version", "init", "add", "-c", "remote", "push"],
-  );
-  const commitArgs = gitCalls.find((args) => args.includes("commit"));
-  assert.deepEqual(commitArgs?.slice(0, 5), [
-    "-c",
-    "user.name=Patchmill",
-    "-c",
-    "user.email=patchmill@example.invalid",
-    "commit",
-  ]);
-  assert.deepEqual(
-    labels.map(({ label }) => label.name),
-    ["feature", "bug", "docs", "polish"],
-  );
-  assert.equal(issues.length, 12);
+test("reset deletes then creates, pushes fixture main and seeds all issues and missing labels", async (t) => {
+  const h = await harness(t, { exists: true });
   assert.equal(
-    issues[0]?.issue.title,
-    "Create the Team Lunch Poll app scaffold",
+    await h.run([
+      "--provider",
+      "forgejo-tea",
+      "--repo",
+      "o/r",
+      "--login",
+      "selected",
+      "--reset",
+    ]),
+    0,
   );
+  assert.deepEqual(h.events.slice(0, 2), ["delete", "create"]);
+  assert.ok(h.events.includes("init --initial-branch=main"));
+  assert.ok(h.events.includes("push --set-upstream origin main"));
+  assert.ok(h.events.includes("remote add origin git@host:o/r.git"));
   assert.ok(
-    issues.every(({ target }) => target.slug === "OWNER/patchmill-test"),
+    h.events.some((event) => event.includes("commit -m Seed demo repository")),
   );
-  assert.ok(
-    labels.every(({ target }) => target.slug === "OWNER/patchmill-test"),
-  );
-  assert.match(
-    stdout.join("\n"),
-    /https:\/\/example\.test\/OWNER\/patchmill-test/u,
-  );
-  assert.match(stdout.join("\n"), /gh repo clone OWNER\/patchmill-test/u);
-  assert.match(stdout.join("\n"), /patchmill init/u);
-  assert.deepEqual(stdout.slice(0, 16), [
-    "Pushing seed commit",
-    "Ensuring labels",
-    "Seeding issues (12)",
-    "  [1/12] Create the Team Lunch Poll app scaffold",
-    "  [2/12] Define the poll, option, and vote data model",
-    "  [3/12] Build the create-poll form",
-    "  [4/12] Add the option voting flow",
-    "  [5/12] Show live results and winner state",
-    "  [6/12] Persist polls locally",
-    "  [7/12] Add validation, empty states, and error states",
-    "  [8/12] Improve responsive visual polish",
-    "  [9/12] Add automated tests for core poll flows",
-    "  [10/12] Document setup and usage",
-    "  [11/12] Make lunch polls more social",
-    "  [12/12] Votes sometimes disappear when I refresh",
-    "Seeded https://example.test/OWNER/patchmill-test",
-  ]);
-
-  await rm(tempParent, { recursive: true, force: true });
-});
-
-test("runSetupTestRepo skips labels that already exist on the host", async () => {
-  const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
-  const { provider, labels } = createProvider({
-    exists: false,
-    existingLabels: ["bug"],
-  });
-  const { runner } = createGitRunner();
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
-      runner,
-      tempParent,
-      output: { stdout: () => undefined, stderr: () => undefined },
-      createProvider: () => provider,
-    },
-  );
-
-  assert.equal(code, 0);
+  assert.equal(h.events.filter((e) => e.startsWith("issue:")).length, 12);
   assert.deepEqual(
-    labels.map(({ label }) => label.name),
-    ["feature", "docs", "polish"],
+    h.events.filter((e) => e.startsWith("label:")),
+    ["label:feature", "label:docs", "label:polish"],
   );
-
-  await rm(tempParent, { recursive: true, force: true });
+  assert.deepEqual(await readdir(h.parent), []);
 });
-
-test("runSetupTestRepo refuses existing repo without reset", async () => {
-  const { provider } = createProvider({ exists: true });
-  const { runner } = createGitRunner();
-  const stderr: string[] = [];
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
-      runner,
-      output: { stdout: () => undefined, stderr: (line) => stderr.push(line) },
-      createProvider: () => provider,
+test("existing repository is refused without reset and never deleted", async (t) => {
+  const h = await harness(t, { exists: true });
+  assert.equal(await h.run(), 1);
+  assert.deepEqual(h.events, []);
+  assert.match(h.errors.join(" "), /reset/i);
+  assert.deepEqual(await readdir(h.parent), []);
+});
+for (const fail of ["create", "push", "issue"]) {
+  test(`failure at ${fail} rolls back only a repository created by this invocation`, async (t) => {
+    const h = await harness(t, { fail });
+    assert.equal(await h.run(), 1);
+    assert.equal(
+      h.events.filter((e) => e === "delete").length,
+      fail === "create" ? 0 : 1,
+    );
+    assert.deepEqual(await readdir(h.parent), []);
+  });
+}
+test("help and invalid arguments return without provider construction", async () => {
+  const errors: string[] = [];
+  const options = {
+    output: { stdout: () => {}, stderr: (s: string) => errors.push(s) },
+    createProvider: () => {
+      throw new Error("must not construct");
     },
-  );
-
-  assert.equal(code, 1);
-  assert.match(stderr.join("\n"), /already exists/u);
-  assert.match(stderr.join("\n"), /--reset/u);
+  };
+  assert.equal(await main(["--help"], options), 0);
+  assert.equal(await main(["--provider", "github-gh"], options), 1);
+  assert.match(errors.join(" "), /--repo/);
+  assert.equal(await main(["--unknown"], options), 1);
+});
+test("CLI registers setup-test-repo", async () => {
+  assert.equal(await cliMain(["setup-test-repo", "--help"]), 0);
 });
 
-test("runSetupTestRepo deletes and recreates when reset is supplied", async () => {
-  const { provider, calls } = createProvider({ exists: true });
-  const { runner } = createGitRunner();
-  const stdout: string[] = [];
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test", "--reset"],
-    {
-      runner,
-      output: { stdout: (line) => stdout.push(line), stderr: () => undefined },
-      createProvider: () => provider,
-    },
-  );
-
-  assert.equal(code, 0);
-  assert.deepEqual(calls, [
-    "checkCli",
-    "getRepository:OWNER/patchmill-test",
-    "deleteRepo:OWNER/patchmill-test",
-    "createPublicRepo:OWNER/patchmill-test",
-    "getRepository:OWNER/patchmill-test",
-    "listLabels:OWNER/patchmill-test",
-  ]);
-  assert.match(
-    stdout.join("\n"),
-    /https:\/\/example\.test\/OWNER\/patchmill-test/u,
-  );
-  assert.match(stdout.join("\n"), /Deleting OWNER\/patchmill-test/u);
-  assert.match(
-    stdout.join("\n"),
-    /Creating public repository OWNER\/patchmill-test/u,
-  );
-  const resetOutput = stdout.join("\n");
-  assert.ok(
-    resetOutput.indexOf("Creating public repository OWNER/patchmill-test") <
-      resetOutput.indexOf("Pushing seed commit"),
-    resetOutput,
-  );
-  assert.ok(
-    resetOutput.indexOf("Pushing seed commit") <
-      resetOutput.indexOf("Seeded https://example.test/OWNER/patchmill-test"),
-    resetOutput,
-  );
-});
-
-test("runSetupTestRepo prepares and commits local fixtures before mutating the host", async () => {
-  const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
-  const events: string[] = [];
-  const { provider } = createProvider({ exists: false, events });
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
-      runner: createEventedGitRunner(events),
-      tempParent,
-      output: { stdout: () => undefined, stderr: () => undefined },
-      createProvider: () => provider,
-    },
-  );
-
-  assert.equal(code, 0);
-  assert.ok(
-    events.indexOf("git:commit") <
-      events.indexOf("createPublicRepo:OWNER/patchmill-test"),
-    events.join("\n"),
-  );
-
-  await rm(tempParent, { recursive: true, force: true });
-});
-
-test("runSetupTestRepo prints per-issue progress before creating each issue", async () => {
-  const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
-  const events: string[] = [];
-  const { provider } = createProvider({ exists: false, events });
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
-      runner: createEventedGitRunner(events),
-      tempParent,
-      output: {
-        stdout: (line) => events.push(`stdout:${line}`),
-        stderr: () => undefined,
+test("default construction uses the selected host and reports unavailable CLI without mutation", async (t) => {
+  const parent = await mkdtemp(join(tmpdir(), "setup-default-"));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const errors: string[] = [];
+  const calls: string[][] = [];
+  assert.equal(
+    await main(["--provider", "forgejo-tea", "--repo", "o/r"], {
+      tempParent: parent,
+      output: { stdout: () => {}, stderr: (line) => errors.push(line) },
+      runner: async (command, args) => {
+        calls.push([command, ...args]);
+        return { code: -1, stdout: "", stderr: "tea not installed" };
       },
-      createProvider: () => provider,
-    },
+    }),
+    1,
   );
-
-  assert.equal(code, 0);
-  assert.ok(
-    events.indexOf("stdout:Pushing seed commit") < events.indexOf("git:push"),
-    events.join("\n"),
-  );
-  assert.ok(
-    events.indexOf("stdout:Ensuring labels") <
-      events.indexOf("createLabel:feature"),
-    events.join("\n"),
-  );
-  assert.ok(
-    events.indexOf("stdout:  [1/12] Create the Team Lunch Poll app scaffold") <
-      events.indexOf("createIssue:Create the Team Lunch Poll app scaffold"),
-    events.join("\n"),
-  );
-
-  await rm(tempParent, { recursive: true, force: true });
-});
-
-test("runSetupTestRepo rolls back the created repository when seeding fails", async () => {
-  const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
-  const { provider, calls } = createProvider({
-    exists: false,
-    failCreateIssue: true,
-  });
-  const { runner } = createGitRunner();
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
-      runner,
-      tempParent,
-      output: {
-        stdout: (line) => stdout.push(line),
-        stderr: (line) => stderr.push(line),
-      },
-      createProvider: () => provider,
-    },
-  );
-
-  assert.equal(code, 1);
-  assert.match(stdout.join("\n"), /Pushing seed commit/u);
-  assert.match(stdout.join("\n"), /Ensuring labels/u);
-  assert.match(stdout.join("\n"), /Seeding issues \(12\)/u);
-  assert.match(
-    stdout.join("\n"),
-    /\[1\/12\] Create the Team Lunch Poll app scaffold/u,
-  );
-  assert.ok(calls.includes("deleteRepo:OWNER/patchmill-test"));
-  assert.match(stderr.join("\n"), /issue create failed/u);
-  assert.match(stderr.join("\n"), /Rolled back OWNER\/patchmill-test/u);
-
-  await rm(tempParent, { recursive: true, force: true });
-});
-
-test("runSetupTestRepo reports provider CLI failures", async () => {
-  const { provider } = createProvider({
-    cli: {
-      ok: false,
-      message: "gh auth status failed",
-      remediation: ["run gh auth login"],
-    },
-  });
-  const { runner } = createGitRunner();
-  const stderr: string[] = [];
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
-      runner,
-      output: { stdout: () => undefined, stderr: (line) => stderr.push(line) },
-      createProvider: () => provider,
-    },
-  );
-
-  assert.equal(code, 1);
-  assert.match(stderr.join("\n"), /gh auth status failed/u);
-  assert.match(stderr.join("\n"), /run gh auth login/u);
-});
-
-test("runSetupTestRepo reports git command failures", async () => {
-  const { provider } = createProvider({ exists: false });
-  const { runner } = createGitRunner({ failOn: "push" });
-  const stderr: string[] = [];
-
-  const code = await runSetupTestRepo(
-    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
-    {
-      runner,
-      output: { stdout: () => undefined, stderr: (line) => stderr.push(line) },
-      createProvider: () => provider,
-    },
-  );
-
-  assert.equal(code, 1);
-  assert.match(stderr.join("\n"), /git push -u origin main failed/u);
-});
-
-test("runSetupTestRepo prints help without dependencies", async () => {
-  const stdout: string[] = [];
-  const code = await runSetupTestRepo(["--help"], {
-    output: { stdout: (line) => stdout.push(line), stderr: () => undefined },
-  });
-
-  assert.equal(code, 0);
-  assert.deepEqual(stdout, [HELP_TEXT]);
+  assert.deepEqual(calls, [["tea", "--help"]]);
+  assert.match(errors.join(" "), /tea not installed/);
+  assert.deepEqual(await readdir(parent), []);
 });

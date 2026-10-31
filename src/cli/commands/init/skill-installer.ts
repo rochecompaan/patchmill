@@ -1,433 +1,145 @@
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
 import {
-  access,
   chmod,
-  cp,
-  mkdtemp,
   mkdir,
-  readdir,
   readFile,
-  rename,
-  rm,
+  readdir,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import {
-  BUNDLED_PATCHMILL_SKILLS,
-  bundledSkillByKey,
-  bundledSkillDir,
-} from "../../../workflow/bundled-skills.ts";
-import {
-  DEFAULT_PROJECT_SKILL_DIR,
-  PATCHMILL_PLANNING_SKILL,
-  PATCHMILL_RECOMMENDED_SKILL_PACK,
-  INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
-  SKILL_PACK_METADATA_FILE,
-  buildRecommendedProjectSkillConfig,
-  buildSkillPackMetadata,
-  projectSkillPath,
-  type SkillPackSkill,
-} from "../../../workflow/skill-pack.ts";
-import { requiredRuntimeFiles } from "../../../workflow/skill-runtime-requirements.ts";
-import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
+import { dirname, join } from "node:path";
 
-const require = createRequire(import.meta.url);
-
-export type SourceRoots = {
-  patchmillSkillsDir: string;
-  superpowersSkillsDir: string;
-  simpleEnglishSkillsDir: string;
+export const PATCHMILL_SKILLS = [
+  "patchmill-issue-triage",
+  "patchmill-planning",
+  "patchmill-implementation",
+  "patchmill-visual-evidence",
+  "patchmill-frontend-review",
+  "frontend-design",
+  "module-size",
+  "patchmill-cleanup",
+  "patchmill-label",
+  "patchmill-plan",
+];
+export const SUPERPOWERS_SKILLS = [
+  "brainstorming",
+  "writing-plans",
+  "executing-plans",
+  "subagent-driven-development",
+  "dispatching-parallel-agents",
+  "test-driven-development",
+  "systematic-debugging",
+  "verification-before-completion",
+  "requesting-code-review",
+  "receiving-code-review",
+  "using-git-worktrees",
+  "finishing-a-development-branch",
+  "using-superpowers",
+];
+export const SIMPLE_ENGLISH_SKILLS = ["simple-english"];
+export type SkillPackManifest = {
+  installedAt: string;
+  sources: { patchmill: string; superpowers: string; simpleEnglish: string };
+  files: Array<{ path: string; sha256: string }>;
 };
 
-export type ProjectSkillInstallResult = {
-  skillDir: string;
-  skillConfig: Pick<
-    PatchmillSkillsConfig,
-    "triage" | "planning" | "implementation" | "visualEvidence"
-  >;
-  installedSkills: string[];
-  metadataPath: string;
-};
-
-export type SkillInstallerDependencies = {
-  access: typeof access;
-  chmod: typeof chmod;
-  cp: typeof cp;
-  mkdtemp: typeof mkdtemp;
-  mkdir: typeof mkdir;
-  readdir: typeof readdir;
-  readFile: typeof readFile;
-  rename: typeof rename;
-  rm: typeof rm;
-  stat: typeof stat;
-  writeFile: typeof writeFile;
-};
-
-const defaultDependencies: SkillInstallerDependencies = {
-  access,
-  chmod,
-  cp,
-  mkdtemp,
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  stat,
-  writeFile,
-};
-
-export function defaultSkillSourceRoots(): SourceRoots {
-  const superpowersRoot = dirname(require.resolve("superpowers/package.json"));
-  const simpleEnglishRoot = dirname(
-    require.resolve("simple-english/package.json"),
-  );
-  const bundledTriageSkill = bundledSkillByKey("triage");
-  if (!bundledTriageSkill) {
-    throw new Error("Bundled Patchmill skill registry is missing triage skill");
-  }
-  return {
-    patchmillSkillsDir: resolve(bundledSkillDir(bundledTriageSkill), ".."),
-    superpowersSkillsDir: join(superpowersRoot, "skills"),
-    simpleEnglishSkillsDir: join(simpleEnglishRoot, "skills"),
-  };
-}
-
-export async function pathExists(
-  path: string,
-  dependencies: SkillInstallerDependencies = defaultDependencies,
-): Promise<boolean> {
+async function readOptional(path: string): Promise<Buffer | undefined> {
   try {
-    await dependencies.access(path, constants.F_OK);
-    return true;
-  } catch {
-    return false;
+    return await readFile(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
   }
 }
 
-export function sourceRootFor(
-  skill: SkillPackSkill,
-  roots: SourceRoots,
-): string {
-  if (skill.source === "patchmill") {
-    return roots.patchmillSkillsDir;
-  }
-  if (skill.source === "simple-english") {
-    return roots.simpleEnglishSkillsDir;
-  }
-  return roots.superpowersSkillsDir;
-}
-
-export async function assertSkillFile(
-  path: string,
-  displayPath: string,
-  dependencies: SkillInstallerDependencies = defaultDependencies,
-  options: { executable?: boolean } = {},
-): Promise<void> {
-  try {
-    const skillFile = await dependencies.stat(path);
-    if (!skillFile.isFile()) {
-      throw new Error("Skill path is not a file");
-    }
-    await dependencies.access(path, constants.R_OK);
-  } catch {
-    throw new Error(`Missing required skill file: ${displayPath}`);
-  }
-
-  if (options.executable) {
-    const mode = (await dependencies.stat(path)).mode;
-    try {
-      await dependencies.access(path, constants.X_OK);
-    } catch {
-      throw new Error(`Missing required executable skill file: ${displayPath}`);
-    }
-    if ((mode & 0o111) === 0) {
-      throw new Error(`Missing required executable skill file: ${displayPath}`);
-    }
-  }
-}
-
-export function comparePaths(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-}
-
-async function assertRequiredSkillFiles(
-  skillName: string,
-  skillDir: string,
-  displayRoot: string,
-  dependencies: SkillInstallerDependencies = defaultDependencies,
-): Promise<void> {
-  for (const requirement of requiredRuntimeFiles(skillName)) {
-    const displayPath = `${displayRoot}/${requirement.path}`;
-    await assertSkillFile(
-      join(skillDir, requirement.path),
-      displayPath,
-      dependencies,
-      { executable: requirement.executable },
-    );
-  }
-}
-
-export async function hashFile(
-  path: string,
-  dependencies: SkillInstallerDependencies = defaultDependencies,
-): Promise<string> {
-  return createHash("sha256")
-    .update(await dependencies.readFile(path))
-    .digest("hex");
-}
-
-export async function collectSourceFiles(
-  skillRoot: string,
-  currentDir: string,
-  targetRelativeDir: string,
-  displayRoot: string,
-  dependencies: SkillInstallerDependencies = defaultDependencies,
-): Promise<Array<{ path: string; sha256: string }>> {
-  const files: Array<{ path: string; sha256: string }> = [];
-  const entries = await dependencies.readdir(currentDir, {
-    withFileTypes: true,
-  });
-  entries.sort((a, b) => comparePaths(a.name, b.name));
-
-  for (const entry of entries) {
-    const entryPath = join(currentDir, entry.name);
-    const relativePath = relative(skillRoot, entryPath).split(sep).join("/");
-    const metadataPath = `${targetRelativeDir}/${relativePath}`;
-    const displayPath = `${displayRoot}/${relativePath}`;
-
-    if (entry.isDirectory()) {
-      files.push(
-        ...(await collectSourceFiles(
-          skillRoot,
-          entryPath,
-          targetRelativeDir,
-          displayRoot,
-          dependencies,
-        )),
-      );
-      continue;
-    }
-    if (!entry.isFile()) {
-      throw new Error(`Unsupported skill source entry: ${displayPath}`);
-    }
-
-    files.push({
-      path: metadataPath,
-      sha256: await hashFile(entryPath, dependencies),
-    });
-  }
-
-  return files;
-}
-
-export async function makeOwnerWritableRecursive(
-  path: string,
-  dependencies: SkillInstallerDependencies = defaultDependencies,
-): Promise<void> {
-  const entry = await dependencies.stat(path);
-  await dependencies.chmod(path, entry.mode | 0o200);
-
-  if (!entry.isDirectory()) return;
-
-  const children = await dependencies.readdir(path, { withFileTypes: true });
-  for (const child of children) {
-    await makeOwnerWritableRecursive(join(path, child.name), dependencies);
-  }
-}
-
-export async function installProjectSkills(options: {
+export async function installSkills(options: {
   repoRoot: string;
-  skillDir?: string;
-  sourceRoots?: SourceRoots;
-  packSkills?: SkillPackSkill[];
-  installedAt?: string;
-  dependencies?: SkillInstallerDependencies;
-}): Promise<ProjectSkillInstallResult> {
-  const skillDir = options.skillDir ?? DEFAULT_PROJECT_SKILL_DIR;
-  const sourceRoots = options.sourceRoots ?? defaultSkillSourceRoots();
-  const packSkills =
-    options.packSkills ?? PATCHMILL_RECOMMENDED_SKILL_PACK.skills;
-  const dependencies = options.dependencies ?? defaultDependencies;
-  const absoluteSkillDir = resolve(options.repoRoot, skillDir);
-  const metadataPath = join(absoluteSkillDir, SKILL_PACK_METADATA_FILE);
-  const installedSkills: string[] = [];
-  const files: Array<{ path: string; sha256: string }> = [];
-  const installationPlan: Array<{
-    sourceDir: string;
-    targetDir: string;
-    targetRelativeDir: string;
-    files: Array<{ path: string; sha256: string }>;
-  }> = [];
-
-  for (const skill of packSkills) {
-    const sourceDir = join(sourceRootFor(skill, sourceRoots), skill.name);
-    await assertRequiredSkillFiles(
-      skill.name,
-      sourceDir,
-      skill.name,
-      dependencies,
-    );
-
-    const targetRelativeDir = projectSkillPath(skill.name, skillDir);
-    const targetDir = resolve(options.repoRoot, targetRelativeDir);
-    if (await pathExists(targetDir, dependencies)) {
-      throw new Error(
-        `Refusing to overwrite existing skill path: ${targetRelativeDir}`,
-      );
-    }
-
-    const sourceFiles = await collectSourceFiles(
-      sourceDir,
-      sourceDir,
-      targetRelativeDir,
-      skill.name,
-      dependencies,
-    );
-
-    installationPlan.push({
-      sourceDir,
-      targetDir,
-      targetRelativeDir,
-      files: sourceFiles,
-    });
-  }
-
-  if (await pathExists(metadataPath, dependencies)) {
-    throw new Error(
-      `Refusing to overwrite existing skill path: ${projectSkillPath(SKILL_PACK_METADATA_FILE, skillDir)}`,
-    );
-  }
-
-  if (await pathExists(absoluteSkillDir, dependencies)) {
-    throw new Error(`Refusing to overwrite existing skill path: ${skillDir}`);
-  }
-
-  for (const plan of installationPlan) {
-    files.push(...plan.files);
-  }
-
-  files.sort((a, b) => comparePaths(a.path, b.path));
-
-  const metadata = buildSkillPackMetadata(files, {
-    installedAt: options.installedAt ?? new Date().toISOString(),
-    skillDir,
-    skills: packSkills,
-  });
-
-  let stagingSkillDir: string | undefined;
-
-  try {
-    await dependencies.mkdir(dirname(absoluteSkillDir), { recursive: true });
-    stagingSkillDir = await dependencies.mkdtemp(
-      join(dirname(absoluteSkillDir), `${basename(absoluteSkillDir)}-staging-`),
-    );
-
-    for (const {
-      sourceDir,
-      targetDir,
-      targetRelativeDir,
-    } of installationPlan) {
-      const stagedTargetDir = join(
-        stagingSkillDir,
-        relative(absoluteSkillDir, targetDir),
-      );
-      await dependencies.cp(sourceDir, stagedTargetDir, {
-        recursive: true,
-        errorOnExist: true,
-        force: false,
-      });
-      await makeOwnerWritableRecursive(stagedTargetDir, dependencies);
-
-      installedSkills.push(targetRelativeDir);
-    }
-
-    for (const skill of packSkills) {
-      await assertRequiredSkillFiles(
-        skill.name,
-        join(stagingSkillDir, skill.name),
-        projectSkillPath(skill.name, skillDir),
-        dependencies,
-      );
-    }
-
-    await dependencies.writeFile(
-      join(stagingSkillDir, SKILL_PACK_METADATA_FILE),
-      `${JSON.stringify(metadata, null, 2)}\n`,
-      {
-        flag: "wx",
-      },
-    );
-
-    await dependencies.rename(stagingSkillDir, absoluteSkillDir);
-  } finally {
-    if (stagingSkillDir !== undefined) {
-      try {
-        await makeOwnerWritableRecursive(stagingSkillDir, dependencies);
-      } catch {
-        // Best-effort cleanup preparation: the staging directory may already
-        // have been renamed into place, or a partial copy may be unreadable.
+  skillDir: string;
+  packageRoot: string;
+}): Promise<{ written: number; unchanged: number }> {
+  const { repoRoot, skillDir, packageRoot } = options;
+  const require = createRequire(join(packageRoot, "package.json"));
+  const superpowers = dirname(require.resolve("superpowers/package.json"));
+  const simpleEnglish = dirname(require.resolve("simple-english/package.json"));
+  const destination = join(repoRoot, skillDir);
+  const counts = { written: 0, unchanged: 0 };
+  const files: SkillPackManifest["files"] = [];
+  async function copyDirectory(
+    source: string,
+    relative: string,
+  ): Promise<void> {
+    await mkdir(join(destination, relative), { recursive: true });
+    const entries = await readdir(source, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const from = join(source, entry.name);
+      const path = join(relative, entry.name);
+      if (entry.isDirectory()) {
+        await copyDirectory(from, path);
+        continue;
       }
-      await dependencies.rm(stagingSkillDir, { recursive: true, force: true });
+      const bytes = await readFile(from);
+      files.push({
+        path,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      });
+      const to = join(destination, path);
+      const old = await readOptional(to);
+      const mode = ((await stat(from)).mode & 0o777) | 0o600;
+      const modeChanged =
+        old !== undefined && ((await stat(to)).mode & 0o777) !== mode;
+      if (old?.equals(bytes) && !modeChanged) counts.unchanged++;
+      else {
+        if (old) await chmod(to, mode);
+        if (!old?.equals(bytes)) await writeFile(to, bytes, { mode });
+        await chmod(to, mode);
+        counts.written++;
+      }
     }
   }
-
-  return {
-    skillDir: metadata.skillDir,
-    skillConfig: buildRecommendedProjectSkillConfig(metadata.skillDir),
-    installedSkills,
-    metadataPath,
-  };
-}
-
-export async function validateExistingSkillDirectory(
-  repoRoot: string,
-  skillDir: string,
-): Promise<
-  Pick<
-    PatchmillSkillsConfig,
-    "triage" | "planning" | "implementation" | "visualEvidence"
-  >
-> {
-  const skillConfig = buildRecommendedProjectSkillConfig(skillDir);
-  const packSkill = (name: string): SkillPackSkill => {
-    const skill = PATCHMILL_RECOMMENDED_SKILL_PACK.skills.find(
-      (entry) => entry.name === name,
-    );
-    if (!skill) throw new Error(`Missing recommended skill ${name}`);
-    return skill;
-  };
-
-  for (const skill of [
-    ...BUNDLED_PATCHMILL_SKILLS.filter(
-      (skill) => skill.recommendedProjectLocal,
-    ).map((skill) => ({
-      name: skill.globalName,
-      source: "patchmill" as const,
-    })),
-    packSkill("frontend-design"),
-    packSkill("patchmill-frontend-review"),
-    { name: PATCHMILL_PLANNING_SKILL, source: "patchmill" as const },
-    packSkill("brainstorming"),
-    packSkill("writing-plans"),
-    packSkill("simple-english"),
-    packSkill(INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL),
-    packSkill("executing-plans"),
-    packSkill("subagent-driven-development"),
-    packSkill("requesting-code-review"),
-  ]) {
-    const skillPath = projectSkillPath(skill.name, skillDir);
-    await assertRequiredSkillFiles(
-      skill.name,
-      resolve(repoRoot, skillPath),
-      skillPath,
-    );
+  async function version(root: string): Promise<string> {
+    return (
+      JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
+        version: string;
+      }
+    ).version;
   }
-
-  return skillConfig;
+  for (const [root, names] of [
+    [packageRoot, PATCHMILL_SKILLS],
+    [superpowers, SUPERPOWERS_SKILLS],
+    [simpleEnglish, SIMPLE_ENGLISH_SKILLS],
+  ] as const) {
+    for (const name of names)
+      await copyDirectory(join(root, "skills", name), name);
+  }
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  const sources = {
+    patchmill: await version(packageRoot),
+    superpowers: await version(superpowers),
+    simpleEnglish: await version(simpleEnglish),
+  };
+  const manifestPath = join(destination, "patchmill-skill-pack.json");
+  const previous = await readOptional(manifestPath);
+  let old: SkillPackManifest | undefined;
+  try {
+    if (previous) old = JSON.parse(previous.toString()) as SkillPackManifest;
+  } catch {
+    // Replace an invalid managed manifest.
+  }
+  if (
+    old &&
+    JSON.stringify(old.sources) === JSON.stringify(sources) &&
+    JSON.stringify(old.files) === JSON.stringify(files)
+  ) {
+    counts.unchanged++;
+  } else {
+    const manifest: SkillPackManifest = {
+      installedAt: new Date().toISOString(),
+      sources,
+      files,
+    };
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    counts.written++;
+  }
+  return counts;
 }

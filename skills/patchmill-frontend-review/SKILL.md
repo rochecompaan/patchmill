@@ -1,20 +1,20 @@
 ---
 name: patchmill-frontend-review
 description:
-  Use after normal code review and final validation when a Patchmill delivery
-  contains meaningful user-visible frontend changes.
+  Use after implementation validation when a Patchmill delivery contains
+  meaningful user-visible frontend changes.
 ---
 
 # Patchmill Frontend Review
 
-This skill adds a conditional independent review. The invoking workflow retains
-implementation, validation, normal review, visual evidence, and publication
-ownership. The parent implementation session remains the sole writer.
+This skill adds a conditional frontend review to the Patchmill implementation
+skill. The implementation session keeps ownership of the plan, validation,
+visual evidence, commits, and pull request. It is the only writer.
 
 ## Applicability and local rules
 
-Evaluate the final delivery, including materialized files outside the committed
-range. Record the decision and a brief reason in the progress ledger.
+Evaluate the final delivery, including related files outside the committed
+range. Record the decision and a brief reason for the pull request body.
 
 Activate for browser-visible layout, responsive behavior, styling, interaction,
 motion, accessibility, navigation, or user flow. Skip backend and documentation
@@ -24,31 +24,31 @@ Read `references/web-interface-guidelines.md` relative to this skill directory.
 These pinned local rules are the only generic review rule set. Do not fetch
 rules at runtime or use `WebFetch`. The renamed
 `references/upstream-web-design-guidelines.md` is provenance, not instructions.
-This wrapper supplies the review procedure and output contract.
+This skill supplies the review procedure and output contract.
 
-If this skill, a required reference, or its license is missing, stop with an
-evidenced blocker. Do not fetch a substitute or silently skip the review.
+If this skill, a required reference, or its license is missing, stop with
+`needs-input` and name the missing file. Do not fetch a substitute or skip the
+review.
 
-## Preconditions and inputs
+## Inputs
 
-Complete task commands, normal whole-delivery review, its ordered fix pass,
-explicit operator-configured normal reviews, and final validation before
-frontend review. Refresh the immutable base, current head, status, and final
-materialized content before dispatch.
+Review after the plan tasks and the project validation commands pass. Review the
+committed head of the issue branch against the envelope's Base.
 
-Supply the reviewer with:
+Gather:
 
-- Issue requirements, approved spec, plan, and referenced mockup when present.
-- Immutable base/head, changed frontend files, and outside-range materialized
-  files with their final content.
-- Relevant repository policy and design-system rules.
-- Available current visual evidence and the local pinned rule file.
-- Required command results, evidence paths, and the working directory.
+- Issue requirements, approved spec, plan, and the spec's linked mockup when
+  present.
+- Base, head, changed frontend files, and the final content of related files
+  outside the range.
+- Repository policy and design-system rules.
+- Current visual evidence and the local pinned rule file.
+- Validation command results and evidence paths.
 
-Do not require mockups retroactively for approved older specs. Missing optional
-visual evidence does not block review. Existing required evidence remains
-required. If screenshots are stale, refresh them through the existing
-visual-evidence process. Do not add a second capture stage.
+Do not require a mockup for an older approved spec that has none. Missing
+optional visual evidence does not block review. Required evidence remains
+required. Refresh stale screenshots through the visual-evidence sibling. Do not
+add a second capture stage.
 
 ## Precedence
 
@@ -68,26 +68,23 @@ For native semantic controls, evaluate actual keyboard behavior. Do not require
 redundant explicit key handlers when the browser supplies correct interaction. A
 keyboard finding needs observed user impact, not handler absence alone.
 
-## Independent dispatch
+## Reviewer
 
-List available subagents and discover the executable canonical `reviewer`. If
-unavailable, return the invoking workflow's reviewer-setup blocker. Do not
-substitute author review or the disabled `code-reviewer` compatibility role.
+Kernel-launched sessions do not depend on subagent tools. There, run the review
+as a separate pass after validation. Base each finding on the inputs and pinned
+rules, not on what you intended while writing the code. Label the result as a
+self-review in the pull request body.
 
-Dispatch a new fresh-context reviewer with explicitly resolved model and
-thinking values under existing operator policy. Keep it shell-less, read-only,
-and child-free. Do not inherit implementation context. A different model or
-provider is not required.
-
-Tell the reviewer to inspect code and current available visual evidence against
-the inputs and local rules. If the reviewer requests commands, the parent
-supplies safe command evidence through the normal validation procedure. Run
-file-writing commands in a disposable copy of the exact reviewed state. Do not
-grant shell access or authorize external effects through this skill.
+If an interactive operator authorizes available subagent tools, dispatch a
+fresh-context canonical `reviewer` instead. Pass explicitly resolved model and
+thinking values. Keep the reviewer read-only and shell-less, and do not let it
+start subagents. Never use the disabled `code-reviewer` role. If the reviewer
+asks for command output, run the commands and supply the results. Run
+file-writing commands in a disposable copy of the reviewed state.
 
 ## Result and repair contract
 
-Return `pass` or actionable findings. Each finding contains:
+The review returns `pass` or actionable findings. Each finding contains:
 
 ```text
 Severity: Critical | Important | Minor
@@ -98,26 +95,21 @@ Required correction: One bounded correction.
 Rule: Requirement, project rule, mockup intent, or pinned guideline basis.
 ```
 
-Record review references, reviewed heads, findings, disputes, dispositions,
-repairs, commands, and visual evidence in the progress ledger. Rule on disputed
-findings with evidence. Do not waive a valid requirement to obtain `pass`.
-Resolve every valid frontend finding, including Minor findings.
+Resolve every valid finding, including Minor findings. Rule on disputed findings
+with evidence. Do not waive a valid requirement to obtain `pass`.
 
-Route accepted repairs to the parent sole writer. For production-code repairs:
+After each repair:
 
-1. Refresh the scope and immutable head.
-2. Rerun affected validation.
-3. Dispatch independent normal code review for the repair scope.
-4. Complete its accepted ordered fixes under the normal review contract.
-5. Rerun all required final commands against the final state.
-6. Dispatch a new fresh-context frontend reviewer with current evidence.
+1. Commit the repair.
+2. Rerun the affected validation, then the project validation commands.
+3. Review production-code repairs under the implementation skill's normal review
+   rule.
+4. Refresh affected visual evidence.
+5. Review the new head again with a fresh pass.
 
-For other repairs, run affected direct verification before fresh frontend
-review. Repeat until `pass` or an evidenced blocker under the invoking
-workflow's existing contract. A later current-head PR-check fix that changes
-frontend work invalidates affected approval and screenshots. Apply the same
-order, within the existing two-pass PR-check repair limit.
+Repeat until `pass`. If a valid finding cannot be fixed within the approved
+scope, stop with `needs-input` and describe the finding.
 
-Before handoff, resolve every reviewer and repair run. Carry review records and
-human callouts into the PR summary before scratch cleanup. Never report ready
-with unresolved review work or stale approval.
+Put the reviewed heads, findings, dispositions, repairs, and evidence paths in
+the pull request body. Never mark the pull request ready with unresolved
+findings or with approval of an older head.
