@@ -1,8 +1,8 @@
 {
-  "installedAt": "2026-10-26T08:39:42.473Z",
+  "installedAt": "2026-10-31T20:50:21.118Z",
   "sources": {
     "patchmill": "0.20.0",
-    "superpowers": "7.0.0",
+    "superpowers": "7.0.1",
     "simpleEnglish": "1.2.0"
   },
   "files": [
@@ -32,7 +32,7 @@
     },
     {
       "path": "brainstorming/SKILL.md",
-      "sha256": "6ee10d1481b8a2580d5336ff66c5c08acc9d4b251b13bbc3bfd31be99c261d43"
+      "sha256": "61a7ef918652108c76a3fd01e02dd92d39996c6b46d4cb2819cbd03f6c45e46a"
     },
     {
       "path": "brainstorming/visual-companion.md",
@@ -52,7 +52,7 @@
     },
     {
       "path": "executing-plans/SKILL.md",
-      "sha256": "f38e8f2ddcf079f65493adc713c1fed78421dfaf5f4dbf6b3a6b2b1d95466e71"
+      "sha256": "e4649e59880ef2643d1da128e3d607e87e3f969410d72095a5bf65811b6036dc"
     },
     {
       "path": "finishing-a-development-branch/SKILL.md",
@@ -151,6 +151,34 @@
       "sha256": "0828a5e9cbb12ba49f14621dd8c3953c48c0fc383e75bb5494f055ed0d6d824f"
     },
     {
+      "path": "subagent-driven-development/references/batching.md",
+      "sha256": "b54dc7e23dbfb90db89bcb2fb3af591aabf6a271a165fbc0da4c6f9439980eac"
+    },
+    {
+      "path": "subagent-driven-development/references/cannot-verify.md",
+      "sha256": "e698713a15e0eabf1a2ab26ffe1bb04bf70c9d6d2e2060d44a0f9a1bdd4408bf"
+    },
+    {
+      "path": "subagent-driven-development/references/final-review.md",
+      "sha256": "2fd999d86e5dd0b9b32aaf93f2a41663ef30b3e3cb78fb2fd5cb450eb59eb9de"
+    },
+    {
+      "path": "subagent-driven-development/references/fix-loop.md",
+      "sha256": "eafff1f801af2ced86e8761f3eeef04b701860d986ba5d0a8b20d506a75104bb"
+    },
+    {
+      "path": "subagent-driven-development/references/handling-reports.md",
+      "sha256": "8f759cdd4936220c38aab05b6d6c48c6df8ac8f146b0f37a6d2facbf87133c67"
+    },
+    {
+      "path": "subagent-driven-development/references/preflight.md",
+      "sha256": "3ea21c5fc1af1a190ac8a9d19ceb0849b47bf2ffe27b87dffcc21b6a0539776c"
+    },
+    {
+      "path": "subagent-driven-development/references/resuming.md",
+      "sha256": "ff6e38bde2276faa2a7e93513086caded0ea10edbf2ec7f349a7e3b0d7c668c4"
+    },
+    {
       "path": "subagent-driven-development/scripts/review-package",
       "sha256": "f9275175b2276b1d5fdb1bae0bedaadd2a950659b7c6f311ea37ff85e1861b1f"
     },
@@ -164,7 +192,7 @@
     },
     {
       "path": "subagent-driven-development/SKILL.md",
-      "sha256": "8dde5589ee083fb4999106d116f01c8fdaf3116a8a9813fdedeb80329de49046"
+      "sha256": "ba41f697136cba88a7962d60c8e2f97488ba04a8688b1d0fbeb27f6953808e75"
     },
     {
       "path": "subagent-driven-development/task-reviewer-prompt.md",

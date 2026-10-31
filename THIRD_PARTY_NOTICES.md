@@ -60,7 +60,7 @@ and modification notice.
 
 ## Superpowers skill wrappers
 
-- Source: <https://github.com/obra/superpowers/tree/v7.0.0/skills>
+- Source: <https://github.com/obra/superpowers/tree/v7.0.1/skills>
 - Repository: <https://github.com/obra/superpowers>
 - License: MIT License (`node_modules/superpowers/LICENSE`)
 - Purpose: Provides the upstream workflow skills that Patchmill references from
