@@ -101,19 +101,23 @@ patchmill run-once --issue 225 --interactive
 
 This opens a Pi console for planning with you and running implementation in a
 background worker, using the same Run-once workflow. `--issue N` (a positive
-integer) is optional: without it, the first Issue run takes the next eligible
-issue. `--interactive` cannot be combined with `--dry-run` or `--plan-only`. The
-console agent calls five tools:
+integer) is optional: without it, the CLI selects the next eligible issue before
+opening the console. If none is eligible, it exits successfully without opening
+the console. `--interactive` cannot be combined with `--dry-run` or
+`--plan-only`. The console agent calls four tools:
 
 - `patchmill_submit_planning_result`: submit a planning outcome after your
   confirmation; declining keeps planning open.
-- `patchmill_start_issue_run`: claim and start another issue after your
-  confirmation, once the current run ends.
 - `patchmill_continue_issue_run`: recheck a waiting merge and continue the run.
 - `patchmill_run_status`: show the current run, worker, wait, and estimated
   cost.
 - `patchmill_confirm_block_guidance`: send guidance to a blocked worker after
   your confirmation.
+
+Type `/patchmill-issue <N>` to start another issue once the current run ends. It
+switches to that issue's conversation without a confirmation dialog. Sessions
+live under `<runsDir>/issue-<N>/console/`; reopening an issue resumes its newest
+session, while a new issue gets a fresh conversation.
 
 Quitting the console stops the worker. At startup, Patchmill checks for stray
 workers and stops them before starting an Issue run; if cleanup fails, it will
