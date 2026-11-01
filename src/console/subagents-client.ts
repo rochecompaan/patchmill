@@ -136,9 +136,23 @@ export class SubagentsClient {
   async activeWorkers(): Promise<{ id: string; state: string }[]> {
     const data = await this.request<{
       asyncSnapshot: {
+        omitted?: {
+          runs: number;
+          children: number;
+          byteLimitExceeded: boolean;
+        };
         runs: { id: string; state: string; children?: { agent?: string }[] }[];
       };
     }>("status");
+    const omitted = data.asyncSnapshot.omitted;
+    if (
+      omitted &&
+      (omitted.runs > 0 || omitted.children > 0 || omitted.byteLimitExceeded)
+    )
+      throw new SubagentsRpcError(
+        "incomplete_status",
+        "Incomplete worker status; cleanup cannot be proven",
+      );
     return data.asyncSnapshot.runs
       .filter(
         (run) =>

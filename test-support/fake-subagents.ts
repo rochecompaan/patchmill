@@ -32,7 +32,12 @@ export function fakeSubagents(scripts: Record<string, Script> = {}) {
         ping: () => ({ version: 1 }),
         spawn: () => ({ details: { asyncId: `run-${++nextId}` } }),
         resume: () => ({ details: { asyncId: `run-${++nextId}` } }),
-        status: () => ({ asyncSnapshot: { runs: [] } }),
+        status: () => ({
+          asyncSnapshot: {
+            runs: [],
+            omitted: { runs: 0, children: 0, byteLimitExceeded: false },
+          },
+        }),
         stop: () => ({ runId: request.params.id, state: "stopping" }),
       };
       const reply = (scripts[request.method] ?? defaults[request.method])?.(

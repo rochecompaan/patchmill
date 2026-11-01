@@ -196,3 +196,45 @@ test("default polling waits 500 ms before checking an active worker again", asyn
     "default poll must wait about 500 ms",
   );
 });
+
+for (const point of ["discovery", "polling"] as const) {
+  for (const failure of [
+    "omitted runs",
+    "omitted children",
+    "byte limit",
+    "rejection",
+  ] as const) {
+    test(`${point} fails closed on ${failure}`, async (t) => {
+      let calls = 0;
+      const bus = fakeSubagents({
+        status: () => {
+          if (point === "polling" && ++calls === 1)
+            return { asyncSnapshot: { runs: [worker("hidden")] } };
+          if (failure === "rejection")
+            return {
+              error: {
+                code: "execution_failed",
+                message: "status unavailable",
+              },
+            };
+          return {
+            asyncSnapshot: {
+              runs: [],
+              omitted: {
+                runs: failure === "omitted runs" ? 1 : 0,
+                children: failure === "omitted children" ? 1 : 0,
+                byteLimitExceeded: failure === "byte limit",
+              },
+            },
+          };
+        },
+      });
+      const client = new SubagentsClient(bus);
+      t.after(() => client.dispose());
+      await assert.rejects(
+        stopWorkers(client, { waitMs: 0 }),
+        failure === "rejection" ? /status unavailable/ : /incomplete/i,
+      );
+    });
+  }
+}
