@@ -41,6 +41,7 @@ export async function runConsoleRuntime(
   run: () => Promise<void>,
   stderr: (line: string) => void,
   beforeDispose: () => Promise<void> = async () => {},
+  fatalSwitch?: Promise<string>,
 ): Promise<number> {
   // InteractiveMode disposes the host itself on quit and signals. Intercept that
   // boundary, not just the return from run(), before extension teardown begins.
@@ -58,7 +59,14 @@ export async function runConsoleRuntime(
     for (const diagnostic of runtime.diagnostics) stderr(diagnostic.message);
     if (runtime.diagnostics.some((diagnostic) => diagnostic.type === "error"))
       return 1;
-    await run();
+    const failure = await Promise.race([
+      run().then(() => undefined),
+      ...(fatalSwitch ? [fatalSwitch] : []),
+    ]);
+    if (failure !== undefined) {
+      stderr(failure);
+      return 1;
+    }
     return 0;
   } finally {
     await runtime.dispose();
@@ -101,13 +109,17 @@ export async function startConsole(input: {
     config.paths.runsDir,
     issue,
   );
+  const fatalSwitch = Promise.withResolvers<string>();
   const host = createConsoleSessionHost({
     repoRoot,
     runsDir: config.paths.runsDir,
     issue,
     startRun: createStartRun(config, deps),
-    // Called only by the user-initiated slash command. The cwd override also
-    // handles fresh paths, which Pi has not persisted a header for yet.
+    onFatalSwitch: (nextIssue, error) =>
+      fatalSwitch.resolve(
+        `${error instanceof Error ? error.message : String(error)}\nRun \`patchmill run-once --interactive --issue ${nextIssue}\` to continue.`,
+      ),
+    // Called only by the user-initiated slash command, preserving the repo cwd.
     switchSession: (path) =>
       runtime.switchSession(path, { cwdOverride: repoRoot }),
   });
@@ -142,10 +154,16 @@ export async function startConsole(input: {
     },
     { cwd: repoRoot, agentDir, sessionManager },
   );
-  return runConsoleRuntime(
-    runtime,
-    () => new InteractiveMode(runtime).run(),
-    deps.output.stderr,
-    () => host.shutdown(),
-  );
+  const mode = new InteractiveMode(runtime);
+  try {
+    return await runConsoleRuntime(
+      runtime,
+      () => mode.run(),
+      deps.output.stderr,
+      () => host.shutdown(),
+      fatalSwitch.promise,
+    );
+  } finally {
+    mode.stop();
+  }
 }
