@@ -1,8 +1,14 @@
+import { listRunIssues } from "../../../kernel/issue-selection.ts";
+import { formatRunResult } from "../../../kernel/console.ts";
 import { startConsole } from "../../../console/start.ts";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
 import { createKernelGit } from "../../../kernel/git.ts";
-import { runOneIssue, type RunOnceOptions } from "../../../kernel/run-once.ts";
+import {
+  runOneIssue,
+  selectIssue,
+  type RunOnceOptions,
+} from "../../../kernel/run-once.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
@@ -78,12 +84,22 @@ export async function main(
       now: () => new Date(),
       output,
     };
-    if (runOptions.interactive)
+    if (runOptions.interactive) {
+      const issue =
+        runOptions.issue ??
+        selectIssue(await listRunIssues(deps.host), config.labels)?.number;
+      if (issue === undefined) {
+        output.stdout(
+          formatRunResult({ label: "No eligible issue", severity: "success" }),
+        );
+        return 0;
+      }
       return await (options.startConsole ?? startConsole)({
         config,
         deps,
-        ...(runOptions.issue !== undefined ? { issue: runOptions.issue } : {}),
+        issue,
       });
+    }
     process.on("SIGINT", abort);
     process.on("SIGTERM", abort);
     const outcome = await (options.runOneIssue ?? runOneIssue)(config, deps, {

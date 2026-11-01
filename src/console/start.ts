@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 import {
-  SessionManager,
   createAgentSessionRuntime,
   createAgentSessionServices,
   createAgentSessionFromServices,
@@ -13,7 +12,8 @@ import { provisionAgentDir } from "../cli/commands/init/agent-dir.ts";
 import { runOneIssue, type RunOnceDeps } from "../kernel/run-once.ts";
 import { resolvePhaseSkill } from "../kernel/phase-skill.ts";
 import { resolvePiSubagentsPackageRoot } from "../pi/pi-subagents-package.ts";
-import { createPatchmillExtension } from "./extension.ts";
+import { createConsoleSessionHost } from "./session-host.ts";
+import { openIssueConsoleSession } from "./console-session.ts";
 import type { StartRun } from "./controller.ts";
 
 export function collectConsoleDiagnostics(
@@ -89,24 +89,27 @@ export function createStartRun(
 export async function startConsole(input: {
   config: PatchmillConfig;
   deps: RunOnceDeps;
-  issue?: number;
+  issue: number;
 }): Promise<number> {
   const { config, deps, issue } = input;
   const { repoRoot } = deps;
   await provisionAgentDir(repoRoot, config.pi.agentDir);
   const agentDir = resolve(repoRoot, config.pi.agentDir);
   process.env.PI_CODING_AGENT_DIR = agentDir;
-  const sessionManager = SessionManager.continueRecent(
+  const sessionManager = await openIssueConsoleSession(
     repoRoot,
-    resolve(repoRoot, config.paths.runsDir, "console/sessions"),
+    config.paths.runsDir,
+    issue,
   );
-  let shutdown = async () => {};
-  const factory = createPatchmillExtension({
-    ...(issue !== undefined ? { firstIssue: issue } : {}),
-    registerShutdown: (handler) => {
-      shutdown = handler;
-    },
+  const host = createConsoleSessionHost({
+    repoRoot,
+    runsDir: config.paths.runsDir,
+    issue,
     startRun: createStartRun(config, deps),
+    // Called only by the user-initiated slash command. The cwd override also
+    // handles fresh paths, which Pi has not persisted a header for yet.
+    switchSession: (path) =>
+      runtime.switchSession(path, { cwdOverride: repoRoot }),
   });
   const runtime = await createAgentSessionRuntime(
     async (target) => {
@@ -115,7 +118,7 @@ export async function startConsole(input: {
         agentDir: target.agentDir,
         resourceLoaderOptions: {
           additionalExtensionPaths: [resolvePiSubagentsPackageRoot()],
-          extensionFactories: [{ name: "patchmill", factory }],
+          extensionFactories: [{ name: "patchmill", factory: host.factory }],
           additionalSkillPaths: (["planning", "implementation"] as const).map(
             (phase) => resolvePhaseSkill(config, repoRoot, phase).path,
           ),
@@ -143,6 +146,6 @@ export async function startConsole(input: {
     runtime,
     () => new InteractiveMode(runtime).run(),
     deps.output.stderr,
-    () => shutdown(),
+    () => host.shutdown(),
   );
 }

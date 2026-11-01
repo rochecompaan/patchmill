@@ -1,5 +1,7 @@
 import type {
   ExtensionAPI,
+  ExtensionCommandContext,
+  RegisteredCommand,
   ExtensionToolContext,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
@@ -7,6 +9,10 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fakeSubagents } from "./fake-subagents.ts";
 
 export function fakeExtensionApi(events = fakeSubagents()) {
+  const commands = new Map<
+    string,
+    Omit<RegisteredCommand, "name" | "sourceInfo">
+  >();
   const tools = new Map<string, ToolDefinition>();
   type Handler = (
     event: unknown,
@@ -21,6 +27,12 @@ export function fakeExtensionApi(events = fakeSubagents()) {
   const confirmations: { title: string; message: string }[] = [];
   const api = {
     events,
+    registerCommand(
+      name: string,
+      command: Omit<RegisteredCommand, "name" | "sourceInfo">,
+    ) {
+      commands.set(name, command);
+    },
     registerTool(tool: ToolDefinition) {
       tools.set(tool.name, tool);
     },
@@ -40,6 +52,16 @@ export function fakeExtensionApi(events = fakeSubagents()) {
   } as unknown as ExtensionAPI;
   return Object.assign(api, {
     tools,
+    commands,
+    async callCommand(
+      args: string,
+      switchSession = async (_path: string) => ({ cancelled: false }),
+    ) {
+      const command = commands.get("patchmill-issue");
+      if (!command) throw new Error("Unknown command patchmill-issue");
+      await command.handler(args, { switchSession } as ExtensionCommandContext);
+      return messages.at(-1)?.message.content;
+    },
     userMessages,
     messages,
     confirmations,

@@ -100,14 +100,14 @@ test("a stuck stray worker blocks the start and says why", async (t) => {
     "Worker stuck did not stop. Patchmill will not start the Issue run.",
   );
   assert.equal(
-    await api.callTool("patchmill_start_issue_run", { issue: 10 }),
+    await api.callCommand("10"),
     "Worker stuck did not stop. Patchmill will not start the Issue run.",
   );
   assert.equal(started, false);
   await api.fire("session_shutdown");
 });
 
-test("pending cleanup refuses tool starts until cleanup succeeds", async () => {
+test("pending cleanup refuses command starts until cleanup succeeds", async () => {
   const api = fakeExtensionApi();
   let finish!: (workers: { id: string; state: string }[]) => void;
   const pending = new Promise<{ id: string; state: string }[]>((resolve) => {
@@ -130,7 +130,7 @@ test("pending cleanup refuses tool starts until cleanup succeeds", async () => {
   const startup = api.fire("session_start");
   try {
     assert.equal(
-      await api.callTool("patchmill_start_issue_run", { issue: 10 }),
+      await api.callCommand("10"),
       "Stray-worker cleanup is pending. Patchmill will not start the Issue run.",
     );
     assert.deepEqual(started, []);
@@ -142,7 +142,7 @@ test("pending cleanup refuses tool starts until cleanup succeeds", async () => {
   assert.deepEqual(started, [9]);
 });
 
-test("rejected cleanup keeps tool starts closed and explains the failure", async () => {
+test("rejected cleanup keeps command starts closed and explains the failure", async () => {
   const bus = fakeSubagents({
     status: () => ({
       error: { code: "cleanup_failed", message: "status unavailable" },
@@ -161,15 +161,12 @@ test("rejected cleanup keeps tool starts closed and explains the failure", async
   const reason =
     "Stray-worker cleanup failed: status unavailable. Patchmill will not start the Issue run.";
   assert.equal(api.messages.at(-1)?.message.content, reason);
-  assert.equal(
-    await api.callTool("patchmill_start_issue_run", { issue: 10 }),
-    reason,
-  );
+  assert.equal(await api.callCommand("10"), reason);
   assert.deepEqual(started, []);
   await api.fire("session_shutdown");
 });
 
-test("tools confirm submissions and starts, preserve declined planning, and expose status", async () => {
+test("tools confirm submissions, preserve declined planning, and expose status", async () => {
   const api = fakeExtensionApi();
   let human!: HumanChannel;
   const results: boolean[] = [];
@@ -190,7 +187,8 @@ test("tools confirm submissions and starts, preserve declined planning, and expo
     },
   })(api);
   await api.fire("session_start");
-  assert.equal(api.tools.size, 5);
+  assert.equal(api.tools.size, 4);
+  assert.equal(api.tools.has("patchmill_start_issue_run"), false);
   assert.equal(
     await api.callTool(
       "patchmill_submit_planning_result",
@@ -223,24 +221,42 @@ test("tools confirm submissions and starts, preserve declined planning, and expo
     title: "Accept planning result?",
     message: "ok",
   });
-  assert.equal(
-    await api.callTool(
-      "patchmill_start_issue_run",
-      { issue: 10 },
-      { confirm: false },
-    ),
-    "Not submitted.",
-  );
-  assert.deepEqual(started, [9]);
-  await api.callTool("patchmill_start_issue_run", { issue: 10 });
-  assert.deepEqual(api.confirmations.at(-1), {
-    title: "Start Issue run?",
-    message: "Claim issue #10 on the host",
-  });
-  assert.deepEqual(started, [9, 10]);
   const guidance = human.awaitGuidance("blocked");
   await api.fire("session_shutdown");
   await api.fire("session_shutdown");
-  assert.deepEqual(results, [false, true]);
+  assert.deepEqual(results, [false]);
   assert.deepEqual(await guidance, { kind: "quit" });
+});
+
+test("issue command refuses active and closing runs, validates issue numbers, and switches without confirmation", async () => {
+  const api = fakeExtensionApi();
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const switched: number[] = [];
+  await createPatchmillExtension({
+    firstIssue: 9,
+    switchIssue: async (issue) => {
+      switched.push(issue);
+    },
+    startRun: async () => {
+      await pending;
+      return { status: "no-work" };
+    },
+  })(api);
+  await api.fire("session_start");
+  assert.equal(await api.callCommand("10"), "An Issue run is already active.");
+  assert.deepEqual(switched, []);
+  finish();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  for (const value of ["", "0", "-1", "1.5", "2 extra", "9007199254740992"]) {
+    assert.match((await api.callCommand(value))!, /positive integer/);
+  }
+  await api.callCommand("10");
+  assert.deepEqual(switched, [10]);
+  assert.deepEqual(api.confirmations, []);
+  await api.fire("session_shutdown");
+  assert.equal(await api.callCommand("11"), "The console is shutting down.");
+  assert.deepEqual(switched, [10]);
 });

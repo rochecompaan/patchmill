@@ -46,14 +46,17 @@ export class ConsoleController implements HumanChannel {
   private next: ((message: string) => void) | undefined;
   private closing = false;
   private shutdownPromise: Promise<void> | undefined;
-
   constructor(deps: Dependencies) {
     this.deps = deps;
   }
-
-  async startIssueRun(issue?: number): Promise<string> {
-    if (this.active) throw new Error("An Issue run is already active.");
+  startRefusal(): string | undefined {
     if (this.closing) return "The console is shutting down.";
+    if (this.active) return "An Issue run is already active.";
+    return undefined;
+  }
+  async startIssueRun(issue?: number): Promise<string> {
+    const refusal = this.startRefusal();
+    if (refusal) throw new Error(refusal);
     this.snapshot = undefined;
     this.active = Promise.resolve()
       .then(() =>
@@ -188,7 +191,6 @@ export class ConsoleController implements HumanChannel {
       { triggerTurn: false },
     );
   }
-
   status(): ConsoleStatus {
     const worker = this.deps.workers.active();
     return {
@@ -200,12 +202,10 @@ export class ConsoleController implements HumanChannel {
         : {}),
     };
   }
-
   shutdown(): Promise<void> {
     this.shutdownPromise ??= this.close();
     return this.shutdownPromise;
   }
-
   private async close(): Promise<void> {
     this.closing = true;
     this.planning?.(aborted);
@@ -221,7 +221,6 @@ export class ConsoleController implements HumanChannel {
       await this.active;
     }
   }
-
   private reportNext(message: string) {
     const resolve = this.next;
     this.next = undefined;

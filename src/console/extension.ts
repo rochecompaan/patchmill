@@ -1,4 +1,7 @@
-import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionFactory,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { ConsoleController, type StartRun } from "./controller.ts";
 import { SubagentsClient, type EventBus } from "./subagents-client.ts";
 import { createWorkerLauncher } from "./worker-launcher.ts";
@@ -7,6 +10,7 @@ import { registerConsoleTools } from "./tools.ts";
 
 export function createPatchmillExtension(options: {
   firstIssue?: number;
+  switchIssue?: (issue: number, ctx: ExtensionCommandContext) => Promise<void>;
   startRun: StartRun;
   client?: (events: EventBus) => SubagentsClient;
   registerShutdown?: (shutdown: () => Promise<void>) => void;
@@ -22,7 +26,28 @@ export function createPatchmillExtension(options: {
     };
     const startIssueRun = async (issue?: number) =>
       startBlocked ?? getController().startIssueRun(issue);
-    registerConsoleTools(pi, getController, startIssueRun);
+    registerConsoleTools(pi, getController);
+    pi.registerCommand("patchmill-issue", {
+      description: "Switch to an issue's console session and start its run.",
+      async handler(args, ctx) {
+        const issue = Number(args.trim());
+        if (!/^[1-9]\d*$/.test(args.trim()) || !Number.isSafeInteger(issue)) {
+          pi.sendMessage({
+            customType: "patchmill",
+            content:
+              "Use /patchmill-issue N with a positive integer issue number.",
+            display: true,
+          });
+          return;
+        }
+        const refusal = getController().startRefusal() ?? startBlocked;
+        if (refusal) {
+          getController().notify(refusal);
+          return;
+        }
+        await options.switchIssue?.(issue, ctx);
+      },
+    });
     pi.on("session_start", async (_event, ctx) => {
       if (controller) return;
       client = options.client?.(pi.events) ?? new SubagentsClient(pi.events);
@@ -45,7 +70,8 @@ export function createPatchmillExtension(options: {
         controller.notify(startBlocked);
         return;
       }
-      await startIssueRun(options.firstIssue);
+      if (options.firstIssue !== undefined)
+        await startIssueRun(options.firstIssue);
     });
     let shutdownPromise: Promise<void> | undefined;
     const shutdown = () =>

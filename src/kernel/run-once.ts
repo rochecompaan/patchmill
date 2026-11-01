@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { type PatchmillConfig, type LabelsConfig } from "../config/config.ts";
+import { type PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue } from "../host/types.ts";
 import type { CommandRunner } from "../process/command.ts";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
@@ -31,6 +31,8 @@ import {
 import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
+import { selectIssue, listRunIssues } from "./issue-selection.ts";
+export { selectIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
@@ -72,22 +74,6 @@ export type RunOnceOutcome =
 // Label and comment failures never change the verified outcome.
 type Publication = { publicationErrors?: string[] };
 
-export function selectIssue(
-  issues: Issue[],
-  labels: LabelsConfig,
-  explicit?: number,
-): Issue | undefined {
-  const eligible = issues.filter((i) => i.state === "open");
-  if (explicit !== undefined)
-    return eligible.find((i) => i.number === explicit);
-  return eligible
-    .filter(
-      (i) =>
-        i.labels.includes(labels.ready) || i.labels.includes(labels.inProgress),
-    )
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
-}
-
 export async function runOneIssue(
   config: PatchmillConfig,
   deps: RunOnceDeps,
@@ -96,10 +82,7 @@ export async function runOneIssue(
   const { host, git, repoRoot, now, output } = deps;
   let issues: Issue[];
   try {
-    issues =
-      options.issue === undefined
-        ? await host.listOpenIssues()
-        : [await host.viewIssue(options.issue)];
+    issues = await listRunIssues(host, options.issue);
   } catch (error) {
     if (options.issue === undefined) throw error;
     return { status: "refused", issue: options.issue, reason: String(error) };

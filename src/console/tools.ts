@@ -5,7 +5,6 @@ import type { ConsoleController } from "./controller.ts";
 export function registerConsoleTools(
   pi: ExtensionAPI,
   controller: () => ConsoleController,
-  startIssueRun: (issue: number) => Promise<string>,
 ) {
   const text = (value: string) => ({
     content: [{ type: "text" as const, text: value }],
@@ -27,22 +26,6 @@ export function registerConsoleTools(
       if (!(await ctx.ui.confirm("Accept planning result?", params.summary)))
         return text("Not submitted.");
       return text(await controller().submitPlanning(params));
-    },
-  });
-  pi.registerTool({
-    name: "patchmill_start_issue_run",
-    label: "Start Issue run",
-    description: "Claim an Issue on the host and start its run.",
-    parameters: Type.Object({ issue: Type.Integer({ minimum: 1 }) }),
-    async execute(_id, { issue }, _signal, _update, ctx) {
-      if (
-        !(await ctx.ui.confirm(
-          "Start Issue run?",
-          `Claim issue #${issue} on the host`,
-        ))
-      )
-        return text("Not submitted.");
-      return text(await startIssueRun(issue));
     },
   });
   pi.registerTool({

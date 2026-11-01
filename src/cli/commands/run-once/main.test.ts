@@ -184,24 +184,62 @@ test("registered run-once and release help work without repository configuration
   }
 });
 
-test("--interactive without --issue starts the console with no selected issue", async (t) => {
-  const f = await harness(t);
-  let entered = false;
-  assert.equal(
-    await main(["--interactive"], {
+for (const eligible of [true, false]) {
+  test(`--interactive selects before opening the console (eligible: ${eligible})`, async (t) => {
+    const f = await harness(t);
+    let entered = false;
+    const code = await main(["--interactive"], {
       ...f.options,
-      runOneIssue: async () => assert.fail("non-interactive kernel entered"),
+      runner: async (command, args) => {
+        assert.equal(command, "gh");
+        assert.equal(args[0], "api");
+        assert.ok(
+          args.includes("repos/{owner}/{repo}/issues?state=open&per_page=100"),
+        );
+        return {
+          code: 0,
+          stderr: "",
+          stdout: JSON.stringify(
+            eligible
+              ? [
+                  {
+                    number: 10,
+                    title: "newer",
+                    body: "",
+                    state: "open",
+                    user: { login: "owner" },
+                    html_url: "url",
+                    labels: [{ name: "queue" }],
+                    created_at: "2026-02-01",
+                    comments: [],
+                  },
+                  {
+                    number: 9,
+                    title: "oldest",
+                    body: "",
+                    state: "open",
+                    user: { login: "owner" },
+                    html_url: "url",
+                    labels: [{ name: "queue" }],
+                    created_at: "2026-01-01",
+                    comments: [],
+                  },
+                ]
+              : [],
+          ),
+        };
+      },
       startConsole: async ({ issue }) => {
         entered = true;
-        assert.equal(issue, undefined);
+        assert.equal(issue, 9);
         return 0;
       },
-    }),
-    0,
-  );
-  assert.equal(entered, true);
-  assert.deepEqual(f.stderr, []);
-});
+    });
+    assert.equal(code, 0, f.stderr.join("\n"));
+    assert.equal(entered, eligible);
+    if (!eligible) assert.match(f.stdout.join("\n"), /No eligible issue/);
+  });
+}
 
 for (const flag of ["--dry-run", "--plan-only"]) {
   test(`--interactive rejects ${flag} before loading configuration`, async (t) => {
