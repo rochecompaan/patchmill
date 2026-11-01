@@ -13,6 +13,8 @@ import { printModeLauncher, type PhaseLaunch } from "../kernel/launch.ts";
 import { parseAgentResult } from "../kernel/result.ts";
 import { SubagentsClient } from "./subagents-client.ts";
 import { createWorkerLauncher } from "./worker-launcher.ts";
+import { ConsoleController } from "./controller.ts";
+import { fakeExtensionApi } from "../../test-support/fake-extension-api.ts";
 
 async function fixture(
   t: test.TestContext,
@@ -271,4 +273,122 @@ test("shutdown waits for worker exit, not just the stop receipt", async (t) => {
   running = false;
   await closing;
   assert.equal((await run).session.aborted, true);
+});
+
+// Dropping failed stop evidence must not permit another worker or successful shutdown.
+for (const path of ["deadline", "late spawn"] as const) {
+  test(`${path} cleanup failure retains the worker and fails shutdown`, async (t) => {
+    const f = await fixture(t, {
+      status: () => ({
+        error: { code: "unavailable", message: "status unavailable" },
+      }),
+    });
+    const controller = new ConsoleController({
+      pi: fakeExtensionApi(),
+      workers: f.launcher,
+      startRun: async () => ({ status: "no-work" }),
+    });
+    let release!: () => void;
+    let closing: Promise<void> | undefined;
+    if (path === "late spawn") {
+      const spawn = f.client.spawnWorker.bind(f.client);
+      f.client.spawnWorker = async (...args) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return spawn(...args);
+      };
+    }
+    const pending = f.launcher.run({ ...f.launch, timeoutMs: 10 });
+    if (path === "late spawn") {
+      await waitUntil(() => release !== undefined);
+      closing = controller.shutdown();
+      // Observe rejection immediately, even if the phase settles later.
+      void closing.catch(() => {});
+      release();
+    }
+    const run = await pending;
+    assert.equal(run.session.timedOut, path === "deadline");
+    assert.equal(run.session.aborted, path === "late spawn");
+    assert.deepEqual(f.launcher.active(), { id: "run-1", state: "unresolved" });
+    for (const method of ["run", "resume"] as const) {
+      const result = await (method === "run"
+        ? f.launcher.run(f.launch)
+        : f.launcher.resume(f.launch, "help"));
+      assert.equal(result.result.ok, false);
+      if (path === "deadline" && !result.result.ok)
+        assert.match(result.result.reason, /run-1.*status unavailable/);
+    }
+    assert.equal(
+      f.bus.requests.filter(
+        (r) => r.method === "spawn" || r.method === "resume",
+      ).length,
+      1,
+    );
+    const stops = f.bus.requests.filter((r) => r.method === "stop").length;
+    await assert.rejects(
+      closing ?? controller.shutdown(),
+      /run-1.*status unavailable/,
+    );
+    await assert.rejects(f.launcher.stopActive(), /run-1.*status unavailable/);
+    assert.ok(f.bus.requests.filter((r) => r.method === "stop").length > stops);
+    assert.equal(f.launcher.active()?.id, "run-1");
+  });
+}
+
+test("a later successful exit proof clears failed deadline cleanup and permits launch", async (t) => {
+  let unavailable = true;
+  const f = await fixture(t, {
+    status: () =>
+      unavailable
+        ? { error: { code: "unavailable", message: "status unavailable" } }
+        : { asyncSnapshot: { runs: [] } },
+  });
+  assert.equal(
+    (await f.launcher.run({ ...f.launch, timeoutMs: 10 })).session.timedOut,
+    true,
+  );
+  assert.equal(f.launcher.active()?.id, "run-1");
+  unavailable = false;
+  const pending = f.launcher.resume(f.launch, "help");
+  await waitUntil(() => f.launcher.active()?.id === "run-2");
+  const methods = f.bus.requests.map((r) => r.method);
+  assert.deepEqual(methods.slice(-3), ["stop", "status", "resume"]);
+  f.bus.complete("run-2", { results: [{ output: text }] });
+  assert.equal((await pending).result.ok, true);
+  assert.equal(f.launcher.active(), undefined);
+  await f.launcher.stopActive();
+});
+
+test("an active worker past the stop wait remains unresolved", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 100 });
+  const f = await fixture(t, {
+    stop: () => ({
+      error: { code: "unavailable", message: "stop unavailable" },
+    }),
+    status: () => {
+      t.mock.timers.tick(60_001);
+      return {
+        asyncSnapshot: {
+          runs: [
+            {
+              id: "run-1",
+              state: "running",
+              children: [{ agent: "patchmill-implementation" }],
+            },
+          ],
+        },
+      };
+    },
+  });
+  assert.equal(
+    (await f.launcher.run({ ...f.launch, timeoutMs: 10 })).session.timedOut,
+    true,
+  );
+  assert.equal(f.launcher.active()?.id, "run-1");
+  const blocked = await f.launcher.run(f.launch);
+  assert.equal(blocked.result.ok, false);
+  assert.equal(f.bus.requests.filter((r) => r.method === "spawn").length, 1);
+  await assert.rejects(f.launcher.stopActive(), /run-1.*stop wait/);
+  assert.equal(f.launcher.active()?.id, "run-1");
 });
