@@ -8,6 +8,7 @@ import {
   plan,
   done,
   branch,
+  implement,
 } from "../../test-support/run-once-fixture.ts";
 import { parseConfig } from "../config/config.ts";
 import { acquireLock } from "./lock.ts";
@@ -21,13 +22,6 @@ const planning = (files: Record<string, string>, pr = true) => ({
   ...(pr ? { pullRequest: { draft: false, body: "Refs #9" } } : {}),
   result: done,
 });
-const implement = {
-  writeFiles: { "login.ts": "code" },
-  commit: "Code",
-  push: true,
-  pullRequest: { draft: false, body: "Closes #9" },
-  result: done,
-};
 type Scenario = Awaited<ReturnType<typeof setupRun>>;
 function gates(c: Scenario, specRequired: boolean, planRequired: boolean) {
   Object.assign(c.config.workflow, {

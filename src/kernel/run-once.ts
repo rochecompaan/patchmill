@@ -15,6 +15,8 @@ import { acquireLock, LockHeldError } from "./lock.ts";
 import { claimSwap } from "./labels.ts";
 import { renderRunEnvelope } from "./envelope.ts";
 import { printModeLauncher } from "./launch.ts";
+import type { HumanChannel } from "./human-channel.ts";
+import { launchPhase, planningFeedback } from "./interactive-loop.ts";
 import { publishStop } from "./publish.ts";
 import {
   formatRunResult,
@@ -28,6 +30,8 @@ import { publishIssueCost } from "./pr-cost.ts";
 import { planningGateComment } from "./comments.ts";
 import { newRunId } from "./names.ts";
 
+export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
+
 export type RunOnceOptions = {
   issue?: number;
   dryRun?: boolean;
@@ -35,6 +39,7 @@ export type RunOnceOptions = {
   signal?: AbortSignal;
 };
 export type RunOnceDeps = {
+  human?: HumanChannel;
   host: Host;
   runner: CommandRunner;
   git: KernelGit;
@@ -174,7 +179,10 @@ export async function runOneIssue(
         return { status: "claimed-elsewhere", issue: issueNumber };
       await fs.mkdir(runDir, { recursive: true });
       output.stderr(formatRunStart(issue));
-      for (let index = 0; index < 3; index++) {
+      let sessionNumber = 0;
+      let sinceHuman = 0;
+      let feedback: string | undefined;
+      while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
         issue = await host.viewIssue(issueNumber);
         const before = await provisionWorkspace({ ...deps, config }, issue);
         if (before.kind === "ambiguous-branches") {
@@ -183,7 +191,10 @@ export async function runOneIssue(
         }
         const facts = before.facts;
         displayFacts = facts;
-        const decision = derivePhase(facts);
+        const decision =
+          feedback === undefined
+            ? derivePhase(facts)
+            : { kind: "phase" as const, phase: "planning" as const };
         if (decision.kind === "stop") {
           label = decision.label;
           summary =
@@ -226,26 +237,36 @@ export async function runOneIssue(
           trusted: trustedAuthors(config, (await host.checkCli()).login),
         });
         await fs.writeFile(promptPath, envelope);
-        const sessionDir = join(runDir, "sessions", String(index + 1));
-        const logPath = join(runDir, `session-${index + 1}.log`);
-        output.stderr(formatPhaseStart(phase, index + 1));
+        sessionNumber++;
+        sinceHuman++;
+        const sessionDir = join(runDir, "sessions", String(sessionNumber));
+        const logPath = join(runDir, `session-${sessionNumber}.log`);
+        output.stderr(formatPhaseStart(phase, sessionNumber));
         const launcher = printModeLauncher({
           command: deps.piCommand,
           agentDir: resolve(repoRoot, config.pi.agentDir),
           extensionPaths: deps.extensionPaths,
         });
-        const { session, result } = await launcher({
-          phase,
-          envelope,
-          worktree: facts.worktree,
-          sessionDir,
-          skillPath: skill.path,
-          promptPath,
-          logPath,
-          aggregateLogPath: join(runDir, "pi.log"),
-          timeoutMs: config.pi.timeoutMinutes * 60_000,
-          ...(options.signal ? { signal: options.signal } : {}),
-        });
+        const run = await launchPhase(
+          {
+            phase,
+            envelope,
+            worktree: facts.worktree,
+            sessionDir,
+            skillPath: skill.path,
+            promptPath,
+            logPath,
+            aggregateLogPath: join(runDir, "pi.log"),
+            timeoutMs: config.pi.timeoutMinutes * 60_000,
+            ...(options.signal ? { signal: options.signal } : {}),
+          },
+          launcher,
+          deps.human,
+          feedback,
+        );
+        const { session, result } = run;
+        if (deps.human && phase === "planning" && !session.aborted)
+          sinceHuman = 0;
         const phaseUsage = await sumSessionUsage(sessionDir);
         totalOutputTokens += phaseUsage?.outputTokens ?? 0;
         output.stderr(
@@ -280,6 +301,8 @@ export async function runOneIssue(
           uncommitted: await git.hasUncommittedChanges(facts.worktree),
           unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
         });
+        feedback = planningFeedback(phase, run, verified, deps.human);
+        if (feedback !== undefined) continue;
         if (verified.kind === "stop") {
           label = verified.label;
           summary = verified.comment;
