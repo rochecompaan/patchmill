@@ -300,14 +300,16 @@ During the review wait, the maintainer and the console agent update the pull
 request together. The agent pushes review fixes to the issue branch, like a
 normal coding agent. The issue worktree stays available during review. After the
 continue tool confirms the implementation PR is merged, the interactive run
-removes the worktree and local branch if `git status --porcelain` is empty.
-Otherwise, it keeps both and tells the chat why. Git cleanup failures are
-reported in chat without changing the outcome, labels, or comments. The remote
-branch is untouched, and non-interactive runs leave worktrees and local branches
-in place. The pull request stays the same pull request, because its identity is
-the head branch, not a commit. The issue keeps `agent-done` during the fixes.
-_My call:_ a fix does not start another implementation session or post another
-comment. The pull request shows what changed.
+removes the implementation, spec, and plan worktrees and their local branches
+when each worktree's `git status --porcelain` is empty. Otherwise, it keeps that
+worktree and branch and tells the chat why, while cleaning the others. Git
+cleanup failures are reported in chat without changing the outcome, labels, or
+comments. The remote branch is untouched, and non-interactive runs leave
+worktrees and local branches in place. The pull request stays the same pull
+request, because its identity is the head branch, not a commit. The issue keeps
+`agent-done` during the fixes. _My call:_ a fix does not start another
+implementation session or post another comment. The pull request shows what
+changed.
 
 ### Implementation in the background
 

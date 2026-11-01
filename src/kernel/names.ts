@@ -15,6 +15,13 @@ export function branchName(issue: number, title: string): string {
   return `agent/issue-${issue}${slug === "" ? "" : `-${slug}`}`;
 }
 
+export function planningBranchName(
+  issue: number,
+  stage: "spec" | "plan",
+): string {
+  return `agent/issue-${issue}--${stage}`;
+}
+
 export function isIssueBranch(issue: number, branch: string): boolean {
   return new RegExp(`^agent/issue-${issue}(?:-|$)`).test(branch);
 }

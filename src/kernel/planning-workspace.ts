@@ -1,6 +1,6 @@
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue, PullRequest } from "../host/types.ts";
-import { branchName } from "./names.ts";
+import { branchName, planningBranchName } from "./names.ts";
 import { findPullRequest, wrongTarget } from "./pull-request.ts";
 
 export type WorkflowStage = "spec" | "plan" | "implementation";
@@ -26,8 +26,8 @@ export async function planningWorkspace(input: {
   const { host, workflow, issue, branches, baseBranch, selected } = input;
   const pullRequest = (branch: string) =>
     findPullRequest(host, branch, baseBranch);
-  const specBranch = `agent/issue-${issue.number}--spec`;
-  const planBranch = `agent/issue-${issue.number}--plan`;
+  const specBranch = planningBranchName(issue.number, "spec");
+  const planBranch = planningBranchName(issue.number, "plan");
   const implementation = branches.filter(
     (b) => b !== specBranch && b !== planBranch,
   );

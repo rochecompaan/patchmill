@@ -30,7 +30,7 @@ for (const mode of [
       commands.push({ args, cwd: options?.cwd });
       if (
         (mode === "status failure" && args[0] === "status") ||
-        (mode === "remove failure" && args[0] === "worktree") ||
+        (mode === "remove failure" && args[1] === "remove") ||
         (mode === "branch failure" && args[0] === "branch")
       )
         return { code: 1, stdout: "", stderr: "cleanup denied" };
@@ -49,6 +49,11 @@ for (const mode of [
     assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
     assert.equal(kernelComments(c).length, 1);
     assert.deepEqual(commands, [
+      { args: ["worktree", "list", "--porcelain"], cwd: c.repoRoot },
+      {
+        args: ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        cwd: c.repoRoot,
+      },
       { args: ["status", "--porcelain"], cwd: c.worktree },
       ...(["clean", "remove failure", "branch failure"].includes(mode)
         ? [{ args: ["worktree", "remove", c.worktree], cwd: c.repoRoot }]
