@@ -207,3 +207,30 @@ for (const method of ["spawn", "resume"] as const) {
     assert.equal(f.bus.requests.length, requests);
   });
 }
+
+for (const method of ["spawn", "resume"] as const) {
+  test(
+    `${method} execution deadline stops and settles without completion delivery`,
+    { timeout: 2000 },
+    async (t) => {
+      const f = await fixture(t);
+      if (method === "resume") {
+        const initial = f.launcher.run(f.launch);
+        await waitUntil(() => f.launcher.active() !== undefined);
+        f.bus.complete("run-1");
+        await initial;
+        // Human waiting is not charged against the next execution allowance.
+        await delay(30);
+      }
+      const launch = { ...f.launch, timeoutMs: 20 };
+      const run = await (method === "spawn"
+        ? f.launcher.run(launch)
+        : f.launcher.resume(launch, "help"));
+      assert.equal(run.session.timedOut, true);
+      assert.equal(run.session.aborted, false);
+      assert.equal(f.bus.requests.at(-1)?.method, "stop");
+      assert.equal(f.launcher.active(), undefined);
+      assert.equal(f.bus.listenerCount(), 1);
+    },
+  );
+}

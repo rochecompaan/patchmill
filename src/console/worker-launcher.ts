@@ -40,6 +40,8 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
     const outputPath = join(launch.sessionDir, "output.md");
     let onAbort: (() => void) | undefined;
     const cancellation = new AbortController();
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
     try {
       await mkdir(launch.sessionDir, { recursive: true });
       // Resume inherits a suffixed upstream output path. Never parse an old output.md.
@@ -74,6 +76,10 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
         await stop();
         return aborted();
       }
+      deadline = setTimeout(() => {
+        timedOut = true;
+        void stop?.().catch(() => {});
+      }, launch.timeoutMs);
       onAbort = () => {
         if (active?.id === id) active.state = "stopping";
       };
@@ -105,18 +111,24 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
         result: parseAgentResult(text),
         session: {
           exitCode: completion.state === "complete" ? 0 : 1,
-          timedOut: completion.timedOut,
-          aborted: completion.stopped,
+          timedOut: timedOut || completion.timedOut,
+          aborted: !timedOut && completion.stopped,
         },
       };
     } catch (error) {
       if (!(error instanceof SubagentsRpcError)) throw error;
       if (closing) return aborted();
+      if (timedOut)
+        return {
+          result: parseAgentResult(""),
+          session: { exitCode: null, timedOut: true, aborted: false },
+        };
       return {
         result: { ok: false, reason: `pi-subagents: ${error.message}` },
         session: { exitCode: null, timedOut: false, aborted: false },
       };
     } finally {
+      clearTimeout(deadline);
       if (onAbort) launch.signal?.removeEventListener("abort", onAbort);
       active = undefined;
       stop = undefined;
