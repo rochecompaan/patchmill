@@ -26,7 +26,15 @@ export async function openIssueConsoleSession(
   sessions.sort(
     (a, b) => b.modified - a.modified || b.path.localeCompare(a.path),
   );
-  return sessions[0]
+  const session = sessions[0]
     ? SessionManager.open(sessions[0].path, dir, cwd)
     : SessionManager.create(cwd, dir);
+  // Record the actual CLI/slash-command request, without starting a model turn.
+  // Custom notifications alone do not persist a parent transcript for forks.
+  session.appendMessage({
+    role: "user",
+    content: `Start Issue run #${issue}.`,
+    timestamp: Date.now(),
+  });
+  return session;
 }
