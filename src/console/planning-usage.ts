@@ -27,6 +27,7 @@ export async function recordPlanningUsage(
       : [
           {
             type: "usage",
+            model: "No reply",
             usage: { input: 0, output: 0, cost: { total: 0 } },
           },
         ];

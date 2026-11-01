@@ -208,6 +208,13 @@ for (const closing of [false, true]) {
       outputTokens: 4,
       costUsd: 0.5,
     });
+    assert.deepEqual(
+      report?.rows.map(({ phase, model }) => [phase, model]),
+      [
+        ["planning", "console-model"],
+        ["planning", "No reply"],
+      ],
+    );
     assert.deepEqual(await sumSessionUsage(launch.sessionDir), {
       inputTokens: 0,
       outputTokens: 0,
