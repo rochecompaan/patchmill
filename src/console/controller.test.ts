@@ -3,6 +3,8 @@ import test from "node:test";
 import { ConsoleController, type StartRun } from "./controller.ts";
 import type { PhaseLaunch, PhaseRun } from "../kernel/launch.ts";
 import type { RunSnapshot } from "../kernel/run-snapshot.ts";
+import type { RunOnceOutcome } from "../kernel/run-once.ts";
+import { registerConsoleTools } from "./tools.ts";
 import { fakeExtensionApi } from "../../test-support/fake-extension-api.ts";
 
 const launch: PhaseLaunch = {
@@ -185,6 +187,83 @@ test("settled runs release the slot and only thrown errors notify", async () => 
   await controller.startIssueRun(10);
   await controller.shutdown();
   assert.equal(pi.messages.length, 1);
+});
+
+for (const ending of ["completed", "rejected"] as const) {
+  test(
+    ending === "completed"
+      ? "after an Issue run ends, the start tool runs a second issue"
+      : "after an Issue run throws, the start tool runs a second issue",
+    async (t) => {
+      let finish!: (outcome: RunOnceOutcome) => void;
+      let fail!: (error: Error) => void;
+      const pending = new Promise<RunOnceOutcome>((resolve, reject) => {
+        finish = resolve;
+        fail = reject;
+      });
+      const started: number[] = [];
+      const { controller, pi } = setup(async (issue) => {
+        started.push(issue);
+        return issue === 9 ? pending : { status: "no-work" };
+      });
+      t.after(async () => {
+        finish({ status: "completed", issue: 9 });
+        await controller.shutdown();
+      });
+      registerConsoleTools(
+        pi,
+        () => controller,
+        (issue) => controller.startIssueRun(issue),
+      );
+      await controller.startIssueRun(9);
+      if (ending === "completed") finish({ status: "completed", issue: 9 });
+      else fail(new Error("Issue #9 failed"));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      assert.match(
+        await pi.callTool(
+          "patchmill_start_issue_run",
+          { issue: 10 },
+          { confirm: true },
+        ),
+        /#10/,
+      );
+      assert.deepEqual(started, [9, 10]);
+    },
+  );
+}
+
+test("a declined start claims nothing", async (t) => {
+  const started: number[] = [];
+  const { controller, pi } = setup(async (issue) => {
+    started.push(issue);
+    return { status: "no-work" };
+  });
+  t.after(() => controller.shutdown());
+  registerConsoleTools(
+    pi,
+    () => controller,
+    (issue) => controller.startIssueRun(issue),
+  );
+
+  assert.equal(
+    await pi.callTool(
+      "patchmill_start_issue_run",
+      { issue: 10 },
+      { confirm: false },
+    ),
+    "Not submitted.",
+  );
+  assert.deepEqual(started, []);
+  assert.match(
+    await pi.callTool(
+      "patchmill_start_issue_run",
+      { issue: 10 },
+      { confirm: true },
+    ),
+    /#10/,
+  );
+  assert.deepEqual(started, [10]);
 });
 
 test("confirm guidance with no block changes nothing", async () => {
