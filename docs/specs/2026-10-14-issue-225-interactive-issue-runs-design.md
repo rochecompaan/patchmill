@@ -138,15 +138,15 @@ The first draft assumed the old engine's Run recovery state. The kernel has
 none. These points replace that state with derived facts. Each one changes or
 adds to an earlier answer, so the maintainer should confirm them one by one.
 
-| #   | Decision                                                                                                                                                                                                                                                                | Why                                                                                                                                                                   |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | Planning runs inside the Console session. Implementation runs as a background `pi-subagents` worker with forked context, so it starts with the whole conversation. The Patchmill extension starts it, not the console agent. Non-interactive runs keep `pi -p`.         | Goal 2 needs one conversation, and goal 3 needs a free console. Facts, not memory, still decide the next step, so the kernel's reason for fresh sessions still holds. |
-| D2  | On restart, Patchmill reopens the Console session file so the conversation comes back. The kernel never reads it to decide anything.                                                                                                                                    | The kernel says session files are "outputs, never inputs". This reads that rule as "never decision inputs".                                                           |
-| D3  | A block's confirmed guidance is posted to the issue as a kernel comment before the worker continues. This replaces the first draft's call that console confirmations stay off the issue.                                                                                | Without saved state, the issue is the only place where the guidance survives a crash. The envelope already carries issue comments.                                    |
-| D4  | A blocked worker continues through `pi-subagents` `resume`, with the guidance as its message. If the process dies first, the next attempt starts a fresh worker, and that worker reads the guidance from the issue.                                                     | This keeps the worker's context while the process lives, and it needs no saved state when the process dies.                                                           |
-| D5  | In an interactive run, an open, ready implementation pull request that closes the issue is a wait, not a reason to start another implementation session. A non-interactive rerun keeps deriving `implementation` there, as it does now.                                 | Goal 6 needs a wait that a restart can see again. This fact comes from the host, so no state is needed.                                                               |
-| D6  | An interactive Run attempt holds the issue lock and `in-progress` until the Issue run ends. Patchmill publishes the one kernel stop (label and comment) only then. A clean quit publishes the stop for the current facts, the same way a non-interactive attempt would. | The kernel posts exactly one comment per stop. Waits inside an interactive attempt are not stops.                                                                     |
-| D7  | The worker never outlives the console. On a clean exit, the extension stops it with `pi-subagents` `stop`. After a hard kill, the restart stops any worker still running in the reopened Console session, and waits for it to exit, before it derives a phase.          | `pi-subagents` background runs keep going when the launching process dies. Without this rule, two workers could write to one worktree.                                |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Why                                                                                                                                                                   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Planning runs inside the Console session. Implementation runs as a background `pi-subagents` worker with forked context, so it starts with the whole conversation. The Patchmill extension starts it, not the console agent. Non-interactive runs keep `pi -p`.                                                                                                                                                                                           | Goal 2 needs one conversation, and goal 3 needs a free console. Facts, not memory, still decide the next step, so the kernel's reason for fresh sessions still holds. |
+| D2  | On restart, Patchmill reopens the Console session file so the conversation comes back. The kernel never reads it to decide anything.                                                                                                                                                                                                                                                                                                                      | The kernel says session files are "outputs, never inputs". This reads that rule as "never decision inputs".                                                           |
+| D3  | A block's confirmed guidance is posted to the issue as a kernel comment before the worker continues. This replaces the first draft's call that console confirmations stay off the issue.                                                                                                                                                                                                                                                                  | Without saved state, the issue is the only place where the guidance survives a crash. The envelope already carries issue comments.                                    |
+| D4  | A blocked worker continues through `pi-subagents` `resume`, with the guidance as its message. If the process dies first, the next attempt starts a fresh worker, and that worker reads the guidance from the issue.                                                                                                                                                                                                                                       | This keeps the worker's context while the process lives, and it needs no saved state when the process dies.                                                           |
+| D5  | In an interactive run, an open, ready implementation pull request that closes the issue is the review wait, not a reason to start another implementation session. A non-interactive rerun keeps deriving `implementation` there, as it does now.                                                                                                                                                                                                          | Goal 6 needs a wait that a restart can see again. This fact comes from the host, so no state is needed.                                                               |
+| D6  | An interactive Run attempt holds the issue lock until the Issue run ends. A verified implementation pull request publishes the `agent-done` stop (label and one comment) at once, as now, but the Issue run does not end. It stays open in the review wait until the pull request is merged. Other stops are published only when the Issue run ends. A clean quit publishes the stop for the current facts, the same way a non-interactive attempt would. | Labels show the true state: `agent-done` means the pull request is ready for review. The kernel still posts exactly one comment per stop. Other waits are not stops.  |
+| D7  | The worker never outlives the console. On a clean exit, the extension stops it with `pi-subagents` `stop`. After a hard kill, the restart stops any worker still running in the reopened Console session, and waits for it to exit, before it derives a phase.                                                                                                                                                                                            | `pi-subagents` background runs keep going when the launching process dies. Without this rule, two workers could write to one worktree.                                |
 
 ## How the kernel shapes this design
 
@@ -269,27 +269,33 @@ There are two waits. Both come from facts, so a restart finds them again.
   a planning pull request is open, and the attempt ends. In an interactive run
   the attempt waits there instead. The issue keeps `in-progress`, and the
   process keeps the lock.
-- **The implementation pull request.** Today a verified implementation stops
-  with `agent-done`, and the attempt ends. In an interactive run the attempt
-  waits there instead (D5, D6).
+- **The review wait.** In a non-interactive run, a verified implementation pull
+  request ends the Run attempt. Patchmill swaps `in-progress` for `agent-done`,
+  posts one comment, and releases the issue lock. An interactive run publishes
+  the same label and comment, but the Issue run does not end. The process keeps
+  the lock and the Run attempt stays open until the pull request is merged (D5,
+  D6). The console stays open for review, and the agent can update the pull
+  request.
 
 During either wait, the maintainer and the agent can keep talking. When the
 maintainer says the pull request is merged, the agent calls the continue tool.
 Patchmill fetches and derives the facts again:
 
-| Derived result                                   | What the continue tool does                                                                   |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| Planning pull request still open                 | Reports the gate comment that `planningGateComment` builds now. Changes nothing.              |
-| Planning pull request merged                     | Goes on in the same Run attempt with the next derived phase.                                  |
-| Implementation pull request still open and ready | Reports that it is not merged. Changes nothing.                                               |
-| Implementation pull request merged               | Ends the Issue run: publishes the merged stop (`agent-done` and one comment) and releases it. |
-| Any `needsInfo` stop, such as a closed PR        | Shows the reason in the chat. See "Stops that need a human".                                  |
+| Derived result                                   | What the continue tool does                                                                                            |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Planning pull request still open                 | Reports the gate comment that `planningGateComment` builds now. Changes nothing.                                       |
+| Planning pull request merged                     | Goes on in the same Run attempt with the next derived phase.                                                           |
+| Implementation pull request still open and ready | Reports that it is not merged. Changes nothing.                                                                        |
+| Implementation pull request merged               | Ends the Issue run and releases the lock. Posts no second comment, because the `agent-done` stop is already published. |
+| Any `needsInfo` stop, such as a closed PR        | Shows the reason in the chat. See "Stops that need a human".                                                           |
 
-_My call:_ while the implementation pull request waits and no worker is active,
-the console agent may push review fixes to the issue branch, like a normal
-coding agent. The kernel never deletes worktrees, so the issue worktree is still
-there. The pull request stays the same pull request, because its identity is the
-head branch, not a commit.
+During the review wait, the maintainer and the console agent update the pull
+request together. The agent pushes review fixes to the issue branch, like a
+normal coding agent. The kernel never deletes worktrees, so the issue worktree
+is still there. The pull request stays the same pull request, because its
+identity is the head branch, not a commit. The issue keeps `agent-done` during
+the fixes. _My call:_ a fix does not start another implementation session or
+post another comment. The pull request shows what changed.
 
 ### Implementation in the background
 
@@ -409,13 +415,19 @@ This check reads `pi-subagents` run state only to find and stop a stray process.
 It never decides a phase, so it is not workflow state.
 
 The operating system releases the issue lock when the console process dies. The
-issue keeps `in-progress`, because no stop was published.
+issue keeps `in-progress`, because no stop was published. In the review wait it
+keeps `agent-done` instead.
 
 Running the same command again resumes the Issue run in a new Run attempt. The
 kernel already selects `in-progress` issues and derives the phase from what
-exists. A planning gate or the implementation pull request is still a wait,
-because both come from host facts. Patchmill reopens the Console session, so the
-chat shows the conversation so far (D2).
+exists. A planning gate or the review wait is still a wait, because both come
+from host facts. Patchmill reopens the Console session, so the chat shows the
+conversation so far (D2).
+
+An explicit `--issue` also selects an issue labeled `agent-done`. The claim adds
+`in-progress` and leaves `agent-done`. If the facts show the review wait,
+Patchmill removes `in-progress` again and posts no comment, because that stop
+was already published.
 
 _My call:_ one console session can hold more than one Issue run, so its Pi
 session files live in their own directory, `<runsDir>/console/sessions/`. A
@@ -523,8 +535,9 @@ Build these in order. Each slice should leave non-interactive runs unchanged.
    opens the chat. Planning runs in the conversation with confirmed results.
    Gates hold the run until the maintainer says the planning pull request is
    merged and the agent calls the continue tool. Implementation runs in the
-   background with progress in the chat. The run waits for the implementation
-   pull request in the same way, then ends. The agent can answer progress
+   background with progress in the chat. A verified implementation pull request
+   gets `agent-done`, and the run stays open in the review wait for updates to
+   the pull request until the merge, then ends. The agent can answer progress
    questions from the snapshot. A crash or kill resumes both the run and the
    conversation.
 2. **Unblock in place.** A blocked worker's questions go to the chat. The
@@ -549,13 +562,18 @@ fake human channel. Do not test the TUI rendering itself.
   request. The issue keeps `in-progress`. A continue call before the merge
   reports the gate and changes nothing. A continue call after the merge goes on
   in the same Run attempt.
-- After the implementation pull request is verified, the Issue run waits. No
-  stop is published yet. A continue call after the merge publishes one
-  `agent-done` comment and ends the Issue run. The console stays open.
-- A clean quit during a wait publishes the same stop that a non-interactive
-  attempt would publish for those facts.
-- After a kill during a gate wait or the implementation wait, the same command
-  waits again without starting a Pi session, and reopens the Console session.
+- After the implementation pull request is verified, the issue gets `agent-done`
+  and one comment, but the Issue run does not end. The process keeps the lock. A
+  review fix pushed during the wait starts no session and posts no comment. A
+  continue call after the merge ends the Issue run with no second comment. The
+  console stays open.
+- After a kill during the review wait, the same command waits again, starts no
+  Pi session, and leaves the issue with `agent-done` and without `in-progress`.
+- A clean quit during a gate wait publishes the same stop that a non-interactive
+  attempt would publish for those facts. A clean quit during the review wait
+  publishes nothing more, because its stop is already published.
+- After a kill during a gate wait, the same command waits again without starting
+  a Pi session, and reopens the Console session.
 - After a kill during implementation, the same command stops the stray worker,
   waits for it to exit, then derives `implementation` and starts a fresh worker.
   No Patchmill state file is read.
