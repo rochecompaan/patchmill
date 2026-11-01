@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import type { PhaseLaunch, PhaseRun } from "../kernel/launch.ts";
 import { parseAgentResult } from "../kernel/result.ts";
 import { SubagentsClient, SubagentsRpcError } from "./subagents-client.ts";
-import { stopWorkers } from "./stray-workers.ts";
+import { createUnprovenWorkers } from "./unproven-workers.ts";
 
 export type WorkerLauncher = {
   run(launch: PhaseLaunch): Promise<PhaseRun>;
@@ -18,38 +18,19 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
   let closing = false;
   const pending = new Set<Promise<PhaseRun>>();
   let stop: (() => Promise<void>) | undefined;
-  const unresolved = new Map<string, SubagentsRpcError>();
+  const unproven = createUnprovenWorkers(client);
   const aborted = (): PhaseRun => ({
     result: { ok: false, reason: "Console shut down." },
     session: { exitCode: null, timedOut: false, aborted: true },
   });
-  async function proveExit(id: string) {
-    if (active?.id === id) active.state = "stopping";
-    try {
-      const stopped = await stopWorkers(client, { ids: [id] });
-      if (!stopped.ok) throw new Error("did not stop within the stop wait");
-      unresolved.delete(id);
-      if (active?.id === id) active = undefined;
-    } catch (error) {
-      const failure = new SubagentsRpcError(
-        "stop_failed",
-        `Worker ${id} exit is unproven: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      unresolved.set(id, failure);
-      if (active?.id === id) active.state = "unresolved";
-      throw failure;
-    }
-  }
-  async function retryUnresolved() {
-    for (const id of unresolved.keys()) await proveExit(id);
-  }
   async function stopActive() {
     closing = true;
     // Retried proof uses retained IDs, independent of an execution's callback.
-    await (stop ? stop() : retryUnresolved()).catch(() => {});
+    await (stop ? stop() : unproven.retry()).catch(() => {});
     // A late launch records its cleanup failure while pending settles aborted.
     await Promise.all(pending);
-    if (unresolved.size) throw unresolved.values().next().value;
+    unproven.throwIfFailed();
+    if (active && !unproven.state(active.id)) active = undefined;
   }
   function launch(phase: PhaseLaunch, guidance?: string): Promise<PhaseRun> {
     if (closing) return Promise.resolve(aborted());
@@ -70,7 +51,7 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
     let stopping: Promise<void> | undefined;
     try {
       // Retry proof before any new spawn/resume, never overlap an unproven worker.
-      await retryUnresolved();
+      await unproven.retry();
       if (closing) return aborted();
       await mkdir(launch.sessionDir, { recursive: true });
       // Resume inherits a suffixed upstream output path. Never parse an old output.md.
@@ -95,7 +76,7 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       previousId = id;
       active = { id, state: "running" };
       stop = () =>
-        (stopping ??= proveExit(id).finally(() => {
+        (stopping ??= unproven.proveExit(id).finally(() => {
           cancellation.abort();
           stopping = undefined;
         }));
@@ -160,14 +141,17 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       // Completion can arrive before status proof. Settle that proof before
       // discarding execution-local state, retaining failed IDs for later retry.
       await stopping?.catch(() => {});
-      if (unresolved.size === 0) active = undefined;
+      if (active && !unproven.state(active.id)) active = undefined;
       stop = undefined;
     }
   }
   return {
     run: (phase) => launch(phase),
     resume: (phase, guidance) => launch(phase, guidance),
-    active: () => (active ? { ...active } : undefined),
+    active: () =>
+      active
+        ? { ...active, state: unproven.state(active.id) ?? active.state }
+        : undefined,
     stopActive,
   };
 }

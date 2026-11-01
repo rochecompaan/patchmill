@@ -446,3 +446,116 @@ for (const recovery of ["launch", "shutdown"] as const) {
     assert.equal(f.launcher.active(), undefined);
   });
 }
+
+test("recovery and shutdown share the same pending exit proof", async (t) => {
+  const f = await fixture(t, {
+    status: () => ({
+      error: { code: "unavailable", message: "initial failure" },
+    }),
+  });
+  await f.launcher.run({ ...f.launch, timeoutMs: 10 });
+  let release!: () => void;
+  let statuses = 0;
+  f.client.activeWorkers = async () => {
+    if (++statuses === 1) {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      throw new Error("older recovery rejected");
+    }
+    return [];
+  };
+  const next = f.launcher.run(f.launch);
+  await waitUntil(() => release !== undefined);
+  const closing = f.launcher.stopActive();
+  void closing.catch(() => {});
+  await delay(10);
+  assert.equal(
+    f.bus.requests.filter((r) => r.method === "stop").length,
+    2,
+    "one initial attempt and one shared recovery/shutdown attempt",
+  );
+  assert.equal(statuses, 1);
+  release();
+  await next;
+  await assert.rejects(closing, /older recovery rejected/);
+  // The next fresh proof succeeds, removing the failure for good.
+  await f.launcher.stopActive();
+  assert.equal(statuses, 2);
+  assert.equal(f.launcher.active(), undefined);
+});
+
+for (const stage of [
+  "deadline",
+  "completion",
+  "recovery",
+  "shutdown",
+] as const) {
+  for (const succeeds of [true, false]) {
+    test(`${stage} proof shared with shutdown: status ${succeeds ? "succeeds" : "rejects"}`, async (t) => {
+      const f = await fixture(t);
+      const retrying = stage === "recovery" || stage === "shutdown";
+      if (retrying) {
+        f.client.activeWorkers = async () => {
+          throw new Error("initial rejection");
+        };
+        await f.launcher.run({ ...f.launch, timeoutMs: 10 });
+      }
+      let release!: () => void;
+      let statuses = 0;
+      f.client.activeWorkers = async () => {
+        statuses++;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        if (!succeeds) throw new Error("latest rejection");
+        return [];
+      };
+      const phase =
+        stage === "shutdown"
+          ? Promise.resolve(undefined)
+          : f.launcher.run({ ...f.launch, timeoutMs: 10 });
+      let closing: Promise<void> | undefined;
+      if (stage === "shutdown") {
+        closing = f.launcher.stopActive();
+        void closing.catch(() => {});
+      }
+      await waitUntil(() => release !== undefined);
+      if (stage === "completion")
+        f.bus.complete("run-1", { results: [{ output: text }] });
+      const shutdown = f.launcher.stopActive();
+      void shutdown.catch(() => {});
+      await delay(10);
+      const attempts = retrying ? 2 : 1;
+      assert.equal(
+        f.bus.requests.filter((r) => r.method === "stop").length,
+        attempts,
+      );
+      assert.equal(statuses, 1, "all callers share the in-flight proof");
+      assert.equal(
+        f.bus.requests.filter((r) => r.method === "spawn").length,
+        1,
+        "no new worker while exit is unproven",
+      );
+      release();
+      await phase;
+      if (succeeds) {
+        await shutdown;
+        await closing;
+        assert.equal(f.launcher.active(), undefined);
+      } else {
+        await assert.rejects(shutdown, /latest rejection/);
+        if (closing) await assert.rejects(closing, /latest rejection/);
+        assert.equal(f.launcher.active()?.id, "run-1");
+        // A failed latest proof is retryable; an eventual success removes it.
+        f.client.activeWorkers = async () => [];
+        await f.launcher.stopActive();
+        assert.equal(f.launcher.active(), undefined);
+      }
+      assert.equal(
+        f.bus.requests.filter((r) => r.method === "stop").length,
+        attempts + (succeeds ? 0 : 1),
+      );
+    });
+  }
+}
