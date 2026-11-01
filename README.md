@@ -74,7 +74,10 @@ gate. The issue stays `in-progress` while waiting, and no Pi session runs then.
 With both gates enabled, merge the spec PR, then the plan PR, before
 implementation. Each later branch starts from the fetched base with the merged
 documents. Ungated documents go into the next gated PR or the implementation PR.
-The kernel never deletes these worktrees.
+After a confirmed implementation PR merge, interactive runs remove the issue
+worktree and local branch if `git status --porcelain` is empty. Dirty worktrees
+are kept, with the reason shown in chat. Non-interactive runs leave them in
+place.
 
 ## Commands
 

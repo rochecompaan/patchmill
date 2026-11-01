@@ -195,7 +195,7 @@ export async function runOneIssue(
     await reviewWait({
       facts,
       issue: issueNumber,
-      host,
+      ...deps,
       labels: config.labels,
       human: deps.human!,
       restart,
