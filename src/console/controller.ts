@@ -155,15 +155,24 @@ export class ConsoleController implements HumanChannel {
     return next;
   }
 
-  awaitGuidance(_summary: string): Promise<BlockAnswer> {
+  awaitGuidance(summary: string): Promise<BlockAnswer> {
     if (this.closing) return Promise.resolve({ kind: "quit" });
     return new Promise((resolve) => {
       this.guidance = resolve;
+      this.deps.pi.sendMessage(
+        { customType: "patchmill", content: summary, display: true },
+        { triggerTurn: true },
+      );
+      this.reportNext(summary);
     });
   }
 
-  async confirmGuidance(_text: string): Promise<string> {
-    return "No worker is blocked.";
+  async confirmGuidance(text: string): Promise<string> {
+    if (!this.guidance) return "No worker is blocked.";
+    const resolve = this.guidance;
+    this.guidance = undefined;
+    resolve({ kind: "guidance", text });
+    return "Guidance submitted.";
   }
 
   notify(text: string): void {

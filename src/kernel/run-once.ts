@@ -16,6 +16,9 @@ import {
   planningFeedback,
   continueGate,
   derivedStop,
+  workerGuidance,
+  phaseDecision,
+  planningStopSummary,
 } from "./interactive-loop.ts";
 import { isReviewWait, reviewWait, collectReviewFacts } from "./review-wait.ts";
 import { publishAttemptStop } from "./publish.ts";
@@ -223,10 +226,13 @@ export async function runOneIssue(
       let sessionNumber = 0;
       let sinceHuman = 0;
       let feedback: string | undefined;
+      let resume: { facts: Facts; text: string } | undefined;
       while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
         snapshot.deriving();
         issue = await host.viewIssue(issueNumber);
-        const before = await provisionWorkspace({ ...deps, config }, issue);
+        const before = resume
+          ? { kind: "facts" as const, facts: resume.facts }
+          : await provisionWorkspace({ ...deps, config }, issue);
         if (before.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${before.branches.join(", ")}`;
           break;
@@ -234,10 +240,7 @@ export async function runOneIssue(
         const facts = before.facts;
         displayFacts = facts;
         snapshot.facts(facts);
-        const decision =
-          feedback === undefined
-            ? derivePhase(facts)
-            : { kind: "phase" as const, phase: "planning" as const };
+        const decision = phaseDecision(facts, feedback, !!resume);
         if (decision.kind === "stop") {
           ({ label, summary } = derivedStop(
             facts,
@@ -258,6 +261,7 @@ export async function runOneIssue(
         }
         if (
           deps.human &&
+          !resume &&
           decision.phase === "implementation" &&
           isReviewWait(facts, issueNumber, await host.repository())
         ) {
@@ -269,35 +273,32 @@ export async function runOneIssue(
           summary = "planning complete";
           break;
         }
-        const { skill, envelope, promptPath, launcher } =
-          await preparePhasePrompt(config, deps, runDir, issue, phase, facts);
+        const { launch, launcher } = await preparePhasePrompt(
+          config,
+          deps,
+          runDir,
+          issue,
+          phase,
+          facts,
+          sessionNumber + 1,
+          options.signal,
+        );
         sessionNumber++;
         sinceHuman++;
         snapshot.phase(phase, sessionNumber);
-        const sessionDir = join(runDir, "sessions", String(sessionNumber));
-        const logPath = join(runDir, `session-${sessionNumber}.log`);
         output.stderr(formatPhaseStart(phase, sessionNumber));
         const run = await launchPhase(
-          {
-            phase,
-            envelope,
-            worktree: facts.worktree,
-            sessionDir,
-            skillPath: skill.path,
-            promptPath,
-            logPath,
-            aggregateLogPath: join(runDir, "pi.log"),
-            timeoutMs: config.pi.timeoutMinutes * 60_000,
-            ...(options.signal ? { signal: options.signal } : {}),
-          },
+          launch,
           launcher,
           deps.human,
           feedback,
+          resume?.text,
         );
+        resume = undefined;
         const { session, result } = run;
         if (deps.human && phase === "planning" && !session.aborted)
           sinceHuman = 0;
-        const phaseUsage = await sumSessionUsage(sessionDir);
+        const phaseUsage = await sumSessionUsage(launch.sessionDir);
         totalOutputTokens += phaseUsage?.outputTokens ?? 0;
         output.stderr(
           formatPhaseComplete(
@@ -313,8 +314,7 @@ export async function runOneIssue(
           status: result.ok ? result.result.status : "invalid",
         });
         await snapshot.session();
-        issue = await host.viewIssue(issueNumber);
-        const after = await collect(issue, facts);
+        const after = await collect(await host.viewIssue(issueNumber), facts);
         if (after.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${after.branches.join(", ")}`;
           break;
@@ -328,23 +328,31 @@ export async function runOneIssue(
           result,
           session,
           facts: after.facts,
-
-          logPath,
+          logPath: launch.logPath,
           uncommitted: await git.hasUncommittedChanges(facts.worktree),
           unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
         });
         feedback = planningFeedback(phase, run, verified, deps.human);
         if (feedback !== undefined) continue;
+        const guidance = await workerGuidance(
+          phase,
+          run,
+          verified,
+          deps,
+          issueNumber,
+          () => snapshot.wait("blocked"),
+        );
+        if (guidance !== undefined) {
+          resume = { facts: after.facts, text: guidance };
+          sinceHuman = 0;
+          continue;
+        }
         if (verified.kind === "stop") {
           label = verified.label;
           summary = verified.comment;
           warnings = verified.warnings;
-          if (phase === "planning") {
-            if (!after.facts.specPath)
-              summary += `\nExpected artifact: ${after.facts.expectedSpecPath}`;
-            else if (facts.stage !== "spec" && !after.facts.planPath)
-              summary += `\nExpected artifact: ${after.facts.expectedPlanPath}`;
-          }
+          if (phase === "planning")
+            summary = planningStopSummary(summary, facts, after.facts);
           if (
             label === "inProgress" &&
             (await continueGate(after.facts, deps.human, () =>
@@ -371,7 +379,7 @@ export async function runOneIssue(
       }
     } catch (error) {
       label = "needsInfo";
-      summary = errorMessage(error);
+      summary = error instanceof Error ? error.message : String(error);
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
@@ -434,8 +442,4 @@ export async function runOneIssue(
   } finally {
     await lock.release();
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

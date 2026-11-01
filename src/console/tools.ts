@@ -66,9 +66,11 @@ export function registerConsoleTools(
   pi.registerTool({
     name: "patchmill_confirm_block_guidance",
     label: "Confirm block guidance",
-    description: "Submit guidance for a blocked worker (not yet available).",
-    parameters: Type.Object({ text: Type.String() }),
-    async execute(_id, { text: guidance }) {
+    description: "Confirm and submit guidance for a blocked worker.",
+    parameters: Type.Object({ guidance: Type.String() }),
+    async execute(_id, { guidance }, _signal, _update, ctx) {
+      if (!(await ctx.ui.confirm("Send guidance to the worker?", guidance)))
+        return text("Not submitted.");
       return text(await controller().confirmGuidance(guidance));
     },
   });

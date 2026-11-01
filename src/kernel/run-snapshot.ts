@@ -53,7 +53,7 @@ export function runSnapshot(
     },
     phase: (phase: Phase, session: number) =>
       emit({ state: phase, phase, session }),
-    wait: (state: "gate-wait" | "review-wait") => emit({ state }),
+    wait: (state: "gate-wait" | "review-wait" | "blocked") => emit({ state }),
     async session() {
       const usage = await sumSessionUsage(join(identity.runDir, "sessions"));
       current = { ...current };

@@ -58,16 +58,40 @@ test("planning sends envelope, feedback, and accepts only a pending result", asy
 });
 
 test("continue without a merge wait does nothing, including during implementation", async () => {
-  const { controller } = setup();
-  assert.deepEqual(await controller.runImplementation(launch), result);
-  assert.deepEqual(
-    await controller.resumeImplementation(launch, "fix"),
-    result,
-  );
+  let finish!: (run: PhaseRun) => void;
+  const running = new Promise<PhaseRun>((resolve) => {
+    finish = resolve;
+  });
+  let ended = false;
+  let requestStop!: () => void;
+  const stopped = new Promise<void>((resolve) => {
+    requestStop = resolve;
+  });
+  const { controller, workers } = setup(async (_issue, human) => {
+    await human.runImplementation(launch);
+    ended = true;
+    return { status: "no-work" };
+  });
+  workers.run = () => running;
+  workers.stopActive = async () => {
+    requestStop();
+  };
+  await controller.startIssueRun(9);
+  assert.equal(ended, false);
   assert.equal(
     await controller.continueRun(),
     "No Issue run is waiting for a merge.",
   );
+  let closed = false;
+  const shutdown = controller.shutdown().then(() => {
+    closed = true;
+  });
+  await stopped;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(closed, false);
+  finish(result);
+  await shutdown;
+  assert.equal(ended, true);
 });
 
 for (const next of ["wait", "phase", "end"] as const) {
@@ -161,4 +185,63 @@ test("settled runs release the slot and only thrown errors notify", async () => 
   await controller.startIssueRun(10);
   await controller.shutdown();
   assert.equal(pi.messages.length, 1);
+});
+
+test("confirm guidance with no block changes nothing", async () => {
+  const { controller, pi } = setup();
+  assert.equal(
+    await controller.confirmGuidance("Use OAuth"),
+    "No worker is blocked.",
+  );
+  assert.equal(pi.messages.length, 0);
+});
+
+test("confirmed guidance resolves the pending block once", async () => {
+  const { controller, pi } = setup();
+  const pending = controller.awaitGuidance("Which auth provider?");
+  assert.deepEqual(pi.messages.at(-1), {
+    message: {
+      customType: "patchmill",
+      content: "Which auth provider?",
+      display: true,
+    },
+    options: { triggerTurn: true },
+  });
+  await controller.confirmGuidance("Use OAuth");
+  assert.deepEqual(await pending, { kind: "guidance", text: "Use OAuth" });
+  assert.equal(
+    await controller.confirmGuidance("Again"),
+    "No worker is blocked.",
+  );
+  const quit = controller.awaitGuidance("Still blocked");
+  await controller.shutdown();
+  assert.deepEqual(await quit, { kind: "quit" });
+});
+
+test("guidance tool requires confirmation and preserves a declined block", async () => {
+  const { registerConsoleTools } = await import("./tools.ts");
+  const { controller, pi } = setup();
+  registerConsoleTools(
+    pi,
+    () => controller,
+    (issue) => controller.startIssueRun(issue),
+  );
+  const pending = controller.awaitGuidance("Which provider?");
+  assert.equal(
+    await pi.callTool(
+      "patchmill_confirm_block_guidance",
+      { guidance: "Use OAuth" },
+      { confirm: false },
+    ),
+    "Not submitted.",
+  );
+  await pi.callTool("patchmill_confirm_block_guidance", {
+    guidance: "Use OAuth",
+  });
+  assert.deepEqual(pi.confirmations.at(-1), {
+    title: "Send guidance to the worker?",
+    message: "Use OAuth",
+  });
+  assert.deepEqual(await pending, { kind: "guidance", text: "Use OAuth" });
+  await controller.shutdown();
 });

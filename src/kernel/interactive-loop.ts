@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { trustedAuthors, type PatchmillConfig } from "../config/config.ts";
 import type { Issue } from "../host/types.ts";
 import type { RunOnceDeps } from "./run-once.ts";
-import type { Phase } from "./phase.ts";
+import { derivePhase, type Phase } from "./phase.ts";
 import { renderRunEnvelope } from "./envelope.ts";
 import { resolvePhaseSkill } from "./phase-skill.ts";
 import type { HumanChannel } from "./human-channel.ts";
@@ -15,7 +15,7 @@ import {
 } from "./launch.ts";
 import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
-import { planningGateComment } from "./comments.ts";
+import { guidanceComment, planningGateComment } from "./comments.ts";
 
 export async function continueGate(
   facts: Facts,
@@ -38,11 +38,38 @@ export function launchPhase(
   fallback: PhaseLauncher,
   human?: HumanChannel,
   feedback?: string,
+  guidance?: string,
 ): Promise<PhaseRun> {
   if (!human) return fallback(launch);
+  if (guidance !== undefined)
+    return human.resumeImplementation(launch, guidance);
   return launch.phase === "planning"
     ? human.runPlanning(launch, feedback)
     : human.runImplementation(launch);
+}
+
+export function phaseDecision(
+  facts: Facts,
+  feedback?: string,
+  resuming = false,
+) {
+  if (resuming)
+    return { kind: "phase" as const, phase: "implementation" as const };
+  if (feedback !== undefined)
+    return { kind: "phase" as const, phase: "planning" as const };
+  return derivePhase(facts);
+}
+
+export function planningStopSummary(
+  summary: string,
+  before: Facts,
+  after: Facts,
+): string {
+  if (!after.specPath)
+    return `${summary}\nExpected artifact: ${after.expectedSpecPath}`;
+  if (before.stage !== "spec" && !after.planPath)
+    return `${summary}\nExpected artifact: ${after.expectedPlanPath}`;
+  return summary;
 }
 
 export function planningFeedback(
@@ -97,6 +124,8 @@ export async function preparePhasePrompt(
   issue: Issue,
   phase: Phase,
   facts: Facts,
+  sessionNumber: number,
+  signal?: AbortSignal,
 ) {
   const { host, repoRoot } = deps;
   const skill = resolvePhaseSkill(config, repoRoot, phase);
@@ -117,5 +146,44 @@ export async function preparePhasePrompt(
     agentDir: resolve(repoRoot, config.pi.agentDir),
     extensionPaths: deps.extensionPaths,
   });
-  return { skill, envelope, promptPath, launcher };
+  const launch: PhaseLaunch = {
+    phase,
+    envelope,
+    worktree: facts.worktree,
+    sessionDir: join(runDir, "sessions", String(sessionNumber)),
+    skillPath: skill.path,
+    promptPath,
+    logPath: join(runDir, `session-${sessionNumber}.log`),
+    aggregateLogPath: join(runDir, "pi.log"),
+    timeoutMs: config.pi.timeoutMinutes * 60_000,
+    ...(signal ? { signal } : {}),
+  };
+  return { launch, launcher };
+}
+
+/** Only a completed needs-input implementation can be resumed upstream. */
+export async function workerGuidance(
+  phase: Phase,
+  run: PhaseRun,
+  verified: Outcome,
+  deps: Pick<RunOnceDeps, "human" | "host">,
+  issue: number,
+  onBlocked: () => void,
+): Promise<string | undefined> {
+  const { human, host } = deps;
+  if (
+    !human ||
+    phase !== "implementation" ||
+    verified.kind !== "stop" ||
+    !run.result.ok ||
+    run.result.result.status !== "needs-input" ||
+    run.session.aborted ||
+    run.session.timedOut
+  )
+    return undefined;
+  onBlocked();
+  const answer = await human.awaitGuidance(run.result.result.summary);
+  if (answer.kind === "quit") return undefined;
+  await host.commentIssue(issue, guidanceComment(answer.text));
+  return answer.text;
 }
