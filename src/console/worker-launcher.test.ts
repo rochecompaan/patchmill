@@ -163,3 +163,47 @@ test("unanswered spawn and RPC error become phase failures, not hangs", async (t
     });
   }
 });
+
+for (const method of ["spawn", "resume"] as const) {
+  test(`shutdown stops an in-flight ${method} and settles without a completion event`, async (t) => {
+    let release: (() => void) | undefined;
+    const f = await fixture(t);
+    if (method === "resume") {
+      const initial = f.launcher.run(f.launch);
+      await waitUntil(() => f.launcher.active() !== undefined);
+      f.bus.complete("run-1");
+      await initial;
+    }
+    const original = f.client[
+      method === "spawn" ? "spawnWorker" : "resume"
+    ].bind(f.client);
+    if (method === "spawn")
+      f.client.spawnWorker = async (...args) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return (original as SubagentsClient["spawnWorker"])(...args);
+      };
+    else
+      f.client.resume = async (...args) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return (original as SubagentsClient["resume"])(...args);
+      };
+    const pending =
+      method === "spawn"
+        ? f.launcher.run(f.launch)
+        : f.launcher.resume(f.launch, "help");
+    await waitUntil(() => release !== undefined);
+    const closing = f.launcher.stopActive();
+    release!();
+    const run = await pending;
+    await closing;
+    assert.equal(run.session.aborted, true);
+    assert.equal(f.bus.requests.at(-1)?.method, "stop");
+    const requests = f.bus.requests.length;
+    assert.equal((await f.launcher.run(f.launch)).session.aborted, true);
+    assert.equal(f.bus.requests.length, requests);
+  });
+}

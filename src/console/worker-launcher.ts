@@ -14,10 +14,24 @@ export type WorkerLauncher = {
 export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
   let previousId: string | undefined;
   let active: { id: string; state: string } | undefined;
+  let closing = false;
+  const pending = new Set<Promise<PhaseRun>>();
+  let stop: (() => Promise<void>) | undefined;
+  const aborted = (): PhaseRun => ({
+    result: { ok: false, reason: "Console shut down." },
+    session: { exitCode: null, timedOut: false, aborted: true },
+  });
   async function stopActive() {
-    if (!active) return;
-    active.state = "stopping";
-    await client.stop(active.id);
+    closing = true;
+    await stop?.();
+    await Promise.all(pending);
+  }
+  function launch(phase: PhaseLaunch, guidance?: string): Promise<PhaseRun> {
+    if (closing) return Promise.resolve(aborted());
+    const task = execute(phase, guidance);
+    pending.add(task);
+    void task.finally(() => pending.delete(task)).catch(() => {});
+    return task;
   }
   async function execute(
     launch: PhaseLaunch,
@@ -25,6 +39,7 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
   ): Promise<PhaseRun> {
     const outputPath = join(launch.sessionDir, "output.md");
     let onAbort: (() => void) | undefined;
+    const cancellation = new AbortController();
     try {
       await mkdir(launch.sessionDir, { recursive: true });
       // Resume inherits a suffixed upstream output path. Never parse an old output.md.
@@ -47,12 +62,28 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       }
       previousId = id;
       active = { id, state: "running" };
+      stop = async () => {
+        if (active?.id === id) active.state = "stopping";
+        try {
+          await client.stop(id);
+        } finally {
+          cancellation.abort();
+        }
+      };
+      if (closing) {
+        await stop();
+        return aborted();
+      }
       onAbort = () => {
         if (active?.id === id) active.state = "stopping";
       };
       launch.signal?.addEventListener("abort", onAbort, { once: true });
       if (launch.signal?.aborted) onAbort();
-      const completion = await client.waitForCompletion(id, launch.signal);
+      const completion = await client.waitForCompletion(
+        id,
+        launch.signal,
+        cancellation.signal,
+      );
       let text: string;
       try {
         text = await readFile(outputPath, "utf8");
@@ -80,6 +111,7 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       };
     } catch (error) {
       if (!(error instanceof SubagentsRpcError)) throw error;
+      if (closing) return aborted();
       return {
         result: { ok: false, reason: `pi-subagents: ${error.message}` },
         session: { exitCode: null, timedOut: false, aborted: false },
@@ -87,11 +119,12 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
     } finally {
       if (onAbort) launch.signal?.removeEventListener("abort", onAbort);
       active = undefined;
+      stop = undefined;
     }
   }
   return {
-    run: (launch) => execute(launch),
-    resume: (launch, guidance) => execute(launch, guidance),
+    run: (phase) => launch(phase),
+    resume: (phase, guidance) => launch(phase, guidance),
     active: () => (active ? { ...active } : undefined),
     stopActive,
   };

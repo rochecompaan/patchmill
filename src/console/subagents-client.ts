@@ -90,6 +90,7 @@ export class SubagentsClient {
   waitForCompletion(
     id: string,
     signal?: AbortSignal,
+    cancellation?: AbortSignal,
   ): Promise<WorkerCompletion> {
     if (this.disposed)
       return Promise.reject(
@@ -102,6 +103,7 @@ export class SubagentsClient {
       this.waiters.set(id, waiters);
       const cleanup = () => {
         signal?.removeEventListener("abort", abort);
+        cancellation?.removeEventListener("abort", cancel);
         waiters.delete(waiter);
         if (waiters.size === 0) this.waiters.delete(id);
       };
@@ -118,7 +120,13 @@ export class SubagentsClient {
       const abort = () => {
         void this.stop(id).catch(waiter.reject);
       };
+      const cancel = () =>
+        waiter.reject(
+          new SubagentsRpcError("cancelled", "Worker wait cancelled"),
+        );
       waiters.add(waiter);
+      cancellation?.addEventListener("abort", cancel, { once: true });
+      if (cancellation?.aborted) cancel();
       signal?.addEventListener("abort", abort, { once: true });
       if (signal?.aborted) abort();
     });
