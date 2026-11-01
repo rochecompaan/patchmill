@@ -90,6 +90,32 @@ The kernel never deletes these worktrees.
 | `patchmill version`                                        | Print the version.                                                                                                                                            |
 | `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
 
+## Interactive Issue runs
+
+```sh
+patchmill run-once --issue 225 --interactive
+```
+
+This opens a Pi console for planning with you and running implementation in a
+background worker, using the same Run-once workflow. `--interactive` requires
+`--issue N` (a positive integer) and cannot be combined with `--dry-run` or
+`--plan-only`. The console agent calls five tools:
+
+- `patchmill_submit_planning_result`: submit a planning outcome after your
+  confirmation; declining keeps planning open.
+- `patchmill_start_issue_run`: claim and start another issue after your
+  confirmation, once the current run ends.
+- `patchmill_continue_issue_run`: recheck a waiting merge and continue the run.
+- `patchmill_run_status`: show the current run, worker, wait, and estimated
+  cost.
+- `patchmill_confirm_block_guidance`: send guidance to a blocked worker after
+  your confirmation.
+
+Quitting the console stops the worker. At startup, Patchmill checks for stray
+workers and stops them before starting an Issue run; if cleanup fails, it will
+not start the run. Do not launch this command inside a pi-subagents child
+process: `PI_SUBAGENT_CHILD=1` disables pi-subagents.
+
 ## Configuration
 
 `patchmill.config.json` accepts only these keys. Each key has a default. Unknown

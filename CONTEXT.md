@@ -46,6 +46,18 @@ through any resumptions to a terminal outcome. _Avoid_: Run attempt
 **Run attempt**: One process entry into the run-once workflow for an Issue run.
 A later Run attempt may resume the same Issue run. _Avoid_: Issue run
 
+**Interactive Issue run**: An Issue run that takes human input through a console
+instead of issue comments. It uses the same Run-once workflow.
+
+**Console session**: The Pi session that holds the maintainer's conversation for
+one or more Interactive Issue runs. It never decides a phase.
+
+**Console agent**: The agent in the Console session. It plans with the
+maintainer and calls Patchmill tools, but never chooses a phase.
+
+**Review wait**: The part of an Interactive Issue run after the implementation
+pull request is verified and labeled `agent-done`, and before it is merged.
+
 **Normalized run outcome**: The small coordinator-facing result of one Run
 attempt — completed, no work, deferred, cancelled, or failed — produced from a
 rich Run-once workflow result. _Avoid_: Pipeline status
