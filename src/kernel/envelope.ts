@@ -14,6 +14,7 @@ export type RunEnvelopeInput = {
   skill: { name: string; path: string };
   timeoutMinutes: number;
   trusted: string[];
+  interactive?: boolean;
 };
 export type TriageEnvelopeInput = {
   repository: Repository;
@@ -54,7 +55,14 @@ function renderTemplate(file: string, values: Record<string, string>): string {
 
 export function renderRunEnvelope(input: RunEnvelopeInput): string {
   const { facts } = input;
+  const interactivePlanning = input.interactive && input.phase === "planning";
   return renderTemplate("run-envelope.md", {
+    humanRules: interactivePlanning
+      ? "A maintainer is present in this chat. Ask them your questions here and wait for their answers. Do not return `needs-input` for questions."
+      : "Put questions in the summary.\n- End with the JSON block. Do not put text after it.",
+    resultRules: interactivePlanning
+      ? "When the maintainer agrees and your work is committed and pushed, call `patchmill_submit_planning_result` with `status` and `summary`. Do not end with a JSON block."
+      : 'Return only the fields `status` and `summary` in a final `json` block. Use\n`done`, `needs-input`, or `failed` for `status`. Use a string for `summary`.\n\n```json\n{ "status": "done", "summary": "Describe the result." }\n```',
     repository: `${input.repository.owner}/${input.repository.repo}`,
     phase: input.phase,
     skillName: input.skill.name,

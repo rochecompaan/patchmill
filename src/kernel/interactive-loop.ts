@@ -5,6 +5,7 @@ import type { Issue } from "../host/types.ts";
 import type { RunOnceDeps } from "./run-once.ts";
 import type { Phase } from "./phase.ts";
 import { renderRunEnvelope } from "./envelope.ts";
+import { resolvePhaseSkill } from "./phase-skill.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
   printModeLauncher,
@@ -88,17 +89,17 @@ export function derivedStop(
 /** Prepare the on-disk prompt shared by interactive and print launchers. */
 export async function preparePhasePrompt(
   config: PatchmillConfig,
-  deps: Pick<RunOnceDeps, "host" | "repoRoot" | "piCommand" | "extensionPaths">,
+  deps: Pick<
+    RunOnceDeps,
+    "host" | "repoRoot" | "piCommand" | "extensionPaths" | "human"
+  >,
   runDir: string,
   issue: Issue,
   phase: Phase,
   facts: Facts,
 ) {
   const { host, repoRoot } = deps;
-  const skill = {
-    name: phase,
-    path: resolve(repoRoot, config.skills[phase]),
-  };
+  const skill = resolvePhaseSkill(config, repoRoot, phase);
   const promptPath = join(runDir, "prompt.md");
   const envelope = renderRunEnvelope({
     repository: await host.repository(),
@@ -106,6 +107,7 @@ export async function preparePhasePrompt(
     phase,
     facts,
     skill,
+    interactive: !!deps.human,
     timeoutMinutes: config.pi.timeoutMinutes,
     trusted: trustedAuthors(config, (await host.checkCli()).login),
   });

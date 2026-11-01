@@ -84,3 +84,18 @@ test("quitting while planning waits publishes the abort stop and releases the lo
   );
   await (await acquireLock(c.lockPath)).release();
 });
+
+test("interactive planning receives the chat result contract from the kernel", async (t) => {
+  const c = await setupRun(t, []);
+  const human = fakeHuman(c);
+  let envelope: string | undefined;
+  human.runPlanning = async (launch) => {
+    envelope = launch.envelope;
+    return {
+      session: { exitCode: null, timedOut: false, aborted: true },
+      result: { ok: false, reason: "Quit" },
+    };
+  };
+  await c.run({ issue: 9 }, { human });
+  assert.match(envelope!, /patchmill_submit_planning_result/);
+});

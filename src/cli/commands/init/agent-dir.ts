@@ -17,20 +17,35 @@ Report concrete findings with file paths, line numbers, impact, and supporting e
 Separate blockers from optional suggestions. State any limits in the evidence.
 `;
 
+export const IMPLEMENTATION_AGENT = `---
+name: patchmill-implementation
+description: Patchmill implementation worker for one issue
+tools: read, grep, find, ls, bash, edit, write, subagent
+---
+
+Follow the Patchmill envelope in your task. It defines the work, the rules, and
+the final JSON result. The conversation before it is context only.
+`;
+
 export async function provisionAgentDir(
   repoRoot: string,
   agentDir: string,
 ): Promise<void> {
   const directory = join(repoRoot, agentDir, "agents");
   await mkdir(directory, { recursive: true });
-  const file = join(directory, "reviewer.md");
-  let existing: string | undefined;
-  try {
-    existing = await readFile(file, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  for (const [name, content] of [
+    ["reviewer.md", REVIEWER_AGENT],
+    ["patchmill-implementation.md", IMPLEMENTATION_AGENT],
+  ] as const) {
+    const file = join(directory, name);
+    let existing: string | undefined;
+    try {
+      existing = await readFile(file, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (existing !== content) await writeFile(file, content);
   }
-  if (existing !== REVIEWER_AGENT) await writeFile(file, REVIEWER_AGENT);
 }
 
 export async function ensureLocalExcludes(

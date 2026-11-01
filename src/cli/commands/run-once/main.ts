@@ -1,3 +1,4 @@
+import { startConsole } from "../../../console/start.ts";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
 import { createKernelGit } from "../../../kernel/git.ts";
@@ -7,22 +8,25 @@ import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
 import { resolveBundledPiCommand } from "../../pi-cli.ts";
 
-const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only]
+const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only] [--interactive]
 Advance one issue. Use --dry-run to show the next phase without claiming it.
-Use --plan-only to stop after planning.`;
+Use --plan-only to stop after planning.
+Use --interactive with --issue N to open the interactive chat.`;
 
 type Options = {
   runner?: CommandRunner;
   output?: CliOutput;
   repoRoot?: string;
   runOneIssue?: typeof runOneIssue;
+  startConsole?: typeof startConsole;
 };
 
-function parseArgs(args: string[]): RunOnceOptions {
-  const options: RunOnceOptions = {};
+function parseArgs(args: string[]): RunOnceOptions & { interactive?: boolean } {
+  const options: RunOnceOptions & { interactive?: boolean } = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--dry-run") options.dryRun = true;
+    if (arg === "--interactive") options.interactive = true;
+    else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--plan-only") options.planOnly = true;
     else if (arg === "--issue") {
       const value = args[++i];
@@ -35,6 +39,14 @@ function parseArgs(args: string[]): RunOnceOptions {
       }
       options.issue = Number(value);
     } else throw new Error(`Unknown argument: ${arg}. Use --help for options.`);
+  }
+  if (options.interactive) {
+    if (options.issue === undefined)
+      throw new Error("Use --interactive with --issue N.");
+    if (options.dryRun || options.planOnly)
+      throw new Error(
+        "--interactive cannot be combined with --dry-run or --plan-only.",
+      );
   }
   return options;
 }
@@ -68,6 +80,12 @@ export async function main(
       now: () => new Date(),
       output,
     };
+    if (runOptions.interactive)
+      return await (options.startConsole ?? startConsole)({
+        config,
+        deps,
+        issue: runOptions.issue!,
+      });
     process.on("SIGINT", abort);
     process.on("SIGTERM", abort);
     const outcome = await (options.runOneIssue ?? runOneIssue)(config, deps, {

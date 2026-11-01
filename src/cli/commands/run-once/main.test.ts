@@ -183,3 +183,55 @@ test("registered run-once and release help work without repository configuration
     assert.equal(result.stderr, "");
   }
 });
+
+test("--interactive without --issue fails before loading configuration", async (t) => {
+  const f = await harness(t);
+  await rm(join(f.root, CONFIG_FILE));
+  assert.equal(await main(["--interactive"], f.options), 1);
+  assert.deepEqual(f.stderr, ["Use --interactive with --issue N."]);
+});
+
+for (const flag of ["--dry-run", "--plan-only"]) {
+  test(`--interactive rejects ${flag} before loading configuration`, async (t) => {
+    const f = await harness(t);
+    await rm(join(f.root, CONFIG_FILE));
+    assert.equal(
+      await main(["--issue", "9", "--interactive", flag], f.options),
+      1,
+    );
+    assert.deepEqual(f.stderr, [
+      "--interactive cannot be combined with --dry-run or --plan-only.",
+    ]);
+  });
+}
+
+test("--interactive hands the issue and real dependencies to the console", async (t) => {
+  const f = await harness(t);
+  const runner: typeof runCommand = async (command, args, options) => {
+    assert.equal(command, "git");
+    assert.deepEqual(args, ["fetch", "--prune", "origin"]);
+    assert.equal(options?.cwd, f.root);
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  let entered = false;
+  assert.equal(
+    await main(["--issue", "9", "--interactive"], {
+      ...f.options,
+      runner,
+      runOneIssue: async () => assert.fail("non-interactive kernel entered"),
+      startConsole: async ({ config, deps, issue }) => {
+        entered = true;
+        assert.equal(issue, 9);
+        assert.equal(config.labels.ready, "queue");
+        assert.equal(deps.repoRoot, f.root);
+        assert.equal(deps.runner, runner);
+        assert.equal(deps.piCommand.command, process.execPath);
+        assert.equal(typeof deps.host.viewIssue, "function");
+        await deps.git.fetch();
+        return 7;
+      },
+    }),
+    7,
+  );
+  assert.equal(entered, true);
+});

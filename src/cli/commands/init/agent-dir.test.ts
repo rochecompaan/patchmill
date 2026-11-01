@@ -59,3 +59,22 @@ test("appends missing excludes through Git common metadata in a linked checkout"
   await assert.rejects(agent.ensureLocalExcludes(plain, ["runs/"]));
   await assert.rejects(stat(join(plain, ".git")));
 });
+
+test("provisioning writes and repairs the implementation worker without rewriting it", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-worker-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "agent/agents/patchmill-implementation.md");
+  await agent.provisionAgentDir(root, "agent");
+  const content = await readFile(file, "utf8");
+  assert.match(content, /name: patchmill-implementation/);
+  assert.match(
+    content,
+    /tools: read, grep, find, ls, bash, edit, write, subagent/,
+  );
+  const before = (await stat(file)).mtimeMs;
+  await agent.provisionAgentDir(root, "agent");
+  assert.equal((await stat(file)).mtimeMs, before);
+  await writeFile(file, "damaged");
+  await agent.provisionAgentDir(root, "agent");
+  assert.equal(await readFile(file, "utf8"), content);
+});

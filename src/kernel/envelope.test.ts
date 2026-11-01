@@ -1,4 +1,42 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+test("the non-interactive envelope is unchanged", () => {
+  for (const phase of ["planning", "implementation"] as const) {
+    assert.equal(
+      renderRunEnvelope({ ...input, phase }),
+      readFileSync(
+        new URL(`./fixtures/envelope-${phase}.txt`, import.meta.url),
+        "utf8",
+      ),
+    );
+  }
+});
+
+test("interactive planning asks the maintainer and submits through the tool", () => {
+  const text = renderRunEnvelope({ ...input, interactive: true });
+  assert.match(text, /A maintainer is present in this chat/);
+  assert.match(text, /patchmill_submit_planning_result/);
+  assert.doesNotMatch(
+    text,
+    /final `json` block|End with the JSON block|Put questions in the summary/,
+  );
+});
+
+test("interactive implementation keeps the JSON result contract", () => {
+  assert.equal(
+    renderRunEnvelope({ ...input, phase: "implementation", interactive: true }),
+    renderRunEnvelope({ ...input, phase: "implementation" }),
+  );
+});
+
+test("the envelope template stays under 150 lines", () => {
+  assert.ok(
+    readFileSync(new URL("./run-envelope.md", import.meta.url), "utf8").split(
+      "\n",
+    ).length < 150,
+  );
+});
 import { test } from "node:test";
 import { DEFAULT_CONFIG } from "../config/config.ts";
 import type { Issue } from "../host/types.ts";
