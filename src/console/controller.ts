@@ -12,7 +12,7 @@ import { costLine } from "../kernel/pi-cost.ts";
 import type { WorkerLauncher } from "./worker-launcher.ts";
 
 export type StartRun = (
-  issue: number,
+  issue: number | undefined,
   channel: HumanChannel,
   observe: (s: RunSnapshot) => void,
 ) => Promise<RunOnceOutcome>;
@@ -49,7 +49,7 @@ export class ConsoleController implements HumanChannel {
     this.deps = deps;
   }
 
-  async startIssueRun(issue: number): Promise<string> {
+  async startIssueRun(issue?: number): Promise<string> {
     if (this.active) throw new Error("An Issue run is already active.");
     if (this.closing) return "The console is shutting down.";
     this.snapshot = undefined;
@@ -87,7 +87,9 @@ export class ConsoleController implements HumanChannel {
       .finally(() => {
         this.active = undefined;
       });
-    return `Started Issue run #${issue}.`;
+    return issue === undefined
+      ? "Started the next Issue run."
+      : `Started Issue run #${issue}.`;
   }
 
   runPlanning(launch: PhaseLaunch, feedback?: string): Promise<PhaseRun> {

@@ -184,11 +184,23 @@ test("registered run-once and release help work without repository configuration
   }
 });
 
-test("--interactive without --issue fails before loading configuration", async (t) => {
+test("--interactive without --issue starts the console with no selected issue", async (t) => {
   const f = await harness(t);
-  await rm(join(f.root, CONFIG_FILE));
-  assert.equal(await main(["--interactive"], f.options), 1);
-  assert.deepEqual(f.stderr, ["Use --interactive with --issue N."]);
+  let entered = false;
+  assert.equal(
+    await main(["--interactive"], {
+      ...f.options,
+      runOneIssue: async () => assert.fail("non-interactive kernel entered"),
+      startConsole: async ({ issue }) => {
+        entered = true;
+        assert.equal(issue, undefined);
+        return 0;
+      },
+    }),
+    0,
+  );
+  assert.equal(entered, true);
+  assert.deepEqual(f.stderr, []);
 });
 
 for (const flag of ["--dry-run", "--plan-only"]) {

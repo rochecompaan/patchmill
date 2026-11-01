@@ -180,10 +180,11 @@ patchmill run-once --issue 142 --interactive
 ```
 
 _My call:_ this is a flag on `run-once`, not a new command, because it is the
-same Run-once workflow. `--interactive` requires `--issue`, which names the
-first Issue run of the console session. If later issues in the same session make
-the name `run-once` confusing, a separate `patchmill console` command can be
-added. It must call the same workflow.
+same Run-once workflow. With `--interactive`, `--issue N` is optional: it names
+the first Issue run of the console session; without it, the first Issue run
+takes the next eligible issue. If later issues in the same session make the name
+`run-once` confusing, a separate `patchmill console` command can be added. It
+must call the same workflow.
 
 Patchmill opens Pi's interactive chat in the same process, using the Pi SDK
 (`InteractiveMode` with `createAgentSessionRuntime`, both exported by

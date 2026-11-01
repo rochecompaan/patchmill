@@ -6,7 +6,7 @@ import { stopWorkers } from "./stray-workers.ts";
 import { registerConsoleTools } from "./tools.ts";
 
 export function createPatchmillExtension(options: {
-  firstIssue: number;
+  firstIssue?: number;
   startRun: StartRun;
   client?: (events: EventBus) => SubagentsClient;
   registerShutdown?: (shutdown: () => Promise<void>) => void;
@@ -20,7 +20,7 @@ export function createPatchmillExtension(options: {
       if (!controller) throw new Error("Patchmill console has not started.");
       return controller;
     };
-    const startIssueRun = async (issue: number) =>
+    const startIssueRun = async (issue?: number) =>
       startBlocked ?? getController().startIssueRun(issue);
     registerConsoleTools(pi, getController, startIssueRun);
     pi.on("session_start", async () => {

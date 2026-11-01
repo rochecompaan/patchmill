@@ -97,6 +97,24 @@ test("TUI failures still dispose the runtime", async () => {
   assert.equal(disposed, true);
 });
 
+test("startRun omits the issue option when no issue is selected", async (t) => {
+  const c = await setupRun(t, []);
+  let entered = false;
+  const startRun = createStartRun(
+    c.config,
+    c.deps,
+    async (_config, _deps, options) => {
+      entered = true;
+      assert.deepEqual(options, {});
+      return { status: "no-work" };
+    },
+  );
+  assert.deepEqual(await startRun(undefined, fakeHuman(c), () => {}), {
+    status: "no-work",
+  });
+  assert.equal(entered, true);
+});
+
 test("startRun forwards the selected issue, dependencies, channel and observer and routes both streams to the human", async (t) => {
   const c = await setupRun(t, []);
   const human = fakeHuman(c);

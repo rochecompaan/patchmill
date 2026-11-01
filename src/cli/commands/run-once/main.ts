@@ -11,7 +11,7 @@ import { resolveBundledPiCommand } from "../../pi-cli.ts";
 const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only] [--interactive]
 Advance one issue. Use --dry-run to show the next phase without claiming it.
 Use --plan-only to stop after planning.
-Use --interactive with --issue N to open the interactive chat.`;
+Use --interactive to open the interactive chat.`;
 
 type Options = {
   runner?: CommandRunner;
@@ -41,8 +41,6 @@ function parseArgs(args: string[]): RunOnceOptions & { interactive?: boolean } {
     } else throw new Error(`Unknown argument: ${arg}. Use --help for options.`);
   }
   if (options.interactive) {
-    if (options.issue === undefined)
-      throw new Error("Use --interactive with --issue N.");
     if (options.dryRun || options.planOnly)
       throw new Error(
         "--interactive cannot be combined with --dry-run or --plan-only.",
@@ -84,7 +82,7 @@ export async function main(
       return await (options.startConsole ?? startConsole)({
         config,
         deps,
-        issue: runOptions.issue!,
+        ...(runOptions.issue !== undefined ? { issue: runOptions.issue } : {}),
       });
     process.on("SIGINT", abort);
     process.on("SIGTERM", abort);

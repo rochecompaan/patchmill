@@ -97,9 +97,10 @@ patchmill run-once --issue 225 --interactive
 ```
 
 This opens a Pi console for planning with you and running implementation in a
-background worker, using the same Run-once workflow. `--interactive` requires
-`--issue N` (a positive integer) and cannot be combined with `--dry-run` or
-`--plan-only`. The console agent calls five tools:
+background worker, using the same Run-once workflow. `--issue N` (a positive
+integer) is optional: without it, the first Issue run takes the next eligible
+issue. `--interactive` cannot be combined with `--dry-run` or `--plan-only`. The
+console agent calls five tools:
 
 - `patchmill_submit_planning_result`: submit a planning outcome after your
   confirmation; declining keeps planning open.

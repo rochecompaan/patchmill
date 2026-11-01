@@ -180,7 +180,7 @@ test("settled runs release the slot and only thrown errors notify", async () => 
     if (++calls === 1) throw new Error("boom");
     return { status: "no-work" };
   });
-  await controller.startIssueRun(9);
+  assert.equal(await controller.startIssueRun(), "Started the next Issue run.");
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(pi.messages[0]?.message.content, "boom");
   assert.deepEqual(pi.messages[0]?.options, { triggerTurn: false });

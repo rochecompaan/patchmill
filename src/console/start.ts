@@ -82,14 +82,14 @@ export function createStartRun(
           stderr: (line) => human.notify(line),
         },
       },
-      { issue },
+      issue !== undefined ? { issue } : {},
     );
 }
 
 export async function startConsole(input: {
   config: PatchmillConfig;
   deps: RunOnceDeps;
-  issue: number;
+  issue?: number;
 }): Promise<number> {
   const { config, deps, issue } = input;
   const { repoRoot } = deps;
@@ -102,7 +102,7 @@ export async function startConsole(input: {
   );
   let shutdown = async () => {};
   const factory = createPatchmillExtension({
-    firstIssue: issue,
+    ...(issue !== undefined ? { firstIssue: issue } : {}),
     registerShutdown: (handler) => {
       shutdown = handler;
     },
