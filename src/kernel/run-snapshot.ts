@@ -27,12 +27,20 @@ export type RunSnapshot = {
 /** Write-only progress projection; never drives the run's decisions. */
 export function runSnapshot(
   identity: Pick<RunSnapshot, "issue" | "runId" | "runDir" | "startedAt">,
-  observe?: (snapshot: RunSnapshot) => void,
+  observe: ((snapshot: RunSnapshot) => void) | undefined,
+  report: (line: string) => void,
 ) {
   let current: RunSnapshot = { ...identity, state: "deriving", session: 0 };
   const emit = (update: Partial<RunSnapshot>) => {
     current = { ...current, ...update };
-    observe?.(current);
+    try {
+      observe?.(current);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      report(
+        `Run snapshot observer failed: ${message.replace(/[\r\n]+/g, " ")}`,
+      );
+    }
   };
   return {
     deriving() {

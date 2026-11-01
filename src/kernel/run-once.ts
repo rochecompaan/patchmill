@@ -160,6 +160,7 @@ export async function runOneIssue(
   const snapshot = runSnapshot(
     { issue: issueNumber, runId, runDir, startedAt },
     deps.observe,
+    (line) => output.stderr(line),
   );
   const sessions: {
     phase: Phase;

@@ -8,6 +8,7 @@ import {
   done,
   implement,
   merge,
+  kernelComments,
 } from "../../test-support/run-once-fixture.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import type { RunSnapshot, RunState } from "./run-snapshot.ts";
@@ -139,3 +140,35 @@ test("observe reports the gate wait before continuing to the next session", asyn
     ],
   );
 });
+
+for (const failingState of ["deriving", "ended"] as const) {
+  test(`observer failure during ${failingState} does not change the completed outcome`, async (t) => {
+    const c = await setupRun(t, [implement]);
+    await c.seed({ [spec]: "spec", [plan]: "plan" });
+    const states: RunState[] = [];
+    const outcome = await c.run(
+      { issue: 9 },
+      {
+        observe: (snapshot) => {
+          states.push(snapshot.state);
+          if (snapshot.state === failingState)
+            throw new Error("Observer unavailable");
+        },
+      },
+    );
+    assert.deepEqual(outcome, { status: "completed", issue: 9 });
+    const { result } = await c.records();
+    assert.deepEqual(result.outcome, outcome);
+    assert.equal(result.sessions.length, 1);
+    assert.equal(states.at(-1), "ended");
+    assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
+    const diagnostics = c.output.filter((line) =>
+      line.includes("Observer unavailable"),
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.match(diagnostics[0]!, /snapshot observer/i);
+    assert.equal(diagnostics[0]!.split("\n").length, 1);
+    assert.equal(kernelComments(c).length, 1);
+    assert.doesNotMatch(kernelComments(c)[0]!.body, /Observer unavailable/);
+  });
+}
