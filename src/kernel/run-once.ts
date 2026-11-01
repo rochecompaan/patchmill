@@ -34,7 +34,6 @@ import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { newRunId } from "./names.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
-
 export type RunOnceOptions = {
   issue?: number;
   dryRun?: boolean;
@@ -380,6 +379,7 @@ export async function runOneIssue(
     } catch (error) {
       label = "needsInfo";
       summary = error instanceof Error ? error.message : String(error);
+      if (published) await publish([config.labels.done]);
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);

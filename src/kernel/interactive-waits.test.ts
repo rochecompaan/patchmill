@@ -168,3 +168,25 @@ test("a non-interactive rerun on a ready PR still derives implementation", async
   await c.run({ issue: 9 });
   assert.equal((await c.records()).result.sessions[0].phase, "implementation");
 });
+
+for (const restart of [false, true]) {
+  test(`review refresh rejection publishes one changed stop (restart=${restart})`, async (t) => {
+    const c = await setupRun(t, restart ? [] : [implement]);
+    if (restart) await ready(c);
+    else await c.seed({ [spec]: "spec", [plan]: "plan" });
+    const human = fakeHuman(c, {
+      onWait: async () => {
+        c.host.viewIssue = async () => {
+          throw new Error("review refresh unavailable");
+        };
+        return "continue";
+      },
+    });
+    const outcome = await c.run({ issue: 9 }, { human });
+    assert.equal(outcome.status, "stopped");
+    assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
+    const comments = kernelComments(c);
+    assert.equal(comments.length, restart ? 1 : 2);
+    assert.match(comments.at(-1)!.body, /review refresh unavailable/);
+  });
+}
