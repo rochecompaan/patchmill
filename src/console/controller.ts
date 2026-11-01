@@ -95,20 +95,18 @@ export class ConsoleController implements HumanChannel {
   }
 
   runPlanning(launch: PhaseLaunch, feedback?: string): Promise<PhaseRun> {
-    if (this.closing) return Promise.resolve(aborted);
-    return recordPlanningUsage(
-      this.deps.session,
-      launch.sessionDir,
-      () =>
-        new Promise((resolve) => {
-          this.planning = resolve;
-          this.deps.pi.sendUserMessage(
-            feedback === undefined
-              ? launch.envelope
-              : `Patchmill could not accept the planning result:\n\n${feedback}\n\nFix it and submit again.`,
-            { deliverAs: "followUp" },
-          );
-        }),
+    return recordPlanningUsage(this.deps.session, launch.sessionDir, () =>
+      this.closing
+        ? Promise.resolve(aborted)
+        : new Promise((resolve) => {
+            this.planning = resolve;
+            this.deps.pi.sendUserMessage(
+              feedback === undefined
+                ? launch.envelope
+                : `Patchmill could not accept the planning result:\n\n${feedback}\n\nFix it and submit again.`,
+              { deliverAs: "followUp" },
+            );
+          }),
     );
   }
 

@@ -21,12 +21,19 @@ export async function recordPlanningUsage(
         (entry) =>
           entry.type === "message" && entry.message.role === "assistant",
       ) ?? [];
-  if (entries.length > 0) {
-    await fs.mkdir(sessionDir, { recursive: true });
-    await fs.writeFile(
-      join(sessionDir, "console-planning.jsonl"),
-      entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-    );
-  }
+  const records =
+    entries.length > 0
+      ? entries
+      : [
+          {
+            type: "usage",
+            usage: { input: 0, output: 0, cost: { total: 0 } },
+          },
+        ];
+  await fs.mkdir(sessionDir, { recursive: true });
+  await fs.writeFile(
+    join(sessionDir, "console-planning.jsonl"),
+    records.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+  );
   return run;
 }

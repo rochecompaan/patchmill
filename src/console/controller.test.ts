@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ConsoleController, type StartRun } from "./controller.ts";
 import type { PhaseLaunch, PhaseRun } from "../kernel/launch.ts";
 import type { RunSnapshot } from "../kernel/run-snapshot.ts";
@@ -7,13 +10,16 @@ import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { registerConsoleTools } from "./tools.ts";
 import { fakeExtensionApi } from "../../test-support/fake-extension-api.ts";
 
+const sessionDir = await fs.mkdtemp(join(tmpdir(), "console-planning-test-"));
+after(() => fs.rm(sessionDir, { recursive: true, force: true }));
+
 const launch: PhaseLaunch = {
   phase: "planning",
   envelope: "Plan issue 9",
   promptPath: "prompt",
   worktree: "/tmp",
   skillPath: "skill",
-  sessionDir: "session",
+  sessionDir,
   logPath: "log",
   aggregateLogPath: "all",
   timeoutMs: 1000,

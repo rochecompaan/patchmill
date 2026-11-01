@@ -1,18 +1,24 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createPatchmillExtension } from "./extension.ts";
 import { SubagentsClient, WORKER_AGENT } from "./subagents-client.ts";
 import { fakeExtensionApi } from "../../test-support/fake-extension-api.ts";
 import { fakeSubagents } from "../../test-support/fake-subagents.ts";
 import type { HumanChannel } from "../kernel/human-channel.ts";
 import type { PhaseLaunch } from "../kernel/launch.ts";
+const sessionDir = await fs.mkdtemp(join(tmpdir(), "console-planning-test-"));
+after(() => fs.rm(sessionDir, { recursive: true, force: true }));
+
 const launch: PhaseLaunch = {
   phase: "planning",
   envelope: "Plan",
   promptPath: "p",
   worktree: "/tmp",
   skillPath: "s",
-  sessionDir: "s",
+  sessionDir,
   logPath: "l",
   aggregateLogPath: "a",
   timeoutMs: 1000,
@@ -167,6 +173,10 @@ test("tools confirm submissions and starts, preserve declined planning, and expo
   const api = fakeExtensionApi();
   let human!: HumanChannel;
   const results: boolean[] = [];
+  let firstRunFinished!: () => void;
+  const firstRun = new Promise<void>((resolve) => {
+    firstRunFinished = resolve;
+  });
   const started: number[] = [];
   await createPatchmillExtension({
     firstIssue: 9,
@@ -175,6 +185,7 @@ test("tools confirm submissions and starts, preserve declined planning, and expo
       started.push(issue);
       human = channel;
       results.push((await channel.runPlanning(launch)).session.aborted);
+      firstRunFinished();
       return { status: "no-work" };
     },
   })(api);
@@ -205,6 +216,7 @@ test("tools confirm submissions and starts, preserve declined planning, and expo
     status: "done",
     summary: "ok",
   });
+  await firstRun;
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(results, [false]);
   assert.deepEqual(api.confirmations[0], {
