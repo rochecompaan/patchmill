@@ -144,3 +144,17 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
     worktree: join(f.repoRoot, ".worktrees/agent-issue-9-add-login"),
   };
 }
+
+export async function merge(c: Scenario, head: string) {
+  const cwd = join(c.dir, "seed");
+  await c.git(["fetch", "origin", head], cwd);
+  await c.git(["merge", "--no-edit", "FETCH_HEAD"], cwd);
+  await c.git(["push", "origin", "HEAD:main"], cwd);
+  await c.mutate((s) => {
+    s.pullRequests.find((p) => p.headBranch === head)!.state = "merged";
+  });
+}
+
+export async function mergePullRequest(c: Scenario, head = branch) {
+  await merge(c, head);
+}

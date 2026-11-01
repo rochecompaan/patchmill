@@ -16,18 +16,22 @@ import { claimSwap } from "./labels.ts";
 import { renderRunEnvelope } from "./envelope.ts";
 import { printModeLauncher } from "./launch.ts";
 import type { HumanChannel } from "./human-channel.ts";
-import { launchPhase, planningFeedback } from "./interactive-loop.ts";
-import { publishStop } from "./publish.ts";
+import {
+  launchPhase,
+  planningFeedback,
+  continueGate,
+  derivedStop,
+} from "./interactive-loop.ts";
+import { isReviewWait, reviewWait, collectReviewFacts } from "./review-wait.ts";
+import { publishAttemptStop } from "./publish.ts";
 import {
   formatRunResult,
   formatRunStart,
   formatPhaseStart,
   formatPhaseComplete,
 } from "./console.ts";
-import { closesIssue, verifyOutcome, type OutcomeLabel } from "./verify.ts";
+import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
-import { publishIssueCost } from "./pr-cost.ts";
-import { planningGateComment } from "./comments.ts";
 import { newRunId } from "./names.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
@@ -167,6 +171,39 @@ export async function runOneIssue(
   let warnings: string[] = [];
   let displayFacts: Facts | undefined;
   let totalOutputTokens = 0;
+  let published = false;
+  const publicationErrors: string[] = [];
+  const publish = async (remove?: string[]) => {
+    publicationErrors.push(
+      ...(await publishAttemptStop({
+        host,
+        labels: config.labels,
+        issue: issueNumber,
+        issueDir,
+        current: { runId, sessions },
+        ...(displayFacts ? { facts: displayFacts } : {}),
+        stop: { label, summary, warnings, ...(remove ? { remove } : {}) },
+      })),
+    );
+  };
+  const review = async (facts: Facts, restart: boolean) => {
+    await reviewWait({
+      facts,
+      issue: issueNumber,
+      host,
+      labels: config.labels,
+      human: deps.human!,
+      restart,
+      publish,
+      refresh: () => collectReviewFacts(host, issueNumber, facts, collect),
+      update: (facts, nextLabel, nextSummary) => {
+        published = true;
+        displayFacts = facts;
+        label = nextLabel;
+        summary = nextSummary;
+      },
+    });
+  };
   try {
     try {
       const claim = claimSwap(config.labels);
@@ -196,25 +233,27 @@ export async function runOneIssue(
             ? derivePhase(facts)
             : { kind: "phase" as const, phase: "planning" as const };
         if (decision.kind === "stop") {
-          label = decision.label;
-          summary =
-            label === "done"
-              ? "The pull request is merged."
-              : planningGateComment(facts);
-          const closing =
-            facts.pullRequest &&
-            closesIssue(
-              facts.pullRequest.body,
-              issueNumber,
-              await host.repository(),
-            );
-          if (label === "done" && !closing) {
-            label = "needsInfo";
-            summary = `The merged pull request does not close issue #${issueNumber}; it cannot prove implementation completion.`;
-          } else if (facts.stage !== "implementation" && closing) {
-            label = "needsInfo";
-            summary = `The planning pull request would close issue #${issueNumber}. Replace its closing reference with Refs #${issueNumber} before merging it.`;
+          ({ label, summary } = derivedStop(
+            facts,
+            issueNumber,
+            await host.repository(),
+            decision.label,
+          ));
+          if (
+            label === "inProgress" &&
+            (await continueGate(facts, deps.human))
+          ) {
+            sinceHuman = 0;
+            continue;
           }
+          break;
+        }
+        if (
+          deps.human &&
+          decision.phase === "implementation" &&
+          isReviewWait(facts, issueNumber, await host.repository())
+        ) {
+          await review(facts, true);
           break;
         }
         const phase = decision.phase;
@@ -313,6 +352,15 @@ export async function runOneIssue(
             else if (facts.stage !== "spec" && !after.facts.planPath)
               summary += `\nExpected artifact: ${after.facts.expectedPlanPath}`;
           }
+          if (
+            label === "inProgress" &&
+            (await continueGate(after.facts, deps.human))
+          ) {
+            sinceHuman = 0;
+            continue;
+          }
+          if (deps.human && phase === "implementation" && label === "done")
+            await review(after.facts, false);
           break;
         }
         if (options.planOnly && phase === "planning") {
@@ -332,30 +380,7 @@ export async function runOneIssue(
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
-    if (displayFacts?.pullRequest) {
-      try {
-        await publishIssueCost({
-          host,
-          branch: displayFacts.branch,
-          baseBranch: displayFacts.baseBranch,
-          issueDir,
-          current: { runId, sessions },
-        });
-      } catch (error) {
-        warnings.push(`PR cost report unavailable: ${errorMessage(error)}`);
-      }
-    }
-    const publicationErrors = await publishStop(
-      host,
-      config.labels,
-      issueNumber,
-      {
-        label,
-        summary,
-        cost,
-        warnings,
-      },
-    );
+    if (!published) await publish();
     const publication = publicationErrors.length ? { publicationErrors } : {};
     const outcome: RunOnceOutcome =
       label === "done"

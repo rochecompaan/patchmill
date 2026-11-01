@@ -9,6 +9,7 @@ import {
   done,
   branch,
   implement,
+  merge,
 } from "../../test-support/run-once-fixture.ts";
 import { parseConfig } from "../config/config.ts";
 import { acquireLock } from "./lock.ts";
@@ -27,15 +28,6 @@ function gates(c: Scenario, specRequired: boolean, planRequired: boolean) {
   Object.assign(c.config.workflow, {
     specApproval: { required: specRequired },
     planApproval: { required: planRequired },
-  });
-}
-async function merge(c: Scenario, head: string) {
-  const cwd = join(c.dir, "seed");
-  await c.git(["fetch", "origin", head], cwd);
-  await c.git(["merge", "--no-edit", "FETCH_HEAD"], cwd);
-  await c.git(["push", "origin", "HEAD:main"], cwd);
-  await c.mutate((s) => {
-    s.pullRequests.find((p) => p.headBranch === head)!.state = "merged";
   });
 }
 async function count(c: Scenario) {

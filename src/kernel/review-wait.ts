@@ -1,0 +1,82 @@
+import type { Host, Issue, Repository } from "../host/types.ts";
+import type { LabelsConfig } from "../config/config.ts";
+import type { Facts, FactsResult } from "./facts.ts";
+import type { HumanChannel } from "./human-channel.ts";
+import { derivePhase } from "./phase.ts";
+import { wrongTarget } from "./pull-request.ts";
+import { closesIssue } from "./verify.ts";
+
+/** D5: an open, ready implementation PR that closes the issue. */
+export function isReviewWait(
+  facts: Facts,
+  issue: number,
+  repository: Pick<Repository, "owner" | "repo">,
+): boolean {
+  const pr = facts.pullRequest;
+  return (
+    facts.stage === "implementation" &&
+    !!pr &&
+    pr.state === "open" &&
+    !pr.draft &&
+    !wrongTarget(pr, facts.baseBranch) &&
+    closesIssue(pr.body, issue, repository)
+  );
+}
+
+/** Owns the review wait, including its already-published restart path. */
+export async function reviewWait(input: {
+  facts: Facts;
+  issue: number;
+  host: Host;
+  labels: LabelsConfig;
+  human: HumanChannel;
+  restart: boolean;
+  refresh: () => Promise<Facts>;
+  publish: (remove?: string[]) => Promise<void>;
+  update: (facts: Facts, label: "done" | "needsInfo", summary: string) => void;
+}): Promise<void> {
+  const { issue, host, labels, human } = input;
+  let facts = input.facts;
+  if (input.restart) await host.setLabels(issue, [], [labels.inProgress]);
+  else await input.publish();
+  input.update(facts, "done", "The pull request was verified.");
+  while (
+    (await human.awaitContinue({
+      kind: "review",
+      message: `${facts.pullRequest!.url}: waiting for the merge.`,
+    })) === "continue"
+  ) {
+    facts = await input.refresh();
+    const repository = await host.repository();
+    const decision = derivePhase(facts);
+    if (
+      decision.kind === "stop" &&
+      decision.label === "done" &&
+      facts.pullRequest &&
+      closesIssue(facts.pullRequest.body, issue, repository)
+    ) {
+      input.update(facts, "done", "The pull request is merged.");
+      return;
+    }
+    if (isReviewWait(facts, issue, repository)) continue;
+    input.update(
+      facts,
+      "needsInfo",
+      `The pull request no longer proves implementation completion for issue #${issue}.`,
+    );
+    await input.publish([labels.done]);
+    return;
+  }
+}
+
+/** Re-observe the same implementation branch while the lock remains held. */
+export async function collectReviewFacts(
+  host: Host,
+  issue: number,
+  facts: Facts,
+  collect: (issue: Issue, workspace: Facts) => Promise<FactsResult>,
+): Promise<Facts> {
+  const result = await collect(await host.viewIssue(issue), facts);
+  if (result.kind !== "facts") throw new Error("Several issue branches exist.");
+  return result.facts;
+}
