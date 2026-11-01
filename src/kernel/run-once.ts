@@ -12,10 +12,10 @@ import type { KernelGit } from "./git.ts";
 import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
-import { claimSwap, releaseSwap } from "./labels.ts";
+import { claimSwap } from "./labels.ts";
 import { renderRunEnvelope } from "./envelope.ts";
-import { supervisePi } from "./pi-supervisor.ts";
-import { parseAgentResult } from "./result.ts";
+import { printModeLauncher } from "./launch.ts";
+import { publishStop } from "./publish.ts";
 import {
   formatRunResult,
   formatRunStart,
@@ -25,7 +25,7 @@ import {
 import { closesIssue, verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { publishIssueCost } from "./pr-cost.ts";
-import { KERNEL_COMMENT, planningGateComment } from "./comments.ts";
+import { planningGateComment } from "./comments.ts";
 import { newRunId } from "./names.ts";
 
 export type RunOnceOptions = {
@@ -229,22 +229,23 @@ export async function runOneIssue(
         const sessionDir = join(runDir, "sessions", String(index + 1));
         const logPath = join(runDir, `session-${index + 1}.log`);
         output.stderr(formatPhaseStart(phase, index + 1));
-        const session = await supervisePi({
+        const launcher = printModeLauncher({
           command: deps.piCommand,
-          cwd: facts.worktree,
           agentDir: resolve(repoRoot, config.pi.agentDir),
+          extensionPaths: deps.extensionPaths,
+        });
+        const { session, result } = await launcher({
+          phase,
+          envelope,
+          worktree: facts.worktree,
           sessionDir,
           skillPath: skill.path,
           promptPath,
           logPath,
           aggregateLogPath: join(runDir, "pi.log"),
-          extensionPaths: deps.extensionPaths,
           timeoutMs: config.pi.timeoutMinutes * 60_000,
-          // Keep the agent protocol in the logs, not the operator's terminal.
-          onOutput: () => {},
           ...(options.signal ? { signal: options.signal } : {}),
         });
-        const result = parseAgentResult(session.stdout);
         const phaseUsage = await sumSessionUsage(sessionDir);
         totalOutputTokens += phaseUsage?.outputTokens ?? 0;
         output.stderr(
@@ -321,30 +322,16 @@ export async function runOneIssue(
         warnings.push(`PR cost report unavailable: ${errorMessage(error)}`);
       }
     }
-    const publicationErrors: string[] = [];
-    const publish = async (failure: string, effect: () => Promise<void>) => {
-      try {
-        await effect();
-      } catch (error) {
-        publicationErrors.push(`${failure}: ${errorMessage(error)}`);
-      }
-    };
-    const release = releaseSwap(config.labels, label);
-    await publish("Label update failed", () =>
-      host.setLabels(issueNumber, release.add, release.remove),
-    );
-    await publish("Comment failed", () =>
-      host.commentIssue(
-        issueNumber,
-        [
-          KERNEL_COMMENT,
-          `Issue #${issueNumber}: ${config.labels[label]}`,
-          summary,
-          cost,
-          ...warnings,
-          ...publicationErrors,
-        ].join("\n\n"),
-      ),
+    const publicationErrors = await publishStop(
+      host,
+      config.labels,
+      issueNumber,
+      {
+        label,
+        summary,
+        cost,
+        warnings,
+      },
     );
     const publication = publicationErrors.length ? { publicationErrors } : {};
     const outcome: RunOnceOutcome =
