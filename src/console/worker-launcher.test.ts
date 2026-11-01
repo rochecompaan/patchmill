@@ -234,3 +234,11 @@ for (const method of ["spawn", "resume"] as const) {
     },
   );
 }
+
+test("shutdown during launch preparation prevents the spawn RPC", async (t) => {
+  const f = await fixture(t);
+  const run = f.launcher.run(f.launch);
+  await f.launcher.stopActive();
+  assert.equal((await run).session.aborted, true);
+  assert.equal(f.bus.requests.length, 0);
+});

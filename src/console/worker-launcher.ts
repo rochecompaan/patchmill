@@ -46,6 +46,7 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       await mkdir(launch.sessionDir, { recursive: true });
       // Resume inherits a suffixed upstream output path. Never parse an old output.md.
       await rm(outputPath, { force: true });
+      if (closing) return aborted();
       let id: string;
       if (guidance !== undefined) {
         if (!previousId)
