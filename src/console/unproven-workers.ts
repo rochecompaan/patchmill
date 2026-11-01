@@ -39,9 +39,26 @@ export function createUnprovenWorkers(client: SubagentsClient) {
       const proof = proofs.get(id);
       return proof ? (proof.pending ? "stopping" : "unresolved") : undefined;
     },
-    throwIfFailed() {
-      for (const proof of proofs.values()) {
-        if (proof.failure) throw proof.failure;
+    async verifyExit() {
+      for (;;) {
+        const pending = [...proofs.values()].flatMap((proof) =>
+          proof.pending ? [proof.pending] : [],
+        );
+        if (pending.length === 0) {
+          for (const [id, proof] of proofs) {
+            throw (
+              proof.failure ??
+              new SubagentsRpcError(
+                "stop_failed",
+                `Worker ${id} exit is unproven`,
+              )
+            );
+          }
+          return;
+        }
+        // Only drain proofs started by callers; never start another retry here.
+        // A fresh proof may replace a failure while this await is settling.
+        await Promise.allSettled(pending);
       }
     },
   };

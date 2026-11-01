@@ -559,3 +559,86 @@ for (const stage of [
     });
   }
 }
+
+// Failure settlement -> fresh retry before the older shutdown's final check.
+for (const succeeds of [true, false]) {
+  test(`concurrent shutdowns await a fresh proof after failure: latest ${succeeds ? "succeeds" : "rejects"}`, async (t) => {
+    const f = await fixture(t, {
+      status: () => ({
+        error: { code: "unavailable", message: "deadline failure" },
+      }),
+    });
+    await f.launcher.run({ ...f.launch, timeoutMs: 10 });
+    let rejectFirst!: (error: Error) => void;
+    let releaseLatest!: () => void;
+    let statuses = 0;
+    f.client.activeWorkers = async () => {
+      if (++statuses === 1) {
+        await new Promise<void>((_, reject) => {
+          rejectFirst = reject;
+        });
+      } else {
+        await new Promise<void>((resolve) => {
+          releaseLatest = resolve;
+        });
+        if (!succeeds) throw new Error("latest failure");
+      }
+      return [];
+    };
+    let firstSettled = false;
+    const first = f.launcher.stopActive();
+    void first.then(
+      () => {
+        firstSettled = true;
+      },
+      () => {
+        firstSettled = true;
+      },
+    );
+    await waitUntil(() => rejectFirst !== undefined);
+    const second = (async () => {
+      // Observe the precise settlement boundary without waiting for a timer turn.
+      for (let turn = 0; turn < 100; turn++) {
+        if (f.launcher.active()?.state === "unresolved")
+          return f.launcher.stopActive();
+        await Promise.resolve();
+      }
+      assert.fail("did not observe failed proof before shutdown finalized");
+    })();
+    void second.catch(() => {});
+    rejectFirst(new Error("first shutdown failure"));
+    await waitUntil(() => releaseLatest !== undefined);
+    await delay(10);
+    const settledWhilePending = firstSettled;
+    assert.equal(f.launcher.active()?.state, "stopping");
+    assert.equal(statuses, 2);
+    assert.equal(f.bus.requests.filter((r) => r.method === "stop").length, 3);
+    assert.equal(f.bus.requests.filter((r) => r.method === "spawn").length, 1);
+    releaseLatest();
+    const results = await Promise.allSettled([first, second]);
+    assert.equal(
+      f.bus.requests.filter((r) => r.method === "stop").length,
+      3,
+      "final verification drains proofs without starting another attempt",
+    );
+    assert.equal(
+      settledWhilePending,
+      false,
+      "older shutdown must await current proof",
+    );
+    assert.deepEqual(
+      results.map((r) => r.status),
+      succeeds ? ["fulfilled", "fulfilled"] : ["rejected", "rejected"],
+    );
+    if (!succeeds) {
+      for (const result of results) {
+        if (result.status === "rejected")
+          assert.match(String(result.reason), /latest failure/);
+      }
+      assert.equal(f.launcher.active()?.state, "unresolved");
+      f.client.activeWorkers = async () => [];
+      await f.launcher.stopActive();
+    }
+    assert.equal(f.launcher.active(), undefined);
+  });
+}

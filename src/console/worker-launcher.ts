@@ -29,7 +29,7 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
     await (stop ? stop() : unproven.retry()).catch(() => {});
     // A late launch records its cleanup failure while pending settles aborted.
     await Promise.all(pending);
-    unproven.throwIfFailed();
+    await unproven.verifyExit();
     if (active && !unproven.state(active.id)) active = undefined;
   }
   function launch(phase: PhaseLaunch, guidance?: string): Promise<PhaseRun> {
