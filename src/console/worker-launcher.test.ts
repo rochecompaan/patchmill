@@ -201,7 +201,7 @@ for (const method of ["spawn", "resume"] as const) {
     const run = await pending;
     await closing;
     assert.equal(run.session.aborted, true);
-    assert.equal(f.bus.requests.at(-1)?.method, "stop");
+    assert.ok(f.bus.requests.some((request) => request.method === "stop"));
     const requests = f.bus.requests.length;
     assert.equal((await f.launcher.run(f.launch)).session.aborted, true);
     assert.equal(f.bus.requests.length, requests);
@@ -228,7 +228,7 @@ for (const method of ["spawn", "resume"] as const) {
         : f.launcher.resume(launch, "help"));
       assert.equal(run.session.timedOut, true);
       assert.equal(run.session.aborted, false);
-      assert.equal(f.bus.requests.at(-1)?.method, "stop");
+      assert.ok(f.bus.requests.some((request) => request.method === "stop"));
       assert.equal(f.launcher.active(), undefined);
       assert.equal(f.bus.listenerCount(), 1);
     },
@@ -241,4 +241,34 @@ test("shutdown during launch preparation prevents the spawn RPC", async (t) => {
   await f.launcher.stopActive();
   assert.equal((await run).session.aborted, true);
   assert.equal(f.bus.requests.length, 0);
+});
+
+test("shutdown waits for worker exit, not just the stop receipt", async (t) => {
+  let running = true;
+  const f = await fixture(t, {
+    status: () => ({
+      asyncSnapshot: {
+        runs: running
+          ? [
+              {
+                id: "run-1",
+                state: "running",
+                children: [{ agent: "patchmill-implementation" }],
+              },
+            ]
+          : [],
+      },
+    }),
+  });
+  const run = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  let settled = false;
+  const closing = f.launcher.stopActive().then(() => {
+    settled = true;
+  });
+  await delay(10);
+  assert.equal(settled, false);
+  running = false;
+  await closing;
+  assert.equal((await run).session.aborted, true);
 });

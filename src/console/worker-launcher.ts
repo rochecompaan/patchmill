@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import type { PhaseLaunch, PhaseRun } from "../kernel/launch.ts";
 import { parseAgentResult } from "../kernel/result.ts";
 import { SubagentsClient, SubagentsRpcError } from "./subagents-client.ts";
+import { stopWorkers } from "./stray-workers.ts";
 
 export type WorkerLauncher = {
   run(launch: PhaseLaunch): Promise<PhaseRun>;
@@ -68,7 +69,12 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       stop = async () => {
         if (active?.id === id) active.state = "stopping";
         try {
-          await client.stop(id);
+          const stopped = await stopWorkers(client, { ids: [id] });
+          if (!stopped.ok)
+            throw new SubagentsRpcError(
+              "stop_failed",
+              `Worker ${id} did not stop`,
+            );
         } finally {
           cancellation.abort();
         }
