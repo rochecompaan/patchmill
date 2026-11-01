@@ -9,6 +9,7 @@ export function createPatchmillExtension(options: {
   firstIssue: number;
   startRun: StartRun;
   client?: (events: EventBus) => SubagentsClient;
+  registerShutdown?: (shutdown: () => Promise<void>) => void;
 }): ExtensionFactory {
   return (pi) => {
     let controller: ConsoleController | undefined;
@@ -45,12 +46,16 @@ export function createPatchmillExtension(options: {
       }
       await startIssueRun(options.firstIssue);
     });
-    pi.on("session_shutdown", async () => {
-      try {
-        await controller?.shutdown();
-      } finally {
-        client?.dispose();
-      }
-    });
+    let shutdownPromise: Promise<void> | undefined;
+    const shutdown = () =>
+      (shutdownPromise ??= (async () => {
+        try {
+          await controller?.shutdown();
+        } finally {
+          client?.dispose();
+        }
+      })());
+    options.registerShutdown?.(shutdown);
+    pi.on("session_shutdown", shutdown);
   };
 }

@@ -40,7 +40,20 @@ export async function runConsoleRuntime(
   runtime: Pick<AgentSessionRuntime, "diagnostics" | "dispose">,
   run: () => Promise<void>,
   stderr: (line: string) => void,
+  beforeDispose: () => Promise<void> = async () => {},
 ): Promise<number> {
+  // InteractiveMode disposes the host itself on quit and signals. Intercept that
+  // boundary, not just the return from run(), before extension teardown begins.
+  const dispose = runtime.dispose.bind(runtime);
+  let disposal: Promise<void> | undefined;
+  runtime.dispose = () =>
+    (disposal ??= (async () => {
+      try {
+        await beforeDispose();
+      } finally {
+        await dispose();
+      }
+    })());
   try {
     for (const diagnostic of runtime.diagnostics) stderr(diagnostic.message);
     if (runtime.diagnostics.some((diagnostic) => diagnostic.type === "error"))
@@ -87,8 +100,12 @@ export async function startConsole(input: {
     repoRoot,
     resolve(repoRoot, config.paths.runsDir, "console/sessions"),
   );
+  let shutdown = async () => {};
   const factory = createPatchmillExtension({
     firstIssue: issue,
+    registerShutdown: (handler) => {
+      shutdown = handler;
+    },
     startRun: createStartRun(config, deps),
   });
   const runtime = await createAgentSessionRuntime(
@@ -126,5 +143,6 @@ export async function startConsole(input: {
     runtime,
     () => new InteractiveMode(runtime).run(),
     deps.output.stderr,
+    () => shutdown(),
   );
 }
