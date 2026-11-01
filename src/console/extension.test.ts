@@ -93,6 +93,73 @@ test("a stuck stray worker blocks the start and says why", async (t) => {
     api.messages.at(-1)?.message.content,
     "Worker stuck did not stop. Patchmill will not start the Issue run.",
   );
+  assert.equal(
+    await api.callTool("patchmill_start_issue_run", { issue: 10 }),
+    "Worker stuck did not stop. Patchmill will not start the Issue run.",
+  );
+  assert.equal(started, false);
+  await api.fire("session_shutdown");
+});
+
+test("pending cleanup refuses tool starts until cleanup succeeds", async () => {
+  const api = fakeExtensionApi();
+  let finish!: (workers: { id: string; state: string }[]) => void;
+  const pending = new Promise<{ id: string; state: string }[]>((resolve) => {
+    finish = resolve;
+  });
+  class PendingClient extends SubagentsClient {
+    override activeWorkers() {
+      return pending;
+    }
+  }
+  const started: number[] = [];
+  await createPatchmillExtension({
+    firstIssue: 9,
+    client: (events) => new PendingClient(events),
+    startRun: async (issue) => {
+      started.push(issue);
+      return { status: "no-work" };
+    },
+  })(api);
+  const startup = api.fire("session_start");
+  try {
+    assert.equal(
+      await api.callTool("patchmill_start_issue_run", { issue: 10 }),
+      "Stray-worker cleanup is pending. Patchmill will not start the Issue run.",
+    );
+    assert.deepEqual(started, []);
+  } finally {
+    finish([]);
+    await startup;
+    await api.fire("session_shutdown");
+  }
+  assert.deepEqual(started, [9]);
+});
+
+test("rejected cleanup keeps tool starts closed and explains the failure", async () => {
+  const bus = fakeSubagents({
+    status: () => ({
+      error: { code: "cleanup_failed", message: "status unavailable" },
+    }),
+  });
+  const api = fakeExtensionApi(bus);
+  const started: number[] = [];
+  await createPatchmillExtension({
+    firstIssue: 9,
+    startRun: async (issue) => {
+      started.push(issue);
+      return { status: "no-work" };
+    },
+  })(api);
+  await api.fire("session_start");
+  const reason =
+    "Stray-worker cleanup failed: status unavailable. Patchmill will not start the Issue run.";
+  assert.equal(api.messages.at(-1)?.message.content, reason);
+  assert.equal(
+    await api.callTool("patchmill_start_issue_run", { issue: 10 }),
+    reason,
+  );
+  assert.deepEqual(started, []);
   await api.fire("session_shutdown");
 });
 

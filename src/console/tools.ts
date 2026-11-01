@@ -5,6 +5,7 @@ import type { ConsoleController } from "./controller.ts";
 export function registerConsoleTools(
   pi: ExtensionAPI,
   controller: () => ConsoleController,
+  startIssueRun: (issue: number) => Promise<string>,
 ) {
   const text = (value: string) => ({
     content: [{ type: "text" as const, text: value }],
@@ -41,7 +42,7 @@ export function registerConsoleTools(
         ))
       )
         return text("Not submitted.");
-      return text(await controller().startIssueRun(issue));
+      return text(await startIssueRun(issue));
     },
   });
   pi.registerTool({

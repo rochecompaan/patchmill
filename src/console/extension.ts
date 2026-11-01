@@ -13,10 +13,15 @@ export function createPatchmillExtension(options: {
   return (pi) => {
     let controller: ConsoleController | undefined;
     let client: SubagentsClient | undefined;
-    registerConsoleTools(pi, () => {
+    let startBlocked: string | undefined =
+      "Stray-worker cleanup is pending. Patchmill will not start the Issue run.";
+    const getController = () => {
       if (!controller) throw new Error("Patchmill console has not started.");
       return controller;
-    });
+    };
+    const startIssueRun = async (issue: number) =>
+      startBlocked ?? getController().startIssueRun(issue);
+    registerConsoleTools(pi, getController, startIssueRun);
     pi.on("session_start", async () => {
       if (controller) return;
       client = options.client?.(pi.events) ?? new SubagentsClient(pi.events);
@@ -25,14 +30,20 @@ export function createPatchmillExtension(options: {
         workers: createWorkerLauncher(client),
         startRun: options.startRun,
       });
-      const stopped = await stopWorkers(client);
-      if (!stopped.ok) {
-        controller.notify(
-          `Worker ${stopped.stuck.join(", ")} did not stop. Patchmill will not start the Issue run.`,
-        );
+      try {
+        const stopped = await stopWorkers(client);
+        startBlocked = stopped.ok
+          ? undefined
+          : `Worker ${stopped.stuck.join(", ")} did not stop. Patchmill will not start the Issue run.`;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        startBlocked = `Stray-worker cleanup failed: ${reason}. Patchmill will not start the Issue run.`;
+      }
+      if (startBlocked) {
+        controller.notify(startBlocked);
         return;
       }
-      await controller.startIssueRun(options.firstIssue);
+      await startIssueRun(options.firstIssue);
     });
     pi.on("session_shutdown", async () => {
       try {
