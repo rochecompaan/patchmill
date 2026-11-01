@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { loadSkills } from "@earendil-works/pi-coding-agent";
 import { CommandFailedError, runCommand } from "../../../process/command.ts";
 
 export const REVIEWER_AGENT = `---
@@ -30,12 +31,25 @@ the final JSON result. The conversation before it is context only.
 export async function provisionAgentDir(
   repoRoot: string,
   agentDir: string,
+  skillPaths: string[] = [],
 ): Promise<void> {
+  const skills = loadSkills({
+    cwd: repoRoot,
+    agentDir: resolve(repoRoot, agentDir),
+    skillPaths,
+    includeDefaults: false,
+  }).skills;
+  const implementation = skillPaths.length
+    ? IMPLEMENTATION_AGENT.replace(
+        "tools: read",
+        `skills: ${skills.map((skill) => skill.name).join(", ")}\nskillPath: ${skillPaths.join(", ")}\ntools: read`,
+      )
+    : IMPLEMENTATION_AGENT;
   const directory = join(repoRoot, agentDir, "agents");
   await mkdir(directory, { recursive: true });
   for (const [name, content] of [
     ["reviewer.md", REVIEWER_AGENT],
-    ["patchmill-implementation.md", IMPLEMENTATION_AGENT],
+    ["patchmill-implementation.md", implementation],
   ] as const) {
     const file = join(directory, name);
     let existing: string | undefined;

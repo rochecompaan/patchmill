@@ -10,7 +10,7 @@ import {
 import type { PatchmillConfig } from "../config/config.ts";
 import { provisionAgentDir } from "../cli/commands/init/agent-dir.ts";
 import { runOneIssue, type RunOnceDeps } from "../kernel/run-once.ts";
-import { resolvePhaseSkill } from "../kernel/phase-skill.ts";
+import { consoleSkillPaths } from "./skills.ts";
 import { resolvePiSubagentsPackageRoot } from "../pi/pi-subagents-package.ts";
 import { createConsoleSessionHost } from "./session-host.ts";
 import { openIssueConsoleSession } from "./console-session.ts";
@@ -101,7 +101,8 @@ export async function startConsole(input: {
 }): Promise<number> {
   const { config, deps, issue } = input;
   const { repoRoot } = deps;
-  await provisionAgentDir(repoRoot, config.pi.agentDir);
+  const skillPaths = consoleSkillPaths(config, repoRoot);
+  await provisionAgentDir(repoRoot, config.pi.agentDir, skillPaths);
   const agentDir = resolve(repoRoot, config.pi.agentDir);
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const sessionManager = await openIssueConsoleSession(
@@ -131,9 +132,7 @@ export async function startConsole(input: {
         resourceLoaderOptions: {
           additionalExtensionPaths: [resolvePiSubagentsPackageRoot()],
           extensionFactories: [{ name: "patchmill", factory: host.factory }],
-          additionalSkillPaths: (["planning", "implementation"] as const).map(
-            (phase) => resolvePhaseSkill(config, repoRoot, phase).path,
-          ),
+          additionalSkillPaths: skillPaths,
         },
       });
       const created = await createAgentSessionFromServices({
