@@ -138,14 +138,15 @@ The first draft assumed the old engine's Run recovery state. The kernel has
 none. These points replace that state with derived facts. Each one changes or
 adds to an earlier answer, so the maintainer should confirm them one by one.
 
-| #   | Decision                                                                                                                                                                                                                                                                | Why                                                                                                                                      |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | Planning runs inside the Console session. This is an exception to the kernel rule that each phase is a fresh Pi session. Implementation stays a fresh `pi -p` session.                                                                                                  | Goal 2 needs one conversation. The kernel's reason for fresh sessions is that facts, not memory, decide the next step. That still holds. |
-| D2  | On restart, Patchmill reopens the Console session file so the conversation comes back. The kernel never reads it to decide anything.                                                                                                                                    | The kernel says session files are "outputs, never inputs". This reads that rule as "never decision inputs".                              |
-| D3  | A block's confirmed guidance is posted to the issue as a kernel comment before the worker continues. This replaces the first draft's call that console confirmations stay off the issue.                                                                                | Without saved state, the issue is the only place where the guidance survives a crash. The envelope already carries issue comments.       |
-| D4  | A blocked worker continues in its own Pi session, with the guidance as a follow-up prompt. If the process dies first, the next attempt starts a fresh session, and that session reads the guidance from the issue.                                                      | This keeps the worker's context while the process lives, and it needs no saved state when the process dies.                              |
-| D5  | In an interactive run, an open, ready implementation pull request that closes the issue is a wait, not a reason to start another implementation session. A non-interactive rerun keeps deriving `implementation` there, as it does now.                                 | Goal 6 needs a wait that a restart can see again. This fact comes from the host, so no state is needed.                                  |
-| D6  | An interactive Run attempt holds the issue lock and `in-progress` until the Issue run ends. Patchmill publishes the one kernel stop (label and comment) only then. A clean quit publishes the stop for the current facts, the same way a non-interactive attempt would. | The kernel posts exactly one comment per stop. Waits inside an interactive attempt are not stops.                                        |
+| #   | Decision                                                                                                                                                                                                                                                                | Why                                                                                                                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Planning runs inside the Console session. Implementation runs as a background `pi-subagents` worker with forked context, so it starts with the whole conversation. The Patchmill extension starts it, not the console agent. Non-interactive runs keep `pi -p`.         | Goal 2 needs one conversation, and goal 3 needs a free console. Facts, not memory, still decide the next step, so the kernel's reason for fresh sessions still holds. |
+| D2  | On restart, Patchmill reopens the Console session file so the conversation comes back. The kernel never reads it to decide anything.                                                                                                                                    | The kernel says session files are "outputs, never inputs". This reads that rule as "never decision inputs".                                                           |
+| D3  | A block's confirmed guidance is posted to the issue as a kernel comment before the worker continues. This replaces the first draft's call that console confirmations stay off the issue.                                                                                | Without saved state, the issue is the only place where the guidance survives a crash. The envelope already carries issue comments.                                    |
+| D4  | A blocked worker continues through `pi-subagents` `resume`, with the guidance as its message. If the process dies first, the next attempt starts a fresh worker, and that worker reads the guidance from the issue.                                                     | This keeps the worker's context while the process lives, and it needs no saved state when the process dies.                                                           |
+| D5  | In an interactive run, an open, ready implementation pull request that closes the issue is a wait, not a reason to start another implementation session. A non-interactive rerun keeps deriving `implementation` there, as it does now.                                 | Goal 6 needs a wait that a restart can see again. This fact comes from the host, so no state is needed.                                                               |
+| D6  | An interactive Run attempt holds the issue lock and `in-progress` until the Issue run ends. Patchmill publishes the one kernel stop (label and comment) only then. A clean quit publishes the stop for the current facts, the same way a non-interactive attempt would. | The kernel posts exactly one comment per stop. Waits inside an interactive attempt are not stops.                                                                     |
+| D7  | The worker never outlives the console. On a clean exit, the extension stops it with `pi-subagents` `stop`. After a hard kill, the restart stops any worker still running in the reopened Console session, and waits for it to exit, before it derives a phase.          | `pi-subagents` background runs keep going when the launching process dies. Without this rule, two workers could write to one worktree.                                |
 
 ## How the kernel shapes this design
 
@@ -198,13 +199,16 @@ things to the console instead of handling them itself:
 
 1. **Planning sessions.** The envelope goes to the Console session instead of a
    `pi -p` child.
-2. **Stops that wait for a human.** The workflow waits in the process instead of
+2. **Implementation sessions.** The envelope goes to a `pi-subagents` worker
+   instead of a `pi -p` child.
+3. **Stops that wait for a human.** The workflow waits in the process instead of
    publishing the stop and returning.
 
-Everything else stays shared: facts, phase rules, the envelope, skills,
-verification, labels, and the final comment. The existing `output` dependency
-already carries every line the workflow prints, so the console sends it to the
-chat or a status widget instead of the terminal.
+Everything else stays shared: facts, phase rules, the envelope, skills, result
+parsing, verification, the time limit, labels, and the final comment. Only the
+launcher differs. The existing `output` dependency already carries every line
+the workflow prints, so the console sends it to the chat or a status widget
+instead of the terminal.
 
 ### Patchmill tools in the console
 
@@ -289,10 +293,31 @@ head branch, not a commit.
 
 ### Implementation in the background
 
-Patchmill runs `implementation` as it does now: a fresh `pi -p` child under
-`supervisePi`, with the `patchmill-implementation` skill, its own session
-directory under the run directory, and the `pi.timeoutMinutes` limit. The
-console agent does not run it, so it is free to answer.
+In an interactive run, the Patchmill extension starts `implementation` through
+the `pi-subagents` in-process RPC (`subagents:rpc:v1:request`) with `spawn`
+(D1):
+
+- The task is the same envelope, with the `patchmill-implementation` skill.
+- The context is `fork`, so the worker starts with the Console session's
+  conversation, including the spec and plan discussion. The envelope and the
+  spec and plan files still define the work.
+- The working directory is the issue worktree. The time limit is
+  `pi.timeoutMinutes`.
+- Patchmill waits for the run's completion event, reads the worker's final
+  output with `parseAgentResult`, and checks it with `verifyOutcome`, as it does
+  for `pi -p`.
+
+The console agent never calls the `subagent` tool to start a phase. That would
+let the agent pick the next step. It may still use subagents for its own
+research or review, like any coding agent. The worker runs in the background, so
+the console agent is free to answer.
+
+The implementation skill may start its own reviewer subagent. `pi-subagents`
+allows two levels by default (console, worker, worker's child), so that fits.
+The worker's agent definition must list `subagent` among its tools.
+
+Non-interactive runs keep the `pi -p` child under `supervisePi`. They have no
+parent Pi session to start a subagent from.
 
 Patchmill reports progress to the chat: phase starts, phase completion with
 usage, pull request links, and the outcome. These are the lines that
@@ -304,10 +329,10 @@ terminal output, because Pi owns the terminal.
 
 The status tool returns one snapshot of the current Issue run, built in memory
 by the running workflow: issue, derived facts (branch, worktree, spec, plan,
-pull request, stage), current phase, session number, elapsed time, usage and
-cost so far from `sumSessionUsage`, and the paths of the run directory,
-`pi.log`, and the active worker's session directory. It is read-only. The agent
-can also read files and logs and run commands, like any coding agent.
+pull request, stage), current phase, session number, elapsed time, the worker's
+`pi-subagents` run ID and state, usage and cost so far, and the paths of the run
+directory and the worker's session file. It is read-only. The agent can also
+read files and logs and run commands, like any coding agent.
 
 _My call, following the issue's recommendation:_ the extension gets this
 information through one in-process interface that returns a snapshot and a
@@ -315,9 +340,9 @@ stream of run events. It does not read run directories on its own. The interface
 keeps nothing on disk, so it is not workflow state. A later web view or reattach
 feature can use the same interface.
 
-The snapshot has no task number or subagent list. The kernel tracks neither. If
-the maintainer asks, the agent can read the worker's session log, and
-`pi-subagents` offers its own fleet view.
+The snapshot has no task number. The kernel does not track tasks. For more
+detail, the agent can read the worker's transcript and children through the
+`pi-subagents` `status` RPC, and the maintainer can open its fleet view.
 
 ### Stops that need a human
 
@@ -355,9 +380,9 @@ In an interactive run (slice 2):
 3. The agent states what it understood and the guidance it will pass on. The
    maintainer confirms through the guidance tool. This counts as approval.
 4. Patchmill posts the confirmed guidance to the issue as a kernel comment (D3).
-5. Patchmill continues the same phase in the same worker Pi session, with the
-   guidance as a follow-up prompt (D4). It verifies that session's result in the
-   usual way.
+5. Patchmill continues the same phase in the same worker session through
+   `pi-subagents` `resume`, with the guidance as the message (D4). It verifies
+   the worker's new result in the usual way.
 
 If the process dies before step 4, nothing about the block was saved. The next
 attempt derives `implementation` again, and the fresh worker may ask again.
@@ -367,9 +392,24 @@ envelope.
 
 ### Crash, kill, and resume
 
-Killing the console ends the process and its child Pi processes, as with a
-non-interactive run. The operating system releases the issue lock. The issue
-keeps `in-progress`, because no stop was published.
+The worker must not outlive the console (D7). `pi-subagents` runs a background
+worker in a detached runner, and that runner keeps working if the console dies.
+`pi-subagents` can stop it, and its stop requests go through files, so they work
+from a new process too. Patchmill uses that in two places:
+
+- **Clean exit.** On `session_shutdown`, the extension calls `stop` for its
+  worker and waits until the run reports that its process has exited.
+- **Hard kill or crash.** No handler runs, so the worker may still be running.
+  On restart, after Patchmill reopens the Console session and before it derives
+  a phase, it asks `pi-subagents` `status` for workers that the extension
+  started in that session. It stops each one and waits for its exit. Only then
+  does the new attempt start a fresh worker.
+
+This check reads `pi-subagents` run state only to find and stop a stray process.
+It never decides a phase, so it is not workflow state.
+
+The operating system releases the issue lock when the console process dies. The
+issue keeps `in-progress`, because no stop was published.
 
 Running the same command again resumes the Issue run in a new Run attempt. The
 kernel already selects `in-progress` issues and derives the phase from what
@@ -427,12 +467,12 @@ still stops.
 | 1   | Foreground only, or does the run continue after the console exits?          | Foreground only. The run stops with the console.                                                                                                                                                                   |
 | 2   | Attach from a second terminal or after a restart?                           | No second terminal. After a crash or kill, the same command resumes.                                                                                                                                               |
 | 3   | Is the conversational agent the orchestrator, or a separate operator agent? | Patchmill orchestrates. The console agent runs planning in conversation, supervises the background phases, and calls Patchmill tools to start a run or go on after a merge. Patchmill derives what each call does. |
-| 4   | One Pi session for the whole run, or one per stage?                         | One Console session for planning and for the conversation, across the Issue run and later Issue runs started from it. Implementation keeps its own fresh Pi sessions, as now.                                      |
-| 5   | Which interventions are allowed while a stage is active?                    | First version: questions, investigation, and answers to blocks. Steering a busy worker is a later feature.                                                                                                         |
+| 4   | One Pi session for the whole run, or one per stage?                         | One Console session for planning and for the conversation, across the Issue run and later Issue runs started from it. Each implementation worker forks it. Non-interactive runs keep fresh sessions, as now.       |
+| 5   | Which interventions are allowed while a stage is active?                    | First version: questions, investigation, and answers to blocks. Steering a busy worker is a later feature. `pi-subagents` `steer` makes it cheap to add.                                                           |
 | 6   | Which operations need explicit confirmation?                                | Accepting a planning result, confirming guidance for a block, and starting another Issue run from the chat. Going on after a merge needs only the maintainer's word, because Patchmill checks the merge.           |
-| 7   | Live steering of subagents, or resuming finished ones?                      | Bonus. `pi-subagents` already provides its own controls. The kernel does not observe subagents.                                                                                                                    |
+| 7   | Live steering of subagents, or resuming finished ones?                      | Bonus. `pi-subagents` already provides its own controls. Patchmill uses `resume` only to continue a blocked worker.                                                                                                |
 | 8   | How does the UI name a subagent?                                            | Not Patchmill's concern. `pi-subagents` names them.                                                                                                                                                                |
-| 9   | How to avoid double-counting live cost?                                     | Left to the builder. Reuse `sumSessionUsage` in `src/kernel/pi-cost.ts`.                                                                                                                                           |
+| 9   | How to avoid double-counting live cost?                                     | Left to the builder. Reuse `sumSessionUsage` in `src/kernel/pi-cost.ts` on the session files that the `pi-subagents` `cost` RPC names.                                                                             |
 | 10  | Label live cost as estimated until settled?                                 | _My call:_ yes.                                                                                                                                                                                                    |
 | 11  | What is authoritative after reconnect?                                      | Git and the host, through the derived facts. The Console session file holds only the conversation.                                                                                                                 |
 | 12  | Pi-based console or Patchmill-owned TUI?                                    | Pi-based console.                                                                                                                                                                                                  |
@@ -443,10 +483,15 @@ still stops.
   exports `InteractiveMode` and `createAgentSessionRuntime`. Extensions can
   register tools and commands, set widgets and status, and send messages into
   the session, including follow-up messages delivered when the agent is idle.
-- Background phases run Pi through `supervisePi` in
+- Non-interactive phases run Pi through `supervisePi` in
   `src/kernel/pi-supervisor.ts`, in print mode with `--session-dir`. The result
   comes from `parseAgentResult` in `src/kernel/result.ts`. RPC mode (#305) would
   change only supervision and does not affect this design.
+- `pi-subagents` 0.80.0 is the pinned version. Its in-process RPC offers `spawn`
+  (background only, with `fresh` or `fork` context), `steer`, `resume`, `stop`,
+  `status`, and `cost`, and sends a completion event. `stop` and `resume` act on
+  runs of the current session, which is why the restart reopens the same Console
+  session first.
 - The envelope is one template file under 150 lines. Interactive changes to it
   must stay within that limit.
 - Planning gates are configured under `workflow.specApproval` and
@@ -456,8 +501,11 @@ still stops.
 
 ## Left to the builder
 
-- How the workflow and the chat share one process and one event loop, and how
-  child Pi processes are stopped when the console exits.
+- How the workflow and the chat share one process and one event loop.
+- How the extension tags its workers so that the restart check finds only
+  Patchmill's workers, and how long it waits for one to exit.
+- Where the worker's session file and transcript are copied or linked under the
+  run directory, so the run directory stays the one place to look.
 - The exact shape of the human channel dependency on `runOneIssue`.
 - The exact names and shapes of the extension tools, the run snapshot, and run
   events.
@@ -508,11 +556,16 @@ fake human channel. Do not test the TUI rendering itself.
   attempt would publish for those facts.
 - After a kill during a gate wait or the implementation wait, the same command
   waits again without starting a Pi session, and reopens the Console session.
-- After a kill during implementation, the same command derives `implementation`
-  and starts a fresh worker session. No state file is read.
+- After a kill during implementation, the same command stops the stray worker,
+  waits for it to exit, then derives `implementation` and starts a fresh worker.
+  No Patchmill state file is read.
+- A clean quit while a worker runs stops the worker before the process exits.
+- An interactive implementation phase starts its worker through a fake
+  `pi-subagents` RPC with forked context, and its result goes through the same
+  parsing and verification as a `pi -p` result.
 - Slice 2: a `needs-input` implementation result does not post a stop or end the
-  Run attempt. Confirmed guidance is posted to the issue, reaches the same
-  worker session, and the phase continues.
+  Run attempt. Confirmed guidance is posted to the issue and reaches the same
+  worker through `resume`, and the phase continues.
 - Slice 3: after an Issue run ends, a start call runs a second issue in the same
   console session.
 - The existing kernel test suite passes unchanged. In particular, a
