@@ -169,3 +169,30 @@ test("a rejected stop still succeeds if the worker has left", async (t) => {
     { ok: true, stopped: ["gone"] },
   );
 });
+
+test("default polling waits 500 ms before checking an active worker again", async (t) => {
+  const checks: number[] = [];
+  const bus = fakeSubagents({
+    status: () => {
+      checks.push(performance.now());
+      return {
+        asyncSnapshot: { runs: checks.length === 1 ? [worker("run-1")] : [] },
+      };
+    },
+  });
+  const client = new SubagentsClient(bus);
+  t.after(() => client.dispose());
+  assert.deepEqual(
+    await stopWorkers(client, { ids: ["run-1"], waitMs: 1_000 }),
+    {
+      ok: true,
+      stopped: ["run-1"],
+    },
+  );
+  assert.equal(checks.length, 2);
+  // Allow scheduling/clock precision tolerance without accepting a 250 ms poll.
+  assert.ok(
+    checks[1] - checks[0] >= 450,
+    "default poll must wait about 500 ms",
+  );
+});

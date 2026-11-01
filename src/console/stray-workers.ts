@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { SubagentsClient } from "./subagents-client.ts";
 
 export const STOP_WAIT_MS = 60_000;
+export const STOP_POLL_MS = 500;
 export type StopResult =
   | { ok: true; stopped: string[] }
   | { ok: false; stuck: string[] };
@@ -31,6 +32,6 @@ export async function stopWorkers(
     if (stuck.length === 0) return { ok: true, stopped: ids };
     const remaining = deadline - Date.now();
     if (remaining <= 0) return { ok: false, stuck };
-    await delay(Math.min(options?.pollMs ?? 250, remaining));
+    await delay(Math.min(options?.pollMs ?? STOP_POLL_MS, remaining));
   }
 }
