@@ -10,6 +10,7 @@ import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { costLine } from "../kernel/pi-cost.ts";
 import type { WorkerLauncher } from "./worker-launcher.ts";
+import { recordPlanningUsage, type ConsoleSession } from "./planning-usage.ts";
 
 export type StartRun = (
   issue: number | undefined,
@@ -24,6 +25,7 @@ export type ConsoleStatus = {
 };
 type Dependencies = {
   pi: Pick<ExtensionAPI, "sendUserMessage" | "sendMessage">;
+  session?: ConsoleSession;
   workers: WorkerLauncher;
   startRun: StartRun;
 };
@@ -94,15 +96,20 @@ export class ConsoleController implements HumanChannel {
 
   runPlanning(launch: PhaseLaunch, feedback?: string): Promise<PhaseRun> {
     if (this.closing) return Promise.resolve(aborted);
-    return new Promise((resolve) => {
-      this.planning = resolve;
-      this.deps.pi.sendUserMessage(
-        feedback === undefined
-          ? launch.envelope
-          : `Patchmill could not accept the planning result:\n\n${feedback}\n\nFix it and submit again.`,
-        { deliverAs: "followUp" },
-      );
-    });
+    return recordPlanningUsage(
+      this.deps.session,
+      launch.sessionDir,
+      () =>
+        new Promise((resolve) => {
+          this.planning = resolve;
+          this.deps.pi.sendUserMessage(
+            feedback === undefined
+              ? launch.envelope
+              : `Patchmill could not accept the planning result:\n\n${feedback}\n\nFix it and submit again.`,
+            { deliverAs: "followUp" },
+          );
+        }),
+    );
   }
 
   async submitPlanning(result: AgentResult): Promise<string> {

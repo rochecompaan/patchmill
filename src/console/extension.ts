@@ -23,11 +23,12 @@ export function createPatchmillExtension(options: {
     const startIssueRun = async (issue?: number) =>
       startBlocked ?? getController().startIssueRun(issue);
     registerConsoleTools(pi, getController, startIssueRun);
-    pi.on("session_start", async () => {
+    pi.on("session_start", async (_event, ctx) => {
       if (controller) return;
       client = options.client?.(pi.events) ?? new SubagentsClient(pi.events);
       controller = new ConsoleController({
         pi,
+        session: ctx.sessionManager,
         workers: createWorkerLauncher(client),
         startRun: options.startRun,
       });

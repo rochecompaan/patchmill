@@ -3,11 +3,16 @@ import type {
   ExtensionToolContext,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fakeSubagents } from "./fake-subagents.ts";
 
 export function fakeExtensionApi(events = fakeSubagents()) {
   const tools = new Map<string, ToolDefinition>();
-  const handlers = new Map<string, (() => Promise<void>)[]>();
+  type Handler = (
+    event: unknown,
+    ctx: { sessionManager: SessionManager },
+  ) => Promise<void>;
+  const handlers = new Map<string, Handler[]>();
   const userMessages: { text: unknown; options: unknown }[] = [];
   const messages: {
     message: { content: string; customType: string; display: boolean };
@@ -19,7 +24,7 @@ export function fakeExtensionApi(events = fakeSubagents()) {
     registerTool(tool: ToolDefinition) {
       tools.set(tool.name, tool);
     },
-    on(event: string, handler: () => Promise<void>) {
+    on(event: string, handler: Handler) {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       return () => {};
     },
@@ -39,7 +44,8 @@ export function fakeExtensionApi(events = fakeSubagents()) {
     messages,
     confirmations,
     async fire(event: "session_start" | "session_shutdown") {
-      for (const handler of handlers.get(event) ?? []) await handler();
+      for (const handler of handlers.get(event) ?? [])
+        await handler({}, { sessionManager: SessionManager.inMemory() });
     },
     async callTool(name: string, params: unknown, options = { confirm: true }) {
       const tool = tools.get(name);
