@@ -25,6 +25,7 @@ type Options = {
   repoRoot?: string;
   runOneIssue?: typeof runOneIssue;
   startConsole?: typeof startConsole;
+  exit?: (code: number) => void;
 };
 
 function parseArgs(args: string[]): RunOnceOptions & { interactive?: boolean } {
@@ -94,11 +95,22 @@ export async function main(
         );
         return 0;
       }
-      return await (options.startConsole ?? startConsole)({
+      const code = await (options.startConsole ?? startConsole)({
         config,
         deps,
         issue,
       });
+      // Pi's normal quit also exits after awaited cleanup. A stopped console
+      // can retain Pi-owned handles (for example custom-theme file watchers).
+      // Flush queued terminal output before exiting, especially the error hint.
+      await Promise.all(
+        [process.stdout, process.stderr].map(
+          (stream) =>
+            new Promise<void>((resolve) => stream.write("", () => resolve())),
+        ),
+      );
+      (options.exit ?? process.exit)(code);
+      return code;
     }
     process.on("SIGINT", abort);
     process.on("SIGTERM", abort);

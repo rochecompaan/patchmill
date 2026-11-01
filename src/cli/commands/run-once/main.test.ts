@@ -23,6 +23,7 @@ async function harness(t: TestContext) {
     stderr,
     options: {
       repoRoot: root,
+      exit: (_code: number) => {},
       output: {
         stdout: (line: string) => stdout.push(line),
         stderr: (line: string) => stderr.push(line),
@@ -285,3 +286,26 @@ test("--interactive hands the issue and real dependencies to the console", async
   );
   assert.equal(entered, true);
 });
+
+for (const code of [0, 1]) {
+  test(`interactive completion exits ${code} only after console cleanup`, async (t) => {
+    const f = await harness(t);
+    const events: string[] = [];
+    assert.equal(
+      await main(["--interactive", "--issue", "9"], {
+        ...f.options,
+        startConsole: async () => {
+          events.push("start");
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          events.push("cleanup complete");
+          return code;
+        },
+        exit: (status) => {
+          events.push(`exit ${status}`);
+        },
+      }),
+      code,
+    );
+    assert.deepEqual(events, ["start", "cleanup complete", `exit ${code}`]);
+  });
+}
