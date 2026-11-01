@@ -392,3 +392,57 @@ test("an active worker past the stop wait remains unresolved", async (t) => {
   await assert.rejects(f.launcher.stopActive(), /run-1.*stop wait/);
   assert.equal(f.launcher.active()?.id, "run-1");
 });
+
+for (const recovery of ["launch", "shutdown"] as const) {
+  test(`completion during deadline cleanup retains proof for later ${recovery}`, async (t) => {
+    const f = await fixture(t);
+    let rejectStatus!: (error: Error) => void;
+    const status = f.client.activeWorkers.bind(f.client);
+    f.client.activeWorkers = () =>
+      new Promise((_, reject) => {
+        rejectStatus = reject;
+      });
+    let settled = false;
+    const pending = f.launcher
+      .run({ ...f.launch, timeoutMs: 10 })
+      .then((run) => {
+        settled = true;
+        return run;
+      });
+    await waitUntil(() => rejectStatus !== undefined);
+    f.bus.complete("run-1", { results: [{ output: text }] });
+    // Let completion processing reach finalization while proof is still pending.
+    await delay(20);
+    assert.equal(settled, false, "phase must await outstanding cleanup");
+    rejectStatus(new Error("late status rejection"));
+    assert.equal((await pending).session.timedOut, true);
+    assert.deepEqual(f.launcher.active(), { id: "run-1", state: "unresolved" });
+    f.client.activeWorkers = status;
+    const boundary = f.bus.requests.length;
+    if (recovery === "launch") {
+      const next = f.launcher.run(f.launch);
+      await waitUntil(() => f.launcher.active()?.id === "run-2");
+      assert.deepEqual(
+        f.bus.requests.slice(boundary).map((r) => [r.method, r.params?.id]),
+        [
+          ["stop", "run-1"],
+          ["status", undefined],
+          ["spawn", undefined],
+        ],
+      );
+      f.bus.complete("run-2", { results: [{ output: text }] });
+      assert.equal((await next).result.ok, true);
+      await f.launcher.stopActive();
+    } else {
+      await f.launcher.stopActive();
+      assert.deepEqual(
+        f.bus.requests.slice(boundary).map((r) => [r.method, r.params?.id]),
+        [
+          ["stop", "run-1"],
+          ["status", undefined],
+        ],
+      );
+    }
+    assert.equal(f.launcher.active(), undefined);
+  });
+}

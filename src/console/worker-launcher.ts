@@ -23,10 +23,31 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
     result: { ok: false, reason: "Console shut down." },
     session: { exitCode: null, timedOut: false, aborted: true },
   });
+  async function proveExit(id: string) {
+    if (active?.id === id) active.state = "stopping";
+    try {
+      const stopped = await stopWorkers(client, { ids: [id] });
+      if (!stopped.ok) throw new Error("did not stop within the stop wait");
+      unresolved.delete(id);
+      if (active?.id === id) active = undefined;
+    } catch (error) {
+      const failure = new SubagentsRpcError(
+        "stop_failed",
+        `Worker ${id} exit is unproven: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      unresolved.set(id, failure);
+      if (active?.id === id) active.state = "unresolved";
+      throw failure;
+    }
+  }
+  async function retryUnresolved() {
+    for (const id of unresolved.keys()) await proveExit(id);
+  }
   async function stopActive() {
     closing = true;
+    // Retried proof uses retained IDs, independent of an execution's callback.
+    await (stop ? stop() : retryUnresolved()).catch(() => {});
     // A late launch records its cleanup failure while pending settles aborted.
-    await stop?.().catch(() => {});
     await Promise.all(pending);
     if (unresolved.size) throw unresolved.values().next().value;
   }
@@ -46,9 +67,10 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
     const cancellation = new AbortController();
     let deadline: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
+    let stopping: Promise<void> | undefined;
     try {
       // Retry proof before any new spawn/resume, never overlap an unproven worker.
-      if (unresolved.size) await stop?.();
+      await retryUnresolved();
       if (closing) return aborted();
       await mkdir(launch.sessionDir, { recursive: true });
       // Resume inherits a suffixed upstream output path. Never parse an old output.md.
@@ -72,28 +94,9 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       }
       previousId = id;
       active = { id, state: "running" };
-      let stopping: Promise<void> | undefined;
-      const proveExit = async () => {
-        if (active?.id === id) active.state = "stopping";
-        try {
-          const stopped = await stopWorkers(client, { ids: [id] });
-          if (!stopped.ok) throw new Error("did not stop within the stop wait");
-          unresolved.delete(id);
-          if (active?.id === id) active = undefined;
-        } catch (error) {
-          const failure = new SubagentsRpcError(
-            "stop_failed",
-            `Worker ${id} exit is unproven: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          unresolved.set(id, failure);
-          if (active?.id === id) active.state = "unresolved";
-          throw failure;
-        } finally {
-          cancellation.abort();
-        }
-      };
       stop = () =>
-        (stopping ??= proveExit().finally(() => {
+        (stopping ??= proveExit(id).finally(() => {
+          cancellation.abort();
           stopping = undefined;
         }));
       if (closing) {
@@ -154,10 +157,11 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
     } finally {
       clearTimeout(deadline);
       if (onAbort) launch.signal?.removeEventListener("abort", onAbort);
-      if (unresolved.size === 0) {
-        active = undefined;
-        stop = undefined;
-      }
+      // Completion can arrive before status proof. Settle that proof before
+      // discarding execution-local state, retaining failed IDs for later retry.
+      await stopping?.catch(() => {});
+      if (unresolved.size === 0) active = undefined;
+      stop = undefined;
     }
   }
   return {
