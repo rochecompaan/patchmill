@@ -1,5 +1,17 @@
+import fs from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { trustedAuthors, type PatchmillConfig } from "../config/config.ts";
+import type { Issue } from "../host/types.ts";
+import type { RunOnceDeps } from "./run-once.ts";
+import type { Phase } from "./phase.ts";
+import { renderRunEnvelope } from "./envelope.ts";
 import type { HumanChannel } from "./human-channel.ts";
-import type { PhaseLaunch, PhaseLauncher, PhaseRun } from "./launch.ts";
+import {
+  printModeLauncher,
+  type PhaseLaunch,
+  type PhaseLauncher,
+  type PhaseRun,
+} from "./launch.ts";
 import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
 import { planningGateComment } from "./comments.ts";
@@ -7,7 +19,9 @@ import { planningGateComment } from "./comments.ts";
 export async function continueGate(
   facts: Facts,
   human?: HumanChannel,
+  onWait?: () => void,
 ): Promise<boolean> {
+  if (human) onWait?.();
   return (
     !!human &&
     (await human.awaitContinue({
@@ -69,4 +83,37 @@ export function derivedStop(
     summary = `The planning pull request would close issue #${issue}. Replace its closing reference with Refs #${issue} before merging it.`;
   }
   return { label, summary };
+}
+
+/** Prepare the on-disk prompt shared by interactive and print launchers. */
+export async function preparePhasePrompt(
+  config: PatchmillConfig,
+  deps: Pick<RunOnceDeps, "host" | "repoRoot" | "piCommand" | "extensionPaths">,
+  runDir: string,
+  issue: Issue,
+  phase: Phase,
+  facts: Facts,
+) {
+  const { host, repoRoot } = deps;
+  const skill = {
+    name: phase,
+    path: resolve(repoRoot, config.skills[phase]),
+  };
+  const promptPath = join(runDir, "prompt.md");
+  const envelope = renderRunEnvelope({
+    repository: await host.repository(),
+    issue,
+    phase,
+    facts,
+    skill,
+    timeoutMinutes: config.pi.timeoutMinutes,
+    trusted: trustedAuthors(config, (await host.checkCli()).login),
+  });
+  await fs.writeFile(promptPath, envelope);
+  const launcher = printModeLauncher({
+    command: deps.piCommand,
+    agentDir: resolve(repoRoot, config.pi.agentDir),
+    extensionPaths: deps.extensionPaths,
+  });
+  return { skill, envelope, promptPath, launcher };
 }

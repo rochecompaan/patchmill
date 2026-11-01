@@ -1,10 +1,6 @@
 import fs from "node:fs/promises";
 import { resolve, join } from "node:path";
-import {
-  trustedAuthors,
-  type PatchmillConfig,
-  type LabelsConfig,
-} from "../config/config.ts";
+import { type PatchmillConfig, type LabelsConfig } from "../config/config.ts";
 import type { Host, Issue } from "../host/types.ts";
 import type { CommandRunner } from "../process/command.ts";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
@@ -13,10 +9,9 @@ import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
 import { claimSwap } from "./labels.ts";
-import { renderRunEnvelope } from "./envelope.ts";
-import { printModeLauncher } from "./launch.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
+  preparePhasePrompt,
   launchPhase,
   planningFeedback,
   continueGate,
@@ -32,6 +27,7 @@ import {
 } from "./console.ts";
 import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
+import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { newRunId } from "./names.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
@@ -44,6 +40,7 @@ export type RunOnceOptions = {
 };
 export type RunOnceDeps = {
   human?: HumanChannel;
+  observe?: (snapshot: RunSnapshot) => void;
   host: Host;
   runner: CommandRunner;
   git: KernelGit;
@@ -160,6 +157,10 @@ export async function runOneIssue(
   const runId = newRunId(started);
   const startedAt = started.toISOString();
   const runDir = join(issueDir, runId);
+  const snapshot = runSnapshot(
+    { issue: issueNumber, runId, runDir, startedAt },
+    deps.observe,
+  );
   const sessions: {
     phase: Phase;
     exitCode: number | null;
@@ -187,6 +188,7 @@ export async function runOneIssue(
     );
   };
   const review = async (facts: Facts, restart: boolean) => {
+    snapshot.wait("review-wait");
     await reviewWait({
       facts,
       issue: issueNumber,
@@ -199,6 +201,7 @@ export async function runOneIssue(
       update: (facts, nextLabel, nextSummary) => {
         published = true;
         displayFacts = facts;
+        snapshot.facts(facts);
         label = nextLabel;
         summary = nextSummary;
       },
@@ -220,6 +223,7 @@ export async function runOneIssue(
       let sinceHuman = 0;
       let feedback: string | undefined;
       while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
+        snapshot.deriving();
         issue = await host.viewIssue(issueNumber);
         const before = await provisionWorkspace({ ...deps, config }, issue);
         if (before.kind === "ambiguous-branches") {
@@ -228,6 +232,7 @@ export async function runOneIssue(
         }
         const facts = before.facts;
         displayFacts = facts;
+        snapshot.facts(facts);
         const decision =
           feedback === undefined
             ? derivePhase(facts)
@@ -241,7 +246,9 @@ export async function runOneIssue(
           ));
           if (
             label === "inProgress" &&
-            (await continueGate(facts, deps.human))
+            (await continueGate(facts, deps.human, () =>
+              snapshot.wait("gate-wait"),
+            ))
           ) {
             sinceHuman = 0;
             continue;
@@ -261,31 +268,14 @@ export async function runOneIssue(
           summary = "planning complete";
           break;
         }
-        const skill = {
-          name: phase,
-          path: resolve(repoRoot, config.skills[phase]),
-        };
-        const promptPath = join(runDir, "prompt.md");
-        const envelope = renderRunEnvelope({
-          repository: await host.repository(),
-          issue,
-          phase,
-          facts,
-          skill,
-          timeoutMinutes: config.pi.timeoutMinutes,
-          trusted: trustedAuthors(config, (await host.checkCli()).login),
-        });
-        await fs.writeFile(promptPath, envelope);
+        const { skill, envelope, promptPath, launcher } =
+          await preparePhasePrompt(config, deps, runDir, issue, phase, facts);
         sessionNumber++;
         sinceHuman++;
+        snapshot.phase(phase, sessionNumber);
         const sessionDir = join(runDir, "sessions", String(sessionNumber));
         const logPath = join(runDir, `session-${sessionNumber}.log`);
         output.stderr(formatPhaseStart(phase, sessionNumber));
-        const launcher = printModeLauncher({
-          command: deps.piCommand,
-          agentDir: resolve(repoRoot, config.pi.agentDir),
-          extensionPaths: deps.extensionPaths,
-        });
         const run = await launchPhase(
           {
             phase,
@@ -321,6 +311,7 @@ export async function runOneIssue(
           timedOut: session.timedOut,
           status: result.ok ? result.result.status : "invalid",
         });
+        await snapshot.session();
         issue = await host.viewIssue(issueNumber);
         const after = await collect(issue, facts);
         if (after.kind === "ambiguous-branches") {
@@ -328,6 +319,7 @@ export async function runOneIssue(
           break;
         }
         displayFacts = after.facts;
+        snapshot.facts(after.facts);
         const verified = verifyOutcome({
           issue: issueNumber,
           repository: await host.repository(),
@@ -354,7 +346,9 @@ export async function runOneIssue(
           }
           if (
             label === "inProgress" &&
-            (await continueGate(after.facts, deps.human))
+            (await continueGate(after.facts, deps.human, () =>
+              snapshot.wait("gate-wait"),
+            ))
           ) {
             sinceHuman = 0;
             continue;
@@ -434,6 +428,7 @@ export async function runOneIssue(
         elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
       }),
     );
+    snapshot.ended(summary);
     return outcome;
   } finally {
     await lock.release();
