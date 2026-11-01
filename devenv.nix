@@ -1,7 +1,13 @@
-{ pkgs, ... }:
+{ pkgs, config, ... }:
 
 let
-  patchmill = pkgs.callPackage ./nix/package.nix { };
+  # Run this checkout's CLI instead of the Nix package. Building the package
+  # copies the repo and runs `npm test`, so every edit (including agent
+  # worktrees) rebuilt it on each shell entry. `nix build .#patchmill` still
+  # builds the package.
+  patchmill = pkgs.writeShellScriptBin "patchmill" ''
+    exec ${pkgs.nodejs_24}/bin/node "${config.devenv.root}/bin/patchmill.ts" "$@"
+  '';
 in
 {
   env.GREET = "Patchmill";
