@@ -91,11 +91,22 @@ export function createKernelGit(
   return {
     async pushPlanningHead(worktree, branch) {
       // No force: an existing remote head must never be overwritten.
-      if (
-        (await git(["branch", "--show-current"], undefined, worktree)) !==
-        branch
-      )
+      const local = `refs/heads/${branch}`;
+      const existing = await git(
+        ["show-ref", "--verify", "--quiet", local],
+        1,
+        worktree,
+      );
+      if (existing === undefined) {
         await git(["branch", branch, "HEAD"], undefined, worktree);
+      } else if (
+        (await git(["rev-parse", local], undefined, worktree)) !==
+        (await git(["rev-parse", "HEAD"], undefined, worktree))
+      ) {
+        throw new Error(
+          `Local implementation branch ${branch} conflicts with the approved head; reconcile it before submitting again.`,
+        );
+      }
       await git(
         ["push", "origin", `refs/heads/${branch}:refs/heads/${branch}`],
         undefined,

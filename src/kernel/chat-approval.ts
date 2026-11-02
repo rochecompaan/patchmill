@@ -38,10 +38,23 @@ export async function verifyPlanningApproval(
         : "Commit and push the approved planning documents before submitting again.",
       warnings: [],
     };
-  if (input.facts.stage !== "implementation")
-    await git.pushPlanningHead(
-      input.facts.worktree,
-      laterGate ? input.facts.branch : branchName(issue.number, issue.title),
-    );
+  if (input.facts.stage !== "implementation") {
+    try {
+      await git.pushPlanningHead(
+        input.facts.worktree,
+        laterGate ? input.facts.branch : branchName(issue.number, issue.title),
+      );
+    } catch (error) {
+      const reason = (error instanceof Error ? error.message : String(error))
+        .replace(/\s+/g, " ")
+        .trim();
+      return {
+        kind: "stop" as const,
+        label: "needsInfo" as const,
+        comment: `Could not publish the approved planning head: ${reason}`,
+        warnings: [],
+      };
+    }
+  }
   return verified;
 }

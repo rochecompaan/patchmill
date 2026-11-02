@@ -280,7 +280,10 @@ session instead of in a `pi -p` process (D1):
    documents: declining, quitting, and restarting returns to the same gate with
    the unpushed local document available for revision. Approved documents travel
    in the implementation PR, just like ungated documents. No saved approval
-   state decides a phase, even on restart.
+   state decides a phase, even on restart. A branch-creation or push failure
+   returns a one-line reason to the planning conversation, not a stop. Retrying
+   may reuse an existing local implementation branch only at exactly the
+   approved head. A conflicting head is refused without overwriting it.
 5. Choosing PR waits for its merge and the continue tool; choosing no PR moves
    straight to the next stage, without a gate comment or stop. An ungated stage
    keeps today's single review confirmation. _My call:_ once a gate was approved
