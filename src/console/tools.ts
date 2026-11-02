@@ -34,7 +34,14 @@ export function registerConsoleTools(
       const facts = await current.planningDialogFacts();
       if (!facts)
         return text("Patchmill is not waiting for a planning result.");
-      const dialog = renderPlanningDialog(facts, gate, params.highlights);
+      const dimension = (value: number | undefined, fallback: number) =>
+        typeof value === "number" && Number.isFinite(value) && value > 0
+          ? value
+          : fallback;
+      const dialog = renderPlanningDialog(facts, gate, params.highlights, {
+        columns: dimension(process.stdout.columns, 80),
+        rows: dimension(process.stdout.rows, 24),
+      });
       if (dialog.notification) ctx.ui.notify(dialog.notification, "info");
       const choice = await ctx.ui.select(dialog.title, dialog.options);
       if (

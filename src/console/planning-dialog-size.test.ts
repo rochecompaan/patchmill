@@ -83,3 +83,19 @@ test("bounds a long branch without losing the short commit", () => {
   assert.match(branchLine, /… @ 9064d2a$/);
   assert.ok(branchLine.length <= 78);
 });
+
+test("truncates prose at whole graphemes rather than inside joined emoji or accents", () => {
+  const emoji = "👩🏽‍💻";
+  const accent = "e\u0301";
+  const dialog = renderPlanningDialog(
+    { ...facts, issue: { number: 6, title: emoji.repeat(16) } },
+    gate,
+    [accent.repeat(37), "Second decision"],
+    { columns: 120, rows: 40 },
+  );
+  assert.equal(
+    dialog.title.split("\n")[0],
+    `Approve the spec for issue #6: ${emoji.repeat(14)}…?`,
+  );
+  assert.ok(dialog.title.includes(`  • ${accent.repeat(35)}…\n`));
+});

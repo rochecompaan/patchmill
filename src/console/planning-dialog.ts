@@ -17,12 +17,19 @@ export type PlanningDialogFacts = {
   earlierStage?: "spec" | "plan";
 };
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 function prose(value: string, limit: number): string {
   const normalized = stripTerminalSequences(value).replace(/\s+/g, " ").trim();
-  const chars = Array.from(normalized);
-  return chars.length > limit
-    ? `${chars.slice(0, limit - 1).join("")}…`
-    : normalized;
+  if (Array.from(normalized).length <= limit) return normalized;
+  let result = "";
+  let length = 0;
+  for (const { segment } of graphemes.segment(normalized)) {
+    length += Array.from(segment).length;
+    if (length >= limit) break;
+    result += segment;
+  }
+  return `${result}…`;
 }
 
 function fitLine(value: string, width: number): string {
@@ -35,8 +42,8 @@ export function renderPlanningDialog(
   highlights: string[],
   viewport = { columns: 80, rows: 24 },
 ): { title: string; options: string[]; notification?: string } {
-  // Pi's selector adds one column of padding on each side. Its select API
-  // exposes no viewport dimensions, so callers use the conservative 80×24 default.
+  // Pi's selector adds one column of padding on each side. The tool supplies
+  // the current terminal size; non-terminal callers can use the 80×24 default.
   const width = viewport.columns - 2;
   const subject = gate?.required
     ? facts.stage

@@ -280,3 +280,68 @@ test("planning tool schema rejects more than 72 characters per highlight", async
     false,
   );
 });
+
+for (const dimensions of [
+  { columns: 120, rows: 40, keepsPoints: true },
+  { columns: undefined, rows: undefined, keepsPoints: false },
+  { columns: 0, rows: -1, keepsPoints: false },
+  { columns: NaN, rows: Infinity, keepsPoints: false },
+])
+  test(`planning select uses terminal ${dimensions.columns}×${dimensions.rows} with safe fallbacks`, async (t) => {
+    const originals = ["columns", "rows"].map((key) =>
+      Object.getOwnPropertyDescriptor(process.stdout, key),
+    );
+    t.after(() => {
+      for (const [index, key] of ["columns", "rows"].entries()) {
+        const descriptor = originals[index];
+        if (descriptor) Object.defineProperty(process.stdout, key, descriptor);
+        else Reflect.deleteProperty(process.stdout, key);
+      }
+    });
+    Object.defineProperty(process.stdout, "columns", {
+      configurable: true,
+      value: dimensions.columns,
+    });
+    Object.defineProperty(process.stdout, "rows", {
+      configurable: true,
+      value: dimensions.rows,
+    });
+    const pi = fakeExtensionApi();
+    const controller = new ConsoleController({
+      pi,
+      startRun: async () => ({ status: "no-work" }),
+      workers: {} as never,
+    });
+    controller.planningGate = () => ({ required: true, pullRequest: false });
+    controller.planningDialogFacts = async () => ({
+      issue: review.issue,
+      stage: "plan",
+      earlierStage: "spec",
+      branch: review.branch,
+      commit: "9064d2a",
+      specPath: "docs/specs/2026-11-02-issue-6-persist-polls-locally-design.md",
+      planPath: "docs/plans/2026-11-02-issue-6-persist-polls-locally-plan.md",
+      mockupPath: "docs/mockups/2026-11-02-issue-6-persist-polls-locally.html",
+    });
+    registerConsoleTools(pi, () => controller);
+    await pi.callTool(
+      "patchmill_submit_planning_result",
+      {
+        status: "done",
+        summary: "The later plan is ready",
+        highlights: [
+          "First decision",
+          "Second decision",
+          "Third decision",
+          "Fourth decision",
+          "Fifth decision",
+        ],
+      },
+      { select: "Request changes" },
+    );
+    assert.equal(pi.selections.length, 1);
+    const title = pi.selections[0]!.title;
+    assert.equal(title.includes("• Fifth decision"), dimensions.keepsPoints);
+    assert.match(title, /^Approve the plan for issue #6:/);
+    assert.match(title, /A planning PR isn't offered/);
+  });
