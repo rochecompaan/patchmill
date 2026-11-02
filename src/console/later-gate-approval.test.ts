@@ -105,7 +105,7 @@ for (const approve of [false, true]) {
       "Request changes",
     ]);
     assert.match(
-      pi.selections[0]!.title,
+      pi.selections[0]!.title.replace(/\s+/g, " "),
       /A planning PR isn't offered: it would also carry the spec, which was approved without a PR/,
     );
   });

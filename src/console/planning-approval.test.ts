@@ -201,3 +201,82 @@ async function prepareWorktree(dir: string) {
     assert.equal((await runCommand("git", args, { cwd: dir })).code, 0);
   }
 }
+
+test("oversized mandatory paths are notified before the single question-only select", async () => {
+  const pi = fakeExtensionApi();
+  const controller = new ConsoleController({
+    pi,
+    startRun: async () => ({ status: "no-work" }),
+    workers: {} as never,
+  });
+  controller.planningDialogFacts = async () => ({
+    issue: review.issue,
+    stage: "spec",
+    branch: review.branch,
+    commit: "9064d2a",
+    specPath: `docs/specs/${"long-path/".repeat(250)}design.md`,
+  });
+  registerConsoleTools(pi, () => controller);
+  const events: string[] = [];
+  const result = await pi.tools
+    .get("patchmill_submit_planning_result")!
+    .execute(
+      "id",
+      {
+        status: "done",
+        summary: "Summary stays out of the UI",
+        highlights: ["First decision", "Second decision"],
+      },
+      undefined,
+      undefined,
+      {
+        ui: {
+          notify: (message: string) => {
+            events.push("notify");
+            assert.ok(message.includes("long-path/".repeat(250)));
+            assert.match(message, /• Second decision/);
+            assert.doesNotMatch(message, /Summary stays out/);
+          },
+          select: async (title: string, options: string[]) => {
+            events.push("select");
+            assert.equal(
+              title,
+              "Have you reviewed the spec for issue #6: Persist polls locally?",
+            );
+            assert.deepEqual(options, [
+              "Reviewed, continue",
+              "Request changes",
+            ]);
+            return "Request changes";
+          },
+        },
+      } as unknown as ExtensionToolContext,
+    );
+  assert.deepEqual(events, ["notify", "select"]);
+  assert.equal(
+    (result.content[0] as { text: string }).text,
+    "Not submitted. Ask the maintainer what to change.",
+  );
+});
+
+test("planning tool schema rejects more than 72 characters per highlight", async () => {
+  const { Check } = await import("typebox/value");
+  const pi = fakeExtensionApi();
+  registerConsoleTools(pi, () => {
+    throw new Error("Schema validation needs no controller");
+  });
+  const schema = pi.tools.get("patchmill_submit_planning_result")!.parameters;
+  const params = {
+    status: "done",
+    summary: "Result",
+    highlights: ["A".repeat(72), "Another decision"],
+  };
+  assert.equal(Check(schema, params), true);
+  assert.equal(
+    Check(schema, {
+      ...params,
+      highlights: ["A".repeat(73), "Another decision"],
+    }),
+    false,
+  );
+});

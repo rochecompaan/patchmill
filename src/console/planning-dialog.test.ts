@@ -48,7 +48,7 @@ test("later plan review explains why the earlier spec prevents a PR", () => {
   assert.match(dialog.title, /^Approve the plan for issue #6/);
   assert.match(dialog.title, / {2}Plan {5}docs\/plans\/polls.md/);
   assert.match(
-    dialog.title,
+    dialog.title.replace(/\s+/g, " "),
     /A planning PR isn't offered: it would also carry the spec, which was approved without a PR\.$/,
   );
   assert.deepEqual(dialog.options, [
