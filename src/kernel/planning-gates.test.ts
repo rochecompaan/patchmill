@@ -126,9 +126,10 @@ for (const head of [planBranch, branch]) {
       implement,
     ]);
     gates(c, true, head === planBranch);
+    await c.run();
+    // Create a stale later workspace while the first gate is still waiting.
     await c.seed({ [spec]: "old spec", [plan]: "old plan" }, head);
     await c.git(["reset", "--hard", "origin/main"], join(c.dir, "seed"));
-    await c.run();
     await merge(c, specBranch);
     await c.run();
     assert.equal(await count(c), 1, "a stale artifact must stop before Pi");

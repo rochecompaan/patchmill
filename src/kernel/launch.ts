@@ -5,6 +5,7 @@ import { parseAgentResult, type ParsedResult } from "./result.ts";
 
 export type PhaseLaunch = {
   phase: Phase;
+  planningGate?: { required: boolean; pullRequest: boolean };
   envelope: string;
   promptPath: string;
   worktree: string;
@@ -16,6 +17,7 @@ export type PhaseLaunch = {
   signal?: AbortSignal;
 };
 export type PhaseRun = {
+  planningApproval?: "pr" | "no-pr";
   result: ParsedResult;
   session: Pick<PiSession, "exitCode" | "timedOut" | "aborted">;
 };

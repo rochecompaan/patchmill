@@ -17,6 +17,8 @@ export type WorkspaceSource =
 
 export type KernelGit = {
   fetch(): Promise<void>;
+  /** Publish an approved planning head as a new implementation branch. */
+  pushPlanningHead(worktree: string, branch: string): Promise<void>;
   remoteDefaultBranch(): Promise<string | undefined>;
   remoteBranches(issue: number): Promise<string[]>;
   /** Regular file names directly inside a directory of a ref's tree. */
@@ -87,6 +89,15 @@ export function createKernelGit(
     };
   };
   return {
+    async pushPlanningHead(worktree, branch) {
+      // No force: an existing remote head must never be overwritten.
+      await git(["branch", branch, "HEAD"], undefined, worktree);
+      await git(
+        ["push", "origin", `refs/heads/${branch}:refs/heads/${branch}`],
+        undefined,
+        worktree,
+      );
+    },
     async fetch(): Promise<void> {
       await git(["fetch", "--prune", "origin"]);
     },

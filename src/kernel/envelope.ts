@@ -4,6 +4,7 @@ import { findPackageRoot } from "../package-root.ts";
 import type { LabelsConfig } from "../config/config.ts";
 import type { Issue, Repository } from "../host/types.ts";
 import type { Facts } from "./facts.ts";
+import { planningBranchName } from "./names.ts";
 import type { Phase } from "./phase.ts";
 
 export type RunEnvelopeInput = {
@@ -63,6 +64,9 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     resultRules: interactivePlanning
       ? "When the maintainer agrees and your work is committed and pushed, call `patchmill_submit_planning_result` with `status` and `summary`. Do not end with a JSON block."
       : 'Return only the fields `status` and `summary` in a final `json` block. Use\n`done`, `needs-input`, or `failed` for `status`. Use a string for `summary`.\n\n```json\n{ "status": "done", "summary": "Describe the result." }\n```',
+    planningRules: interactivePlanning
+      ? "\n\nInteractive planning overrides the skill's PR-before-submit and merge-only rules. Ask whether the maintainer approves a required gate document, or has reviewed ungated documents. The submit tool records approval and the PR choice. Do not open a planning PR before submitting. Open it only when feedback says the maintainer chose PR and the PR is missing, then submit again."
+      : "",
     repository: `${input.repository.owner}/${input.repository.repo}`,
     phase: input.phase,
     skillName: input.skill.name,
@@ -79,7 +83,11 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     gate:
       facts.stage === "implementation"
         ? "not required; keep planning artifacts in the implementation PR"
-        : `required; publish the ${facts.stage} PR and stop until it is merged`,
+        : interactivePlanning
+          ? facts.branch === planningBranchName(input.issue.number, facts.stage)
+            ? "required; ask for approval in the chat, then submit for approval and the PR choice"
+            : "required; chat approval only, no PR option: a planning PR would carry the earlier unmerged document. Write later documents on this implementation branch"
+          : `required; publish the ${facts.stage} PR and stop until it is merged`,
     timeoutMinutes: String(input.timeoutMinutes),
     issue: renderIssue(input.issue, input.trusted),
   });

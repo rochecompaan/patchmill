@@ -10,7 +10,8 @@ import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { costLine } from "../kernel/pi-cost.ts";
 import type { WorkerLauncher } from "./worker-launcher.ts";
-import { recordPlanningUsage, type ConsoleSession } from "./planning-usage.ts";
+import type { ConsoleSession } from "./planning-usage.ts";
+import { PlanningConversation } from "./planning-conversation.ts";
 
 export type StartRun = (
   issue: number | undefined,
@@ -39,7 +40,7 @@ export class ConsoleController implements HumanChannel {
   private deps: Dependencies;
   private active: Promise<void> | undefined;
   private snapshot: RunSnapshot | undefined;
-  private planning: ((run: PhaseRun) => void) | undefined;
+  private planning: PlanningConversation;
   private waiting: Wait | undefined;
   private continuation: ((answer: "continue" | "quit") => void) | undefined;
   private guidance: ((answer: BlockAnswer) => void) | undefined;
@@ -48,6 +49,7 @@ export class ConsoleController implements HumanChannel {
   private shutdownPromise: Promise<void> | undefined;
   constructor(deps: Dependencies) {
     this.deps = deps;
+    this.planning = new PlanningConversation(deps.pi, deps.session);
   }
   startRefusal(): string | undefined {
     if (this.closing) return "The console is shutting down.";
@@ -98,31 +100,22 @@ export class ConsoleController implements HumanChannel {
   }
 
   runPlanning(launch: PhaseLaunch, feedback?: string): Promise<PhaseRun> {
-    return recordPlanningUsage(this.deps.session, launch.sessionDir, () =>
-      this.closing
-        ? Promise.resolve(aborted)
-        : new Promise((resolve) => {
-            this.planning = resolve;
-            this.deps.pi.sendUserMessage(
-              feedback === undefined
-                ? launch.envelope
-                : `Patchmill could not accept the planning result:\n\n${feedback}\n\nFix it and submit again.`,
-              { deliverAs: "followUp" },
-            );
-          }),
+    return this.planning.run(
+      launch,
+      feedback,
+      this.closing ? aborted : undefined,
     );
   }
 
-  async submitPlanning(result: AgentResult): Promise<string> {
-    if (!this.planning)
-      return "Patchmill is not waiting for a planning result.";
-    const resolve = this.planning;
-    this.planning = undefined;
-    resolve({
-      result: { ok: true, result },
-      session: { exitCode: 0, timedOut: false, aborted: false },
-    });
-    return "Planning result submitted.";
+  planningGate() {
+    return this.planning.gate;
+  }
+
+  async submitPlanning(
+    result: AgentResult,
+    approval?: PhaseRun["planningApproval"],
+  ): Promise<string> {
+    return this.planning.submit(result, approval);
   }
 
   runImplementation(launch: PhaseLaunch): Promise<PhaseRun> {
@@ -208,8 +201,7 @@ export class ConsoleController implements HumanChannel {
   }
   private async close(): Promise<void> {
     this.closing = true;
-    this.planning?.(aborted);
-    this.planning = undefined;
+    this.planning.close(aborted);
     this.continuation?.("quit");
     this.continuation = undefined;
     this.waiting = undefined;

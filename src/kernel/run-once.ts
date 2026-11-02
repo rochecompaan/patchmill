@@ -28,7 +28,8 @@ import {
   formatPhaseStart,
   formatPhaseComplete,
 } from "./console.ts";
-import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
+import type { OutcomeLabel } from "./verify.ts";
+import { verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { selectIssue, listRunIssues } from "./issue-selection.ts";
@@ -152,6 +153,7 @@ export async function runOneIssue(
     exitCode: number | null;
     timedOut: boolean;
     status: string;
+    planningApproval?: "pr" | "no-pr";
   }[] = [];
   let label: OutcomeLabel = "needsInfo";
   let summary = "The session limit was reached.";
@@ -294,6 +296,9 @@ export async function runOneIssue(
           exitCode: session.exitCode,
           timedOut: session.timedOut,
           status: result.ok ? result.result.status : "invalid",
+          ...(run.planningApproval
+            ? { planningApproval: run.planningApproval }
+            : {}),
         });
         await snapshot.session();
         const after = await collect(await host.viewIssue(issueNumber), facts);
@@ -303,19 +308,31 @@ export async function runOneIssue(
         }
         displayFacts = after.facts;
         snapshot.facts(after.facts);
-        const verified = verifyOutcome({
-          issue: issueNumber,
-          repository: await host.repository(),
-          phase,
-          result,
-          session,
-          facts: after.facts,
-          logPath: launch.logPath,
-          uncommitted: await git.hasUncommittedChanges(facts.worktree),
-          unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
-        });
+        const verified = await verifyPlanningApproval(
+          {
+            issue: issueNumber,
+            repository: await host.repository(),
+            phase,
+            result,
+            session,
+            facts: after.facts,
+            logPath: launch.logPath,
+            uncommitted: await git.hasUncommittedChanges(facts.worktree),
+            unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
+          },
+          run,
+          !!deps.human,
+          git,
+          issue,
+        );
         feedback = planningFeedback(phase, run, verified, deps.human);
         if (feedback !== undefined) continue;
+        if (
+          deps.human &&
+          run.planningApproval === "no-pr" &&
+          verified.kind === "advance"
+        )
+          continue;
         const guidance = await workerGuidance(
           phase,
           run,

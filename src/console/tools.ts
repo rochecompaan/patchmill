@@ -23,9 +23,25 @@ export function registerConsoleTools(
       summary: Type.String(),
     }),
     async execute(_id, params, _signal, _update, ctx) {
-      if (!(await ctx.ui.confirm("Accept planning result?", params.summary)))
+      const current = controller();
+      const gate = current.planningGate();
+      if (
+        !(await ctx.ui.confirm(
+          gate?.required ? "Approve?" : "Accept planning result?",
+          params.summary,
+        ))
+      )
         return text("Not submitted.");
-      return text(await controller().submitPlanning(params));
+      const approval = gate?.required
+        ? gate.pullRequest &&
+          (await ctx.ui.confirm(
+            "Open a planning pull request?",
+            "Choosing no PR continues with the approved documents in the implementation PR.",
+          ))
+          ? "pr"
+          : "no-pr"
+        : undefined;
+      return text(await current.submitPlanning(params, approval));
     },
   });
   pi.registerTool({

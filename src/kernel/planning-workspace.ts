@@ -22,6 +22,7 @@ export async function planningWorkspace(input: {
   branches: string[];
   baseBranch: string;
   selected?: Pick<PlanningWorkspace, "stage" | "branch"> | undefined;
+  implementationArtifacts?: Partial<Record<"spec" | "plan", boolean>>;
 }): Promise<WorkspaceResult> {
   const { host, workflow, issue, branches, baseBranch, selected } = input;
   const pullRequest = (branch: string) =>
@@ -34,6 +35,7 @@ export async function planningWorkspace(input: {
   if (implementation.length > 1)
     return { kind: "ambiguous-branches", branches: implementation };
   const merged: PlanningWorkspace["merged"] = [];
+  let chatApproved = false;
   const workspace = async (
     stage: WorkflowStage,
     branch: string,
@@ -57,9 +59,15 @@ export async function planningWorkspace(input: {
     if (!required) continue;
     const pr = await pullRequest(branch);
     // A merge into another branch stays at this gate; derivePhase reports it.
-    if (pr?.state !== "merged" || wrongTarget(pr, baseBranch))
-      return workspace(stage, branch, pr);
-    merged.push(stage);
+    if (pr?.state === "merged" && !wrongTarget(pr, baseBranch)) {
+      merged.push(stage);
+    } else if (input.implementationArtifacts?.[stage]) {
+      chatApproved = true;
+    } else {
+      return chatApproved
+        ? workspace(stage, implementation[0]!)
+        : workspace(stage, branch, pr);
+    }
   }
   const branch = implementation[0] ?? branchName(issue.number, issue.title);
   return workspace("implementation", branch, await pullRequest(branch));

@@ -15,6 +15,7 @@ import {
 } from "./launch.ts";
 import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
+import { planningBranchName } from "./names.ts";
 import { guidanceComment, planningGateComment } from "./comments.ts";
 
 export async function continueGate(
@@ -148,6 +149,16 @@ export async function preparePhasePrompt(
   });
   const launch: PhaseLaunch = {
     phase,
+    ...(deps.human && phase === "planning"
+      ? {
+          planningGate: {
+            required: facts.stage !== "implementation",
+            pullRequest:
+              facts.stage !== "implementation" &&
+              facts.branch === planningBranchName(issue.number, facts.stage),
+          },
+        }
+      : {}),
     envelope,
     worktree: facts.worktree,
     sessionDir: join(runDir, "sessions", String(sessionNumber)),
