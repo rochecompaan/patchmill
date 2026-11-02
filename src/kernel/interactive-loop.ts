@@ -151,6 +151,17 @@ export async function preparePhasePrompt(
     phase,
     ...(deps.human && phase === "planning"
       ? {
+          planningReview: {
+            issue: { number: issue.number, title: issue.title },
+            stage: facts.stage,
+            branch: facts.branch,
+            specsDir: config.paths.specsDir,
+            plansDir: config.paths.plansDir,
+            ...(facts.stage === "plan" &&
+            facts.branch !== planningBranchName(issue.number, facts.stage)
+              ? { earlierStage: "spec" as const }
+              : {}),
+          },
           planningGate: {
             required: facts.stage !== "implementation",
             pullRequest:

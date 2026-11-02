@@ -70,8 +70,12 @@ for (const approve of [false, true]) {
     assert.notEqual(before, approvedHead);
     await pi.callTool(
       "patchmill_submit_planning_result",
-      { status: "done", summary: "Plan is ready" },
-      { confirm: approve },
+      {
+        status: "done",
+        summary: "Plan is ready",
+        highlights: ["Persist votes", "Restore lock"],
+      },
+      { select: approve ? "Approve (continue now)" : "Request changes" },
     );
     if (!approve) {
       assert.equal(await c.git(["rev-parse", `origin/${branch}`]), before);
@@ -94,6 +98,15 @@ for (const approve of [false, true]) {
         "the local plan remains available for revision",
       );
     }
-    assert.equal(pi.confirmations.length, 1, "later gate never offers a PR");
+    assert.equal(pi.confirmations.length, 0);
+    assert.equal(pi.selections.length, 1);
+    assert.deepEqual(pi.selections[0]!.options, [
+      "Approve (continue now)",
+      "Request changes",
+    ]);
+    assert.match(
+      pi.selections[0]!.title,
+      /A planning PR isn't offered: it would also carry the spec, which was approved without a PR/,
+    );
   });
 }

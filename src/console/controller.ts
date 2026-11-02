@@ -11,6 +11,7 @@ import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { costLine } from "../kernel/pi-cost.ts";
 import type { WorkerLauncher } from "./worker-launcher.ts";
 import type { ConsoleSession } from "./planning-usage.ts";
+import { collectPlanningDialogFacts } from "./planning-dialog-facts.ts";
 import { PlanningConversation } from "./planning-conversation.ts";
 
 export type StartRun = (
@@ -105,6 +106,12 @@ export class ConsoleController implements HumanChannel {
       feedback,
       this.closing ? aborted : undefined,
     );
+  }
+
+  async planningDialogFacts() {
+    return this.planning.launch
+      ? collectPlanningDialogFacts(this.planning.launch)
+      : undefined;
   }
 
   planningGate() {

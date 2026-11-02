@@ -109,20 +109,25 @@ the console. `--interactive` cannot be combined with `--dry-run` or
 `--plan-only`. The console agent calls four tools:
 
 - `patchmill_submit_planning_result`: submit a planning outcome after your
-  confirmation; declining keeps planning open.
+  review in one dialog; requesting changes or Escape keeps planning open.
 - `patchmill_continue_issue_run`: recheck a waiting merge and continue the run.
 - `patchmill_run_status`: show the current run, worker, wait, and estimated
   cost.
 - `patchmill_confirm_block_guidance`: send guidance to a blocked worker after
   your confirmation.
 
-For a required planning gate, approve the document in the submit dialog, then
-choose whether to open a planning PR. Choosing PR waits for its merge; choosing
-no PR lets Patchmill push the approved planning head to the implementation
-branch and continue at once. Later documents stay on that branch, and later
-required gates ask for approval only: a gate PR would carry the earlier unmerged
-document. Ungated planning keeps its single review confirmation. A restart
-derives these approvals from the pushed documents, never saved workflow state.
+The planning dialog names the issue and document, shows the files and branch
+with a short commit, and lists 2–5 key decisions rather than the agent's full
+summary. A required gate offers **Approve and open a planning PR**, **Approve
+without a PR (continue now)**, or **Request changes** in one dialog. Choosing PR
+waits for its merge; choosing no PR lets Patchmill push the approved planning
+head to the implementation branch and continue at once. Later documents stay on
+that branch. A later required gate offers **Approve (continue now)** or
+**Request changes** and explains which earlier document prevents a planning PR.
+Ungated planning asks whether you have reviewed the spec, plan, or both, with
+**Reviewed, continue** and **Request changes**. Requesting changes or Escape
+keeps planning open and pushes nothing through Patchmill. A restart derives
+approvals from the pushed documents, never saved workflow state.
 
 Type `/patchmill-issue <N>` to start another issue once the current run ends. It
 switches to that issue's conversation without a confirmation dialog. Sessions

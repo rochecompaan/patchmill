@@ -6,6 +6,7 @@ import { recordPlanningUsage, type ConsoleSession } from "./planning-usage.ts";
 export class PlanningConversation {
   private pending: ((run: PhaseRun) => void) | undefined;
   gate: PhaseLaunch["planningGate"];
+  launch: PhaseLaunch | undefined;
   private pi: Pick<ExtensionAPI, "sendUserMessage">;
   private session: ConsoleSession | undefined;
   constructor(
@@ -21,6 +22,7 @@ export class PlanningConversation {
     feedback?: string,
     aborted?: PhaseRun,
   ): Promise<PhaseRun> {
+    this.launch = launch;
     this.gate = launch.planningGate;
     return recordPlanningUsage(this.session, launch.sessionDir, () =>
       aborted
@@ -50,6 +52,7 @@ export class PlanningConversation {
     const resolve = this.pending;
     this.pending = undefined;
     this.gate = undefined;
+    this.launch = undefined;
     resolve({
       result: { ok: true, result },
       session: { exitCode: 0, timedOut: false, aborted: false },
@@ -62,5 +65,6 @@ export class PlanningConversation {
     this.pending?.(aborted);
     this.pending = undefined;
     this.gate = undefined;
+    this.launch = undefined;
   }
 }

@@ -6,6 +6,14 @@ import { parseAgentResult, type ParsedResult } from "./result.ts";
 export type PhaseLaunch = {
   phase: Phase;
   planningGate?: { required: boolean; pullRequest: boolean };
+  planningReview?: {
+    issue: { number: number; title: string };
+    stage: "spec" | "plan" | "implementation";
+    branch: string;
+    specsDir: string;
+    plansDir: string;
+    earlierStage?: "spec" | "plan";
+  };
   envelope: string;
   promptPath: string;
   worktree: string;

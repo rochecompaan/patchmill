@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import fs from "node:fs/promises";
+import { runCommand } from "../process/command.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPatchmillExtension } from "./extension.ts";
@@ -11,12 +12,33 @@ import type { HumanChannel } from "../kernel/human-channel.ts";
 import type { PhaseLaunch } from "../kernel/launch.ts";
 const sessionDir = await fs.mkdtemp(join(tmpdir(), "console-planning-test-"));
 after(() => fs.rm(sessionDir, { recursive: true, force: true }));
+for (const args of [
+  ["init", "-q"],
+  [
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.com",
+    "commit",
+    "--allow-empty",
+    "-qm",
+    "init",
+  ],
+])
+  assert.equal((await runCommand("git", args, { cwd: sessionDir })).code, 0);
 
 const launch: PhaseLaunch = {
   phase: "planning",
   envelope: "Plan",
   promptPath: "p",
-  worktree: "/tmp",
+  worktree: sessionDir,
+  planningReview: {
+    issue: { number: 9, title: "Polls" },
+    stage: "implementation",
+    branch: "agent/issue-9",
+    specsDir: "docs/specs",
+    plansDir: "docs/plans",
+  },
   skillPath: "s",
   sessionDir,
   logPath: "l",
@@ -192,8 +214,12 @@ test("tools confirm submissions, preserve declined planning, and expose status",
   assert.equal(
     await api.callTool(
       "patchmill_submit_planning_result",
-      { status: "done", summary: "ok" },
-      { confirm: false },
+      {
+        status: "done",
+        summary: "ok",
+        highlights: ["Persist votes", "Restore lock"],
+      },
+      { select: "Request changes" },
     ),
     "Not submitted. Ask the maintainer what to change.",
   );
@@ -213,14 +239,20 @@ test("tools confirm submissions, preserve declined planning, and expose status",
   await api.callTool("patchmill_submit_planning_result", {
     status: "done",
     summary: "ok",
+    highlights: ["Persist votes", "Restore lock"],
   });
   await firstRun;
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(results, [false]);
-  assert.deepEqual(api.confirmations[0], {
-    title: "Accept planning result?",
-    message: "ok",
-  });
+  assert.equal(api.selections.length, 2);
+  assert.match(
+    api.selections[0]!.title,
+    /^Have you reviewed the plan for issue #9: Polls/,
+  );
+  assert.deepEqual(api.selections[0]!.options, [
+    "Reviewed, continue",
+    "Request changes",
+  ]);
   const guidance = human.awaitGuidance("blocked");
   await api.fire("session_shutdown");
   await api.fire("session_shutdown");

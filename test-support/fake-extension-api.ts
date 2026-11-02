@@ -25,6 +25,7 @@ export function fakeExtensionApi(events = fakeSubagents()) {
     options: unknown;
   }[] = [];
   const confirmations: { title: string; message: string }[] = [];
+  const selections: { title: string; options: string[] }[] = [];
   const api = {
     events,
     registerCommand(
@@ -65,15 +66,24 @@ export function fakeExtensionApi(events = fakeSubagents()) {
     userMessages,
     messages,
     confirmations,
+    selections,
     async fire(event: "session_start" | "session_shutdown") {
       for (const handler of handlers.get(event) ?? [])
         await handler({}, { sessionManager: SessionManager.inMemory() });
     },
-    async callTool(name: string, params: unknown, options = { confirm: true }) {
+    async callTool(
+      name: string,
+      params: unknown,
+      options: { confirm?: boolean; select?: string } = { confirm: true },
+    ) {
       const tool = tools.get(name);
       if (!tool) throw new Error(`Unknown tool ${name}`);
       const ctx = {
         ui: {
+          select: async (title: string, choices: string[]) => {
+            selections.push({ title, options: choices });
+            return "select" in options ? options.select : choices[0];
+          },
           confirm: async (title: string, message: string) => {
             confirmations.push({ title, message });
             return options.confirm;
