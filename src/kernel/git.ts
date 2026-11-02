@@ -91,7 +91,11 @@ export function createKernelGit(
   return {
     async pushPlanningHead(worktree, branch) {
       // No force: an existing remote head must never be overwritten.
-      await git(["branch", branch, "HEAD"], undefined, worktree);
+      if (
+        (await git(["branch", "--show-current"], undefined, worktree)) !==
+        branch
+      )
+        await git(["branch", branch, "HEAD"], undefined, worktree);
       await git(
         ["push", "origin", `refs/heads/${branch}:refs/heads/${branch}`],
         undefined,

@@ -57,12 +57,19 @@ function renderTemplate(file: string, values: Record<string, string>): string {
 export function renderRunEnvelope(input: RunEnvelopeInput): string {
   const { facts } = input;
   const interactivePlanning = input.interactive && input.phase === "planning";
+  const laterGate =
+    interactivePlanning &&
+    facts.stage !== "implementation" &&
+    facts.branch !== planningBranchName(input.issue.number, facts.stage);
   return renderTemplate("run-envelope.md", {
+    commitRules: laterGate
+      ? "Commit your work before submitting, but do not push. Only Patchmill pushes this gated document to the implementation branch, after recorded approval. This overrides the skill's push requirement."
+      : "Commit and push your work before you finish.",
     humanRules: interactivePlanning
       ? "A maintainer is present in this chat. Ask them your questions here and wait for their answers. Do not return `needs-input` for questions."
       : "Put questions in the summary.\n- End with the JSON block. Do not put text after it.",
     resultRules: interactivePlanning
-      ? "When the maintainer agrees and your work is committed and pushed, call `patchmill_submit_planning_result` with `status` and `summary`. Do not end with a JSON block."
+      ? `When the maintainer agrees and your work is committed${laterGate ? " but not pushed" : " and pushed"}, call \`patchmill_submit_planning_result\` with \`status\` and \`summary\`. Do not end with a JSON block.`
       : 'Return only the fields `status` and `summary` in a final `json` block. Use\n`done`, `needs-input`, or `failed` for `status`. Use a string for `summary`.\n\n```json\n{ "status": "done", "summary": "Describe the result." }\n```',
     planningRules: interactivePlanning
       ? "\n\nInteractive planning overrides the skill's PR-before-submit and merge-only rules. Ask whether the maintainer approves a required gate document, or has reviewed ungated documents. The submit tool records approval and the PR choice. Do not open a planning PR before submitting. Open it only when feedback says the maintainer chose PR and the PR is missing, then submit again."

@@ -26,21 +26,22 @@ export async function verifyPlanningApproval(
       comment: `The maintainer chose PR. ${verified.comment}`,
     };
   if (!chatApproval || verified.kind !== "advance") return verified;
-  if (input.uncommitted || input.unpushed !== 0)
+  const laterGate =
+    input.facts.stage !== "implementation" &&
+    input.facts.branch !== planningBranchName(issue.number, input.facts.stage);
+  if (input.uncommitted || (!laterGate && input.unpushed !== 0))
     return {
       kind: "stop" as const,
       label: "needsInfo" as const,
-      comment:
-        "Commit and push the approved planning documents before submitting again.",
+      comment: laterGate
+        ? "Commit the approved planning documents before submitting again. Do not push; Patchmill publishes them after approval."
+        : "Commit and push the approved planning documents before submitting again.",
       warnings: [],
     };
-  if (
-    input.facts.stage !== "implementation" &&
-    input.facts.branch === planningBranchName(issue.number, input.facts.stage)
-  )
+  if (input.facts.stage !== "implementation")
     await git.pushPlanningHead(
       input.facts.worktree,
-      branchName(issue.number, issue.title),
+      laterGate ? input.facts.branch : branchName(issue.number, issue.title),
     );
   return verified;
 }

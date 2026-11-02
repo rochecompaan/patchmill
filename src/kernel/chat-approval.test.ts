@@ -90,12 +90,12 @@ test("approval plus PR still asks for a missing gate PR and waits for its merge"
 test("later plan gate stays on implementation and offers chat-only approval", async (t) => {
   const c = await setupRun(t, [
     planning({ [spec]: "spec" }),
-    planning({ [plan]: "plan" }),
+    { ...planning({ [plan]: "plan" }), push: false },
     implement,
   ]);
   c.config.workflow.specApproval.required = true;
   c.config.workflow.planApproval.required = true;
-  const human = fakeHuman(c);
+  const human = fakeHuman(c, { quitPlanningAt: 3 });
   const launch = human.runPlanning.bind(human);
   let calls = 0;
   human.runPlanning = async (request, feedback) => {

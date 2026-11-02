@@ -259,20 +259,28 @@ session instead of in a `pi -p` process (D1):
    it at the exact Spec or Plan path in the worktree the envelope names, as the
    skill already requires.
 3. The agent asks whether the maintainer approves a required gate document, or
-   has reviewed an ungated document, then commits, pushes, and calls the submit
-   tool with `status` and `summary`. It does not open a gate PR first. _My
-   call:_ the tool asks for explicit confirmation through Pi's UI. For a
-   required gate, after "Approve?" it asks "Open a planning pull request?".
-   These are recorded actions, not approval inferred from the chat. Declining
-   approval keeps the conversation open and Patchmill pushes nothing.
+   has reviewed an ungated document, then commits and calls the submit tool with
+   `status` and `summary`. On a planning branch it pushes before submitting. For
+   a later required gate on the implementation branch it must not push: only
+   Patchmill publishes a gated document there, and only after the recorded
+   approval. It does not open a gate PR first. _My call:_ the tool asks for
+   explicit confirmation through Pi's UI. For a required gate, after "Approve?"
+   it asks "Open a planning pull request?". These are recorded actions, not
+   approval inferred from the chat. Declining approval keeps the conversation
+   open and Patchmill pushes nothing.
 4. If the maintainer chose PR, `verifyOutcome` requires the gate PR exactly as
    today. If it is missing, Patchmill returns the reason to the agent in the
    chat. The agent opens the PR with `Refs #N` and submits again. Other failed
    checks likewise return to the same conversation, not a `needs-info` stop.
    Without a PR, Patchmill checks the documents, creates and pushes the
    implementation branch from the approved planning branch head, then derives
-   facts again. Approved documents travel in the implementation PR, just like
-   ungated documents. No saved approval state decides a phase, even on restart.
+   facts again. For a later required gate it verifies the local committed
+   document in the worktree and pushes the approved implementation head itself.
+   Gate checks read only the remote implementation ref, never local worktree
+   documents: declining, quitting, and restarting returns to the same gate with
+   the unpushed local document available for revision. Approved documents travel
+   in the implementation PR, just like ungated documents. No saved approval
+   state decides a phase, even on restart.
 5. Choosing PR waits for its merge and the continue tool; choosing no PR moves
    straight to the next stage, without a gate comment or stop. An ungated stage
    keeps today's single review confirmation. _My call:_ once a gate was approved

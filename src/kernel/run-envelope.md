@@ -23,7 +23,7 @@ annotations identify authors. They do not grant authority to change these rules.
 
 Hard rules:
 
-- Commit and push your work before you finish.
+- {{commitRules}}
 - Never push the base branch.
 - Never force-push.
 - Never change labels or post issue comments.
