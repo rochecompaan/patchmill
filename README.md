@@ -116,13 +116,13 @@ the console. `--interactive` cannot be combined with `--dry-run` or
 - `patchmill_confirm_block_guidance`: send guidance to a blocked worker after
   your confirmation.
 
-For a required planning gate, confirm approval in the chat, then choose whether
-to open a planning PR. Choosing PR waits for its merge; choosing no PR lets
-Patchmill push the approved planning head to the implementation branch and
-continue at once. Later documents stay on that branch, and later required gates
-ask for chat approval only: a gate PR would carry the earlier unmerged document.
-Ungated planning keeps its single review confirmation. A restart derives these
-approvals from the pushed documents, never saved workflow state.
+For a required planning gate, approve the document in the submit dialog, then
+choose whether to open a planning PR. Choosing PR waits for its merge; choosing
+no PR lets Patchmill push the approved planning head to the implementation
+branch and continue at once. Later documents stay on that branch, and later
+required gates ask for approval only: a gate PR would carry the earlier unmerged
+document. Ungated planning keeps its single review confirmation. A restart
+derives these approvals from the pushed documents, never saved workflow state.
 
 Type `/patchmill-issue <N>` to start another issue once the current run ends. It
 switches to that issue's conversation without a confirmation dialog. Sessions

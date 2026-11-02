@@ -31,7 +31,7 @@ export function registerConsoleTools(
           params.summary,
         ))
       )
-        return text("Not submitted.");
+        return text("Not submitted. Ask the maintainer what to change.");
       const approval = gate?.required
         ? gate.pullRequest &&
           (await ctx.ui.confirm(

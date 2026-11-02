@@ -127,7 +127,7 @@ test("declining gate approval leaves the pending conversation open", async (t) =
       { status: "done", summary: "ok" },
       { confirm: false },
     ),
-    "Not submitted.",
+    "Not submitted. Ask the maintainer what to change.",
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(resolved, false);

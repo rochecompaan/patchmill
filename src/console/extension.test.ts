@@ -195,7 +195,7 @@ test("tools confirm submissions, preserve declined planning, and expose status",
       { status: "done", summary: "ok" },
       { confirm: false },
     ),
-    "Not submitted.",
+    "Not submitted. Ask the maintainer what to change.",
   );
   assert.deepEqual(results, []);
   assert.equal(

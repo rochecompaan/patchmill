@@ -258,16 +258,17 @@ session instead of in a `pi -p` process (D1):
 2. The agent and the maintainer work out the spec, or the plan. The agent writes
    it at the exact Spec or Plan path in the worktree the envelope names, as the
    skill already requires.
-3. The agent asks whether the maintainer approves a required gate document, or
-   has reviewed an ungated document, then commits and calls the submit tool with
-   `status` and `summary`. On a planning branch it pushes before submitting. For
-   a later required gate on the implementation branch it must not push: only
-   Patchmill publishes a gated document there, and only after the recorded
-   approval. It does not open a gate PR first. _My call:_ the tool asks for
-   explicit confirmation through Pi's UI. For a required gate, after "Approve?"
-   it asks "Open a planning pull request?". These are recorded actions, not
-   approval inferred from the chat. Declining approval keeps the conversation
-   open and Patchmill pushes nothing.
+3. When the document is ready, the agent commits and calls the submit tool with
+   `status` and `summary`. It does not ask for approval in the chat first: the
+   tool's dialog is the only approval question. On a planning branch it pushes
+   before submitting. For a later required gate on the implementation branch it
+   must not push: only Patchmill publishes a gated document there, and only
+   after the recorded approval. It does not open a gate PR first. _My call:_ the
+   tool asks for explicit confirmation through Pi's UI. For a required gate,
+   after "Approve?" it asks "Open a planning pull request?". These are recorded
+   actions, not approval inferred from the chat. Declining approval keeps the
+   conversation open, the agent asks what to change, and Patchmill pushes
+   nothing.
 4. If the maintainer chose PR, `verifyOutcome` requires the gate PR exactly as
    today. If it is missing, Patchmill returns the reason to the agent in the
    chat. The agent opens the PR with `Refs #N` and submits again. Other failed
