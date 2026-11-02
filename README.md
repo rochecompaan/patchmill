@@ -24,14 +24,16 @@ narrow race between separate clones remains possible. The lock file and its
 parent directory must stay in place, even after a crash.
 
 Phase derivation reads git and the issue host. Spec and plan gates are optional
-and default off. Each required gate uses a separate planning pull request. Only
-merging that pull request unlocks the next stage. Logs, result files, and
-approval labels never decide what happens next.
+and default off. A required gate passes when its planning pull request is merged
+into base, or its document is on the pushed implementation branch after an
+interactive approval without a PR. Logs, result files, and approval labels never
+decide what happens next.
 
 Outcome verification checks facts after Pi finishes. Planning needs the pushed
 branch and required documents. A gated stage also needs its planning pull
-request. Implementation needs an open, non-draft pull request whose head matches
-the branch and whose body closes the issue. `agent-done` means that this pull
+request unless the maintainer approved it without a PR in an interactive run.
+Implementation needs an open, non-draft pull request whose head matches the
+branch and whose body closes the issue. `agent-done` means that this pull
 request exists, not that it merged.
 
 Stable names give humans and agents the same paths. Branches use
@@ -113,6 +115,14 @@ the console. `--interactive` cannot be combined with `--dry-run` or
   cost.
 - `patchmill_confirm_block_guidance`: send guidance to a blocked worker after
   your confirmation.
+
+For a required planning gate, confirm approval in the chat, then choose whether
+to open a planning PR. Choosing PR waits for its merge; choosing no PR lets
+Patchmill push the approved planning head to the implementation branch and
+continue at once. Later documents stay on that branch, and later required gates
+ask for chat approval only: a gate PR would carry the earlier unmerged document.
+Ungated planning keeps its single review confirmation. A restart derives these
+approvals from the pushed documents, never saved workflow state.
 
 Type `/patchmill-issue <N>` to start another issue once the current run ends. It
 switches to that issue's conversation without a confirmation dialog. Sessions

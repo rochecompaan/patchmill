@@ -40,15 +40,16 @@ configured Patchmill skills."
 
 A maintainer runs one command on an existing issue. They work out the spec and
 plan with the agent in a Pi chat. When they agree, the agent commits, pushes,
-and opens any planning pull request, as the planning skill already requires, and
-Patchmill checks the result. If a planning gate is on, they keep talking while
-the planning pull request is reviewed. When the maintainer says it is merged,
-the agent tells Patchmill to go on. Patchmill then runs implementation in the
-background in the same process. The Issue run stays active until the
-implementation pull request is merged. Throughout, the same conversation stays
-open. The maintainer can ask the agent where things stand, and the agent
-investigates and answers at once. When the Issue run ends, the chat stays open
-for more instructions, including another issue.
+and submits the result. A required gate asks for approval, then whether to open
+a planning pull request. Without a pull request, Patchmill continues at once. If
+the maintainer chose a pull request, they keep talking while the planning pull
+request is reviewed. When the maintainer says it is merged, the agent tells
+Patchmill to go on. Patchmill then runs implementation in the background in the
+same process. The Issue run stays active until the implementation pull request
+is merged. Throughout, the same conversation stays open. The maintainer can ask
+the agent where things stand, and the agent investigates and answers at once.
+When the Issue run ends, the chat stays open for more instructions, including
+another issue.
 
 ## Goals
 
@@ -78,7 +79,7 @@ for more instructions, including another issue.
 - Detaching from a run and reattaching later, or attaching from a second
   terminal. This can be added later as a separate feature.
 - A Patchmill-owned terminal screen with several panes.
-- Changing how the spec gate and plan gate work.
+- Changing how spec and plan gates work in non-interactive runs.
 - Changing how non-interactive runs behave.
 - Steering a busy worker in the middle of an approved plan. The maintainer
   expects this to be rare. The design must not prevent it later, but the first
@@ -112,26 +113,26 @@ These would make the work a failure even if it ran:
 
 ## Decisions made by the maintainer
 
-| Topic                          | Decision                                                                                                                                                                                                                                  |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Starting point                 | An interactive run starts from an existing issue.                                                                                                                                                                                         |
-| Who answers questions          | Non-interactive runs keep using issue comments, whether or not the maintainer is around. Interactive runs use the console.                                                                                                                |
-| Process lifetime               | The console and the Issue run share one process, like a non-interactive run today. Killing the console stops the worker too.                                                                                                              |
-| Resume                         | If the console crashes or is killed, running the same command resumes the Issue run and the conversation. This builds on the kernel's resume, which derives the phase from git and the host.                                              |
-| Being away                     | The maintainer may leave the terminal. The session waits, however long it takes.                                                                                                                                                          |
-| One agent                      | One conversation from spec to landing, like a single Pi session.                                                                                                                                                                          |
-| Answering questions            | The console agent investigates and answers at once. It is not blocked by the work.                                                                                                                                                        |
-| Background work                | Apart from spec and plan, Patchmill runs phases in the background so the console stays free.                                                                                                                                              |
-| Agent edits                    | The console agent can make changes, like a normal coding agent.                                                                                                                                                                           |
-| Planning gates                 | Unchanged. If a gate is on, its planning pull request is still opened. The console stays open for discussion, but the next stage cannot start until that pull request is merged. If no gate is on, the run continues in the same session. |
-| Moving past a merge            | The maintainer tells the agent when a pull request is merged. The agent then calls a Patchmill tool to go on. This applies to planning pull requests and the implementation pull request.                                                 |
-| End of an Issue run            | The Issue run does not end before the implementation pull request is merged. Until then, it stays active, reports progress, and answers questions.                                                                                        |
-| After an Issue run             | The console does not exit when an Issue run ends. The maintainer can give more instructions or start another Issue run from the chat.                                                                                                     |
-| Console interface              | The Patchmill extension gives the agent a set of tools for the workflow.                                                                                                                                                                  |
-| Spec changes during a block    | The maintainer's confirmation in the console counts as approval, the same way an issue comment does now. No new pull request has to be merged before the worker continues.                                                                |
-| Priority                       | Going straight from spec and plan to implementation comes first. Unblocking a stuck worker comes second. Opening a `needs-info` run from a non-interactive attempt is the first thing to cut if scope grows.                              |
-| How the console is built       | Patchmill opens Pi's own chat screen with a Patchmill extension. Patchmill does not build its own terminal screen.                                                                                                                        |
-| Slash commands and live status | Welcome, but not core.                                                                                                                                                                                                                    |
+| Topic                          | Decision                                                                                                                                                                                                                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Starting point                 | An interactive run starts from an existing issue.                                                                                                                                                                                                                            |
+| Who answers questions          | Non-interactive runs keep using issue comments, whether or not the maintainer is around. Interactive runs use the console.                                                                                                                                                   |
+| Process lifetime               | The console and the Issue run share one process, like a non-interactive run today. Killing the console stops the worker too.                                                                                                                                                 |
+| Resume                         | If the console crashes or is killed, running the same command resumes the Issue run and the conversation. This builds on the kernel's resume, which derives the phase from git and the host.                                                                                 |
+| Being away                     | The maintainer may leave the terminal. The session waits, however long it takes.                                                                                                                                                                                             |
+| One agent                      | One conversation from spec to landing, like a single Pi session.                                                                                                                                                                                                             |
+| Answering questions            | The console agent investigates and answers at once. It is not blocked by the work.                                                                                                                                                                                           |
+| Background work                | Apart from spec and plan, Patchmill runs phases in the background so the console stays free.                                                                                                                                                                                 |
+| Agent edits                    | The console agent can make changes, like a normal coding agent.                                                                                                                                                                                                              |
+| Planning gates                 | A required gate asks for approval, then whether to open a planning pull request. Choosing a PR waits for its merge; choosing no PR continues at once. Later gates after an in-chat approval offer chat approval only. Ungated planning keeps its single review confirmation. |
+| Moving past a merge            | The maintainer tells the agent when a pull request is merged. The agent then calls a Patchmill tool to go on. This applies to planning pull requests and the implementation pull request.                                                                                    |
+| End of an Issue run            | The Issue run does not end before the implementation pull request is merged. Until then, it stays active, reports progress, and answers questions.                                                                                                                           |
+| After an Issue run             | The console does not exit when an Issue run ends. The maintainer can give more instructions or start another Issue run from the chat.                                                                                                                                        |
+| Console interface              | The Patchmill extension gives the agent a set of tools for the workflow.                                                                                                                                                                                                     |
+| Spec changes during a block    | The maintainer's confirmation in the console counts as approval, the same way an issue comment does now. No new pull request has to be merged before the worker continues.                                                                                                   |
+| Priority                       | Going straight from spec and plan to implementation comes first. Unblocking a stuck worker comes second. Opening a `needs-info` run from a non-interactive attempt is the first thing to cut if scope grows.                                                                 |
+| How the console is built       | Patchmill opens Pi's own chat screen with a Patchmill extension. Patchmill does not build its own terminal screen.                                                                                                                                                           |
+| Slash commands and live status | Welcome, but not core.                                                                                                                                                                                                                                                       |
 
 ## Decisions this revision needs confirmed
 
@@ -152,7 +153,7 @@ adds to an earlier answer, so the maintainer should confirm them one by one.
 ## How the kernel shapes this design
 
 The kernel design and the planning merge gates design set these rules. This
-design keeps all of them.
+design keeps them except for the interactive gate approval described below.
 
 - `runOneIssue` (`src/kernel/run-once.ts`) claims the issue, takes the issue
   lock, and runs a loop. Each step derives facts (`src/kernel/facts.ts`), picks
@@ -160,10 +161,15 @@ design keeps all of them.
   outcome against git and the host (`src/kernel/verify.ts`).
 - There are two phases, `planning` and `implementation`. Planning has a stage:
   `spec`, `plan`, or `implementation`. Required gates use the branches
-  `agent/issue-N--spec` and `agent/issue-N--plan`. Only a merged planning pull
-  request opens a gate.
-- The agent owns git, the branch, and the pull request. The kernel owns labels
-  and the one comment per stop.
+  `agent/issue-N--spec` and `agent/issue-N--plan` until an in-chat approval. A
+  required gate passes when its planning pull request is merged into base, or
+  its document exists on the pushed implementation branch. Read that document
+  from the remote implementation ref with the existing facts helpers; do not add
+  fetches. More than one implementation branch still refuses the run.
+- The agent owns document commits and pull requests. On a no-PR approval, the
+  kernel creates and pushes the implementation branch from the approved planning
+  head, using the existing branch naming helpers. Only interactive approval puts
+  a gated document there. The kernel owns labels and the one comment per stop.
 - The prompt is one envelope (`src/kernel/run-envelope.md`). The result is a
   final JSON block with `status` (`done`, `needs-input`, or `failed`) and
   `summary`.
@@ -252,30 +258,37 @@ session instead of in a `pi -p` process (D1):
 2. The agent and the maintainer work out the spec, or the plan. The agent writes
    it at the exact Spec or Plan path in the worktree the envelope names, as the
    skill already requires.
-3. When the maintainer agrees, the agent commits and pushes. If the Gate fact
-   requires it, the agent opens the planning pull request with `Refs #N`. The
-   agent then calls the submit tool with `status` and `summary`. _My call:_ the
-   tool asks the maintainer to confirm before Patchmill accepts the result. The
-   maintainer's yes is then an explicit, recorded action rather than something
-   the agent read into the chat.
-4. Patchmill checks the outcome with `verifyOutcome`, as it does after a print
-   mode session. _My call:_ if the check fails, Patchmill does not stop the
-   attempt. It returns the reasons to the agent in the chat, for example "No
-   planning pull request exists for the branch." The agent fixes the problem and
-   submits again in the same Run attempt. A non-interactive run would stop with
-   `needs-info` here. That is a human step, so the console takes it.
-5. Patchmill derives the facts again. If a gate holds the run, it waits (see
-   "Waiting for a merge"). If not, it moves straight on, either to the plan or
-   to implementation.
+3. The agent asks whether the maintainer approves a required gate document, or
+   has reviewed an ungated document, then commits, pushes, and calls the submit
+   tool with `status` and `summary`. It does not open a gate PR first. _My
+   call:_ the tool asks for explicit confirmation through Pi's UI. For a
+   required gate, after "Approve?" it asks "Open a planning pull request?".
+   These are recorded actions, not approval inferred from the chat. Declining
+   approval keeps the conversation open and Patchmill pushes nothing.
+4. If the maintainer chose PR, `verifyOutcome` requires the gate PR exactly as
+   today. If it is missing, Patchmill returns the reason to the agent in the
+   chat. The agent opens the PR with `Refs #N` and submits again. Other failed
+   checks likewise return to the same conversation, not a `needs-info` stop.
+   Without a PR, Patchmill checks the documents, creates and pushes the
+   implementation branch from the approved planning branch head, then derives
+   facts again. Approved documents travel in the implementation PR, just like
+   ungated documents. No saved approval state decides a phase, even on restart.
+5. Choosing PR waits for its merge and the continue tool; choosing no PR moves
+   straight to the next stage, without a gate comment or stop. An ungated stage
+   keeps today's single review confirmation. _My call:_ once a gate was approved
+   in the chat, later documents of this issue are written on the implementation
+   branch. Later required gates offer chat approval only, without the PR option:
+   a later gate PR would carry the unmerged earlier document. Say why in the
+   chat when this happens.
 
 ### Waiting for a merge
 
 There are two waits. Both come from facts, so a restart finds them again.
 
-- **A planning gate.** Today `derivePhase` returns a stop with `inProgress` when
-  a planning pull request is open, and the attempt ends. In an interactive run
-  the attempt waits there instead. The issue keeps `in-progress`, and the
-  process keeps the lock.
+- **A planning gate, only when the maintainer chose PR.** Today `derivePhase`
+  returns a stop with `inProgress` when a planning pull request is open, and the
+  attempt ends. In an interactive run the attempt waits there instead. The issue
+  keeps `in-progress`, and the process keeps the lock.
 - **The review wait.** In a non-interactive run, a verified implementation pull
   request ends the Run attempt. Patchmill swaps `in-progress` for `agent-done`,
   posts one comment, and releases the issue lock. An interactive run publishes
@@ -488,9 +501,10 @@ still stops.
 
 ### Record of decisions
 
-- A confirmed planning result is recorded by the commits and the planning pull
-  request that the agent pushed. Patchmill also writes the confirmation into the
-  run's `result.json`, which nothing reads to decide.
+- A confirmed planning result is recorded by the pushed document commits and
+  either the planning PR or the implementation branch that carries them.
+  Patchmill also writes the confirmation into the run's `result.json`, which
+  nothing reads to decide.
 - Confirmed block guidance is a kernel comment on the issue (D3).
 - Spec changes are explained in their commit messages.
 
@@ -555,8 +569,10 @@ Build these in order. Each slice should leave non-interactive runs unchanged.
 
 1. **Planning conversation through to a merged pull request.** `--interactive`
    opens the chat. Planning runs in the conversation with confirmed results.
-   Gates hold the run until the maintainer says the planning pull request is
-   merged and the agent calls the continue tool. Implementation runs in the
+   Required gates offer approval in the chat, then a PR choice. Choosing no PR
+   pushes the implementation branch and continues; choosing PR holds the run
+   until merge and a continue call. Later gates after chat approval stay on the
+   implementation branch and offer no PR choice. Implementation runs in the
    background with progress in the chat. A verified implementation pull request
    gets `agent-done`, and the run stays open in the review wait for updates to
    the pull request until the merge, then ends. The agent can answer progress
@@ -581,10 +597,21 @@ fake human channel. Do not test the TUI rendering itself.
 - A planning result that fails `verifyOutcome` returns the reasons to the
   conversation, and a corrected result is accepted in the same Run attempt. No
   `needs-info` label or comment is posted.
-- With the spec gate on, the run waits after the agent opens the spec pull
-  request. The issue keeps `in-progress`. A continue call before the merge
-  reports the gate and changes nothing. A continue call after the merge goes on
-  in the same Run attempt.
+- With the spec gate on and approval plus PR chosen, the run waits after the
+  agent opens the spec pull request. The issue keeps `in-progress`. A continue
+  call before the merge reports the gate and changes nothing. A continue call
+  after the merge goes on in the same Run attempt.
+- Approval plus no PR pushes the implementation branch from the planning head,
+  continues without a gate wait, and publishes no gate comment or stop.
+- A restart after no-PR spec approval derives plan or implementation, never
+  spec, from the document on the pushed implementation branch, not local-only
+  work.
+- A later required plan is written on the implementation branch, offers only
+  approval, and tells the chat why there is no PR option.
+- Ungated planning still asks one review confirmation. Declining approval pushes
+  nothing through Patchmill and keeps the conversation open.
+- Non-interactive required gates still need merged PRs when their documents are
+  not on the pushed implementation branch. Ambiguous branches still refuse.
 - After the implementation pull request is verified, the issue gets `agent-done`
   and one comment, but the Issue run does not end. The process keeps the lock. A
   review fix pushed during the wait starts no session and posts no comment. A
