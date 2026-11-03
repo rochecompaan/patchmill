@@ -6,8 +6,10 @@ description: Configure the host, paths, skills, timeout, and planning gates.
 Patchmill reads `patchmill.config.json` from the repository root. Run
 `patchmill init --provider github-gh` to create it when missing. Every supported
 key has a default. Unknown keys fail loading by name. There are no aliases or
-earlier-version readers. Retired spec/plan review-label settings are accepted
-but ignored. New configuration omits them.
+earlier-version readers. Retired spec/plan review-label settings and
+string-valued `labels.blocked` are accepted but ignored. New configuration omits
+them. Dependency links belong in the issue tracker, not label configuration.
+[Update old blocked issues manually before using the upgrade](/using-patchmill/triage/#manual-upgrade).
 
 ## Host and trust
 
@@ -68,8 +70,7 @@ returns to the shell without opening Pi chat. See
     "inProgress": "in-progress",
     "needsInfo": "needs-info",
     "done": "agent-done",
-    "unsuitable": "agent-unsuitable",
-    "blocked": "blocked"
+    "unsuitable": "agent-unsuitable"
   },
   "paths": {
     "specsDir": "docs/specs",

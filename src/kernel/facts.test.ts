@@ -43,6 +43,8 @@ async function setup(t: TestContext) {
     checkCli: unexpected,
     listOpenIssues: unexpected,
     viewIssue: unexpected,
+    listIssueDependencies: unexpected,
+    addIssueDependency: unexpected,
     listLabels: unexpected,
     createLabel: unexpected,
     setLabels: unexpected,

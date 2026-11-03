@@ -14,8 +14,7 @@ Unknown keys fail by name. Copy only the values that your repository needs.
     "inProgress": "in-progress",
     "needsInfo": "needs-info",
     "done": "agent-done",
-    "unsuitable": "agent-unsuitable",
-    "blocked": "blocked"
+    "unsuitable": "agent-unsuitable"
   },
   "paths": {
     "specsDir": "docs/specs",

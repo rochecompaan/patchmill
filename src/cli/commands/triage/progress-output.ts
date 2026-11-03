@@ -31,6 +31,11 @@ export function createTriageProgressReporter(options: {
         write(
           `  labels: ${formatLabels(event.previousLabels)} -> ${formatLabels(event.finalLabels)}`,
         );
+        if (event.blockedBy.length) {
+          write(
+            `  dependencies ${event.applied ? "added" : "to add"}: ${event.blockedBy.map((n) => `#${n}`).join(", ")}`,
+          );
+        }
         if (event.comment) {
           write(event.applied ? "  comment added:" : "  comment:");
           for (const line of event.comment.split(/\r?\n/u).slice(0, 5))

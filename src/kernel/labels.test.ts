@@ -15,9 +15,8 @@ const labels: LabelsConfig = {
   needsInfo: "question",
   done: "finished",
   unsuitable: "manual",
-  blocked: "waiting",
 };
-const names = ["queue", "working", "question", "finished", "manual", "waiting"];
+const names = ["queue", "working", "question", "finished", "manual"];
 
 function fakeHost(existing: LabelDefinition[]) {
   const stored = structuredClone(existing);
@@ -30,6 +29,8 @@ function fakeHost(existing: LabelDefinition[]) {
     repository: unexpected,
     listOpenIssues: unexpected,
     viewIssue: unexpected,
+    listIssueDependencies: unexpected,
+    addIssueDependency: unexpected,
     setLabels: unexpected,
     commentIssue: unexpected,
     pushRepository: unexpected,
@@ -45,14 +46,14 @@ function fakeHost(existing: LabelDefinition[]) {
   return { host, stored, lists: () => lists };
 }
 
-test("catalog maps all six roles to configured names and keeps role metadata", () => {
+test("catalog maps all five roles to configured names and keeps role metadata", () => {
   const custom = labelCatalog(labels);
   assert.deepEqual(
     custom.map((label) => label.name),
     names,
   );
   const defaults = labelCatalog(DEFAULT_CONFIG.labels);
-  assert.equal(defaults.length, 6);
+  assert.equal(defaults.length, 5);
   assert.deepEqual(
     custom.map(({ color, description }) => ({ color, description })),
     defaults.map(({ color, description }) => ({ color, description })),
@@ -61,7 +62,7 @@ test("catalog maps all six roles to configured names and keeps role metadata", (
   assert.equal(labelCatalog(labels)[0]!.name, "queue");
 });
 
-test("ensureLabels lists once, creates only four missing names, and preserves existing metadata and unrelated labels", async () => {
+test("ensureLabels lists once, creates only three missing names, and preserves existing metadata and unrelated labels", async () => {
   const existing = ["queue", "approved", "finished", "unrelated"].map(
     (name) => ({ name, color: "123456", description: "Keep me" }),
   );
@@ -70,7 +71,6 @@ test("ensureLabels lists once, creates only four missing names, and preserves ex
     "working",
     "question",
     "manual",
-    "waiting",
   ]);
   assert.equal(h.lists(), 1);
   assert.deepEqual(h.stored.slice(0, 4), existing);
@@ -81,7 +81,7 @@ test("ensureLabels lists once, creates only four missing names, and preserves ex
     ),
   );
   assert.deepEqual(await ensureLabels(h.host, labels), []);
-  assert.equal(h.stored.length, 8);
+  assert.equal(h.stored.length, 7);
 });
 
 test("ensureLabels propagates list and create errors without continuing", async () => {
@@ -129,7 +129,7 @@ for (const [outcome, name] of [
 }
 
 test("two roles sharing a missing label create and return that name once", async () => {
-  const shared = { ...labels, ready: "shared", blocked: "shared" };
+  const shared = { ...labels, ready: "shared", unsuitable: "shared" };
   const h = fakeHost(
     Object.values(shared)
       .filter((name) => name !== "shared")

@@ -39,7 +39,7 @@ test("the envelope template stays under 150 lines", () => {
 });
 import { test } from "node:test";
 import { DEFAULT_CONFIG } from "../config/config.ts";
-import type { Issue } from "../host/types.ts";
+import type { Issue, IssueDependency } from "../host/types.ts";
 import type { Facts } from "./facts.ts";
 import {
   renderIssue,
@@ -75,7 +75,8 @@ const facts: Facts = {
   expectedPlanPath: "docs/plans/2026-10-15-issue-9-x-plan.md",
   stage: "spec",
 };
-const input: RunEnvelopeInput = {
+const input: RunEnvelopeInput & { dependencies: IssueDependency[] } = {
+  dependencies: [],
   repository: { owner: "team", repo: "project", defaultBranch: "default" },
   issue,
   facts,
@@ -90,7 +91,6 @@ const labels = {
   needsInfo: "custom-info",
   done: "custom-done",
   unsuitable: "custom-unsuitable",
-  blocked: "custom-blocked",
 };
 
 function boundary(text: string): string {
@@ -201,7 +201,13 @@ test("shared issue block includes title, body and every comment with trust metad
     ),
   );
   assert.ok(renderRunEnvelope(input).includes(block));
-  assert.ok(renderTriageEnvelope({ ...input, labels }).includes(block));
+  assert.equal(
+    boundary(renderTriageEnvelope({ ...input, labels })).replace(
+      "Dependencies: none\n\n",
+      "",
+    ),
+    content,
+  );
 });
 
 test("empty trusted list does not grant trust and an issue without comments still renders", () => {
@@ -240,7 +246,13 @@ test("issue delimiters are escaped in title, body and all comment fields", () =>
     trusted: [hostile.comments[0]!.author],
   };
   assert.ok(renderRunEnvelope(hostileInput).includes(block));
-  assert.ok(renderTriageEnvelope({ ...hostileInput, labels }).includes(block));
+  assert.equal(
+    boundary(renderTriageEnvelope({ ...hostileInput, labels })).replace(
+      "Dependencies: none\n\n",
+      "",
+    ),
+    content,
+  );
 });
 
 test("inserted issue text and configured strings remain literal, not template syntax", () => {
@@ -271,16 +283,20 @@ test("inserted issue text and configured strings remain literal, not template sy
   }
 });
 
-test("triage substitutes only the four configured outcome labels and its two-field contract", () => {
-  const text = renderTriageEnvelope({ ...input, labels });
+test("triage substitutes three configured outcomes, structured blockers, and native issue context", () => {
+  const text = renderTriageEnvelope({
+    ...input,
+    labels,
+    dependencies: [{ repository: "owner/repo", number: 1, state: "closed" }],
+  });
+  assert.match(boundary(text), /Dependencies: owner\/repo#1 \(closed\)/);
+  assert.match(
+    boundary(renderTriageEnvelope({ ...input, labels })),
+    /Dependencies: none/,
+  );
   assert.match(text, /team\/project/);
   assert.ok(text.includes(input.skill.path));
-  for (const value of [
-    labels.ready,
-    labels.needsInfo,
-    labels.unsuitable,
-    labels.blocked,
-  ]) {
+  for (const value of [labels.ready, labels.needsInfo, labels.unsuitable]) {
     assert.ok(text.includes(value));
   }
   for (const value of [labels.inProgress, labels.done]) {
@@ -289,6 +305,7 @@ test("triage substitutes only the four configured outcome labels and its two-fie
   assert.deepEqual(JSON.parse(lastJsonBlock(text)!), {
     label: "...",
     comment: "...",
+    blockedBy: [],
   });
   assert.ok(!text.includes("{{"));
 });

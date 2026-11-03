@@ -12,6 +12,14 @@ import {
   trustedAuthors,
 } from "./config.ts";
 
+test("retired blocked configuration is accepted as a string but never retained", () => {
+  assert.equal(
+    "blocked" in parseConfig({ labels: { blocked: "old" } }).labels,
+    false,
+  );
+  assert.throws(() => parseConfig({ labels: { blocked: false } }), ConfigError);
+});
+
 test("parseConfig fills an empty config with defaults", () => {
   assert.deepEqual(parseConfig({}), DEFAULT_CONFIG);
 });
