@@ -1,10 +1,6 @@
 import fs from "node:fs/promises";
 import { resolve, join } from "node:path";
-import {
-  trustedAuthors,
-  type PatchmillConfig,
-  type LabelsConfig,
-} from "../config/config.ts";
+import { type PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue } from "../host/types.ts";
 import type { CommandRunner } from "../process/command.ts";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
@@ -12,22 +8,35 @@ import type { KernelGit } from "./git.ts";
 import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
-import { claimSwap, releaseSwap } from "./labels.ts";
-import { renderRunEnvelope } from "./envelope.ts";
-import { supervisePi } from "./pi-supervisor.ts";
-import { parseAgentResult } from "./result.ts";
+import { claimSwap } from "./labels.ts";
+import type { HumanChannel } from "./human-channel.ts";
+import {
+  preparePhasePrompt,
+  launchPhase,
+  planningFeedback,
+  continueGate,
+  derivedStop,
+  workerGuidance,
+  phaseDecision,
+  planningStopSummary,
+} from "./interactive-loop.ts";
+import { isReviewWait, reviewWait, collectReviewFacts } from "./review-wait.ts";
+import { publishAttemptStop } from "./publish.ts";
 import {
   formatRunResult,
   formatRunStart,
   formatPhaseStart,
   formatPhaseComplete,
 } from "./console.ts";
-import { closesIssue, verifyOutcome, type OutcomeLabel } from "./verify.ts";
+import type { OutcomeLabel } from "./verify.ts";
+import { verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
-import { publishIssueCost } from "./pr-cost.ts";
-import { KERNEL_COMMENT, planningGateComment } from "./comments.ts";
+import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
+import { selectIssue, listRunIssues } from "./issue-selection.ts";
+export { selectIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 
+export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
 export type RunOnceOptions = {
   issue?: number;
   dryRun?: boolean;
@@ -35,6 +44,8 @@ export type RunOnceOptions = {
   signal?: AbortSignal;
 };
 export type RunOnceDeps = {
+  human?: HumanChannel;
+  observe?: (snapshot: RunSnapshot) => void;
   host: Host;
   runner: CommandRunner;
   git: KernelGit;
@@ -64,22 +75,6 @@ export type RunOnceOutcome =
 // Label and comment failures never change the verified outcome.
 type Publication = { publicationErrors?: string[] };
 
-export function selectIssue(
-  issues: Issue[],
-  labels: LabelsConfig,
-  explicit?: number,
-): Issue | undefined {
-  const eligible = issues.filter((i) => i.state === "open");
-  if (explicit !== undefined)
-    return eligible.find((i) => i.number === explicit);
-  return eligible
-    .filter(
-      (i) =>
-        i.labels.includes(labels.ready) || i.labels.includes(labels.inProgress),
-    )
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
-}
-
 export async function runOneIssue(
   config: PatchmillConfig,
   deps: RunOnceDeps,
@@ -88,10 +83,7 @@ export async function runOneIssue(
   const { host, git, repoRoot, now, output } = deps;
   let issues: Issue[];
   try {
-    issues =
-      options.issue === undefined
-        ? await host.listOpenIssues()
-        : [await host.viewIssue(options.issue)];
+    issues = await listRunIssues(host, options.issue);
   } catch (error) {
     if (options.issue === undefined) throw error;
     return { status: "refused", issue: options.issue, reason: String(error) };
@@ -151,17 +143,58 @@ export async function runOneIssue(
   const runId = newRunId(started);
   const startedAt = started.toISOString();
   const runDir = join(issueDir, runId);
+  const snapshot = runSnapshot(
+    { issue: issueNumber, runId, runDir, startedAt },
+    deps.observe,
+    (line) => output.stderr(line),
+  );
   const sessions: {
     phase: Phase;
     exitCode: number | null;
     timedOut: boolean;
     status: string;
+    planningApproval?: "pr" | "no-pr";
   }[] = [];
   let label: OutcomeLabel = "needsInfo";
   let summary = "The session limit was reached.";
   let warnings: string[] = [];
   let displayFacts: Facts | undefined;
   let totalOutputTokens = 0;
+  let published = false;
+  const publicationErrors: string[] = [];
+  const publish = async (remove?: string[]) => {
+    publicationErrors.push(
+      ...(await publishAttemptStop({
+        host,
+        labels: config.labels,
+        issue: issueNumber,
+        issueDir,
+        current: { runId, sessions },
+        ...(displayFacts ? { facts: displayFacts } : {}),
+        stop: { label, summary, warnings, ...(remove ? { remove } : {}) },
+      })),
+    );
+  };
+  const review = async (facts: Facts, restart: boolean) => {
+    snapshot.wait("review-wait");
+    await reviewWait({
+      facts,
+      issue: issueNumber,
+      ...deps,
+      labels: config.labels,
+      human: deps.human!,
+      restart,
+      publish,
+      refresh: () => collectReviewFacts(host, issueNumber, facts, collect),
+      update: (facts, nextLabel, nextSummary) => {
+        published = true;
+        displayFacts = facts;
+        snapshot.facts(facts);
+        label = nextLabel;
+        summary = nextSummary;
+      },
+    });
+  };
   try {
     try {
       const claim = claimSwap(config.labels);
@@ -174,36 +207,49 @@ export async function runOneIssue(
         return { status: "claimed-elsewhere", issue: issueNumber };
       await fs.mkdir(runDir, { recursive: true });
       output.stderr(formatRunStart(issue));
-      for (let index = 0; index < 3; index++) {
+      let sessionNumber = 0;
+      let sinceHuman = 0;
+      let feedback: string | undefined;
+      let resume: { facts: Facts; text: string } | undefined;
+      while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
+        snapshot.deriving();
         issue = await host.viewIssue(issueNumber);
-        const before = await provisionWorkspace({ ...deps, config }, issue);
+        const before = resume
+          ? { kind: "facts" as const, facts: resume.facts }
+          : await provisionWorkspace({ ...deps, config }, issue);
         if (before.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${before.branches.join(", ")}`;
           break;
         }
         const facts = before.facts;
         displayFacts = facts;
-        const decision = derivePhase(facts);
+        snapshot.facts(facts);
+        const decision = phaseDecision(facts, feedback, !!resume);
         if (decision.kind === "stop") {
-          label = decision.label;
-          summary =
-            label === "done"
-              ? "The pull request is merged."
-              : planningGateComment(facts);
-          const closing =
-            facts.pullRequest &&
-            closesIssue(
-              facts.pullRequest.body,
-              issueNumber,
-              await host.repository(),
-            );
-          if (label === "done" && !closing) {
-            label = "needsInfo";
-            summary = `The merged pull request does not close issue #${issueNumber}; it cannot prove implementation completion.`;
-          } else if (facts.stage !== "implementation" && closing) {
-            label = "needsInfo";
-            summary = `The planning pull request would close issue #${issueNumber}. Replace its closing reference with Refs #${issueNumber} before merging it.`;
+          ({ label, summary } = derivedStop(
+            facts,
+            issueNumber,
+            await host.repository(),
+            decision.label,
+          ));
+          if (
+            label === "inProgress" &&
+            (await continueGate(facts, deps.human, () =>
+              snapshot.wait("gate-wait"),
+            ))
+          ) {
+            sinceHuman = 0;
+            continue;
           }
+          break;
+        }
+        if (
+          deps.human &&
+          !resume &&
+          decision.phase === "implementation" &&
+          isReviewWait(facts, issueNumber, await host.repository())
+        ) {
+          await review(facts, true);
           break;
         }
         const phase = decision.phase;
@@ -211,41 +257,32 @@ export async function runOneIssue(
           summary = "planning complete";
           break;
         }
-        const skill = {
-          name: phase,
-          path: resolve(repoRoot, config.skills[phase]),
-        };
-        const promptPath = join(runDir, "prompt.md");
-        const envelope = renderRunEnvelope({
-          repository: await host.repository(),
+        const { launch, launcher } = await preparePhasePrompt(
+          config,
+          deps,
+          runDir,
           issue,
           phase,
           facts,
-          skill,
-          timeoutMinutes: config.pi.timeoutMinutes,
-          trusted: trustedAuthors(config, (await host.checkCli()).login),
-        });
-        await fs.writeFile(promptPath, envelope);
-        const sessionDir = join(runDir, "sessions", String(index + 1));
-        const logPath = join(runDir, `session-${index + 1}.log`);
-        output.stderr(formatPhaseStart(phase, index + 1));
-        const session = await supervisePi({
-          command: deps.piCommand,
-          cwd: facts.worktree,
-          agentDir: resolve(repoRoot, config.pi.agentDir),
-          sessionDir,
-          skillPath: skill.path,
-          promptPath,
-          logPath,
-          aggregateLogPath: join(runDir, "pi.log"),
-          extensionPaths: deps.extensionPaths,
-          timeoutMs: config.pi.timeoutMinutes * 60_000,
-          // Keep the agent protocol in the logs, not the operator's terminal.
-          onOutput: () => {},
-          ...(options.signal ? { signal: options.signal } : {}),
-        });
-        const result = parseAgentResult(session.stdout);
-        const phaseUsage = await sumSessionUsage(sessionDir);
+          sessionNumber + 1,
+          options.signal,
+        );
+        sessionNumber++;
+        sinceHuman++;
+        snapshot.phase(phase, sessionNumber);
+        output.stderr(formatPhaseStart(phase, sessionNumber));
+        const run = await launchPhase(
+          launch,
+          launcher,
+          deps.human,
+          feedback,
+          resume?.text,
+        );
+        resume = undefined;
+        const { session, result } = run;
+        if (deps.human && phase === "planning" && !session.aborted)
+          sinceHuman = 0;
+        const phaseUsage = await sumSessionUsage(launch.sessionDir);
         totalOutputTokens += phaseUsage?.outputTokens ?? 0;
         output.stderr(
           formatPhaseComplete(
@@ -259,36 +296,73 @@ export async function runOneIssue(
           exitCode: session.exitCode,
           timedOut: session.timedOut,
           status: result.ok ? result.result.status : "invalid",
+          ...(run.planningApproval
+            ? { planningApproval: run.planningApproval }
+            : {}),
         });
-        issue = await host.viewIssue(issueNumber);
-        const after = await collect(issue, facts);
+        await snapshot.session();
+        const after = await collect(await host.viewIssue(issueNumber), facts);
         if (after.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${after.branches.join(", ")}`;
           break;
         }
         displayFacts = after.facts;
-        const verified = verifyOutcome({
-          issue: issueNumber,
-          repository: await host.repository(),
+        snapshot.facts(after.facts);
+        const verified = await verifyPlanningApproval(
+          {
+            issue: issueNumber,
+            repository: await host.repository(),
+            phase,
+            result,
+            session,
+            facts: after.facts,
+            logPath: launch.logPath,
+            uncommitted: await git.hasUncommittedChanges(facts.worktree),
+            unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
+          },
+          run,
+          !!deps.human,
+          git,
+          issue,
+        );
+        feedback = planningFeedback(phase, run, verified, deps.human);
+        if (feedback !== undefined) continue;
+        if (
+          deps.human &&
+          run.planningApproval === "no-pr" &&
+          verified.kind === "advance"
+        )
+          continue;
+        const guidance = await workerGuidance(
           phase,
-          result,
-          session,
-          facts: after.facts,
-
-          logPath,
-          uncommitted: await git.hasUncommittedChanges(facts.worktree),
-          unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
-        });
+          run,
+          verified,
+          deps,
+          issueNumber,
+          () => snapshot.wait("blocked"),
+        );
+        if (guidance !== undefined) {
+          resume = { facts: after.facts, text: guidance };
+          sinceHuman = 0;
+          continue;
+        }
         if (verified.kind === "stop") {
           label = verified.label;
           summary = verified.comment;
           warnings = verified.warnings;
-          if (phase === "planning") {
-            if (!after.facts.specPath)
-              summary += `\nExpected artifact: ${after.facts.expectedSpecPath}`;
-            else if (facts.stage !== "spec" && !after.facts.planPath)
-              summary += `\nExpected artifact: ${after.facts.expectedPlanPath}`;
+          if (phase === "planning")
+            summary = planningStopSummary(summary, facts, after.facts);
+          if (
+            label === "inProgress" &&
+            (await continueGate(after.facts, deps.human, () =>
+              snapshot.wait("gate-wait"),
+            ))
+          ) {
+            sinceHuman = 0;
+            continue;
           }
+          if (deps.human && phase === "implementation" && label === "done")
+            await review(after.facts, false);
           break;
         }
         if (options.planOnly && phase === "planning") {
@@ -304,48 +378,12 @@ export async function runOneIssue(
       }
     } catch (error) {
       label = "needsInfo";
-      summary = errorMessage(error);
+      summary = error instanceof Error ? error.message : String(error);
+      if (published) await publish([config.labels.done]);
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
-    if (displayFacts?.pullRequest) {
-      try {
-        await publishIssueCost({
-          host,
-          branch: displayFacts.branch,
-          baseBranch: displayFacts.baseBranch,
-          issueDir,
-          current: { runId, sessions },
-        });
-      } catch (error) {
-        warnings.push(`PR cost report unavailable: ${errorMessage(error)}`);
-      }
-    }
-    const publicationErrors: string[] = [];
-    const publish = async (failure: string, effect: () => Promise<void>) => {
-      try {
-        await effect();
-      } catch (error) {
-        publicationErrors.push(`${failure}: ${errorMessage(error)}`);
-      }
-    };
-    const release = releaseSwap(config.labels, label);
-    await publish("Label update failed", () =>
-      host.setLabels(issueNumber, release.add, release.remove),
-    );
-    await publish("Comment failed", () =>
-      host.commentIssue(
-        issueNumber,
-        [
-          KERNEL_COMMENT,
-          `Issue #${issueNumber}: ${config.labels[label]}`,
-          summary,
-          cost,
-          ...warnings,
-          ...publicationErrors,
-        ].join("\n\n"),
-      ),
-    );
+    if (!published) await publish();
     const publication = publicationErrors.length ? { publicationErrors } : {};
     const outcome: RunOnceOutcome =
       label === "done"
@@ -399,12 +437,9 @@ export async function runOneIssue(
         elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
       }),
     );
+    snapshot.ended(summary);
     return outcome;
   } finally {
     await lock.release();
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

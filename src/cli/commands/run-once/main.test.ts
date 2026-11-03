@@ -23,6 +23,7 @@ async function harness(t: TestContext) {
     stderr,
     options: {
       repoRoot: root,
+      exit: (_code: number) => {},
       output: {
         stdout: (line: string) => stdout.push(line),
         stderr: (line: string) => stderr.push(line),
@@ -183,3 +184,128 @@ test("registered run-once and release help work without repository configuration
     assert.equal(result.stderr, "");
   }
 });
+
+for (const eligible of [true, false]) {
+  test(`--interactive selects before opening the console (eligible: ${eligible})`, async (t) => {
+    const f = await harness(t);
+    let entered = false;
+    const code = await main(["--interactive"], {
+      ...f.options,
+      runner: async (command, args) => {
+        assert.equal(command, "gh");
+        assert.equal(args[0], "api");
+        assert.ok(
+          args.includes("repos/{owner}/{repo}/issues?state=open&per_page=100"),
+        );
+        return {
+          code: 0,
+          stderr: "",
+          stdout: JSON.stringify(
+            eligible
+              ? [
+                  {
+                    number: 10,
+                    title: "newer",
+                    body: "",
+                    state: "open",
+                    user: { login: "owner" },
+                    html_url: "url",
+                    labels: [{ name: "queue" }],
+                    created_at: "2026-02-01",
+                    comments: [],
+                  },
+                  {
+                    number: 9,
+                    title: "oldest",
+                    body: "",
+                    state: "open",
+                    user: { login: "owner" },
+                    html_url: "url",
+                    labels: [{ name: "queue" }],
+                    created_at: "2026-01-01",
+                    comments: [],
+                  },
+                ]
+              : [],
+          ),
+        };
+      },
+      startConsole: async ({ issue }) => {
+        entered = true;
+        assert.equal(issue, 9);
+        return 0;
+      },
+    });
+    assert.equal(code, 0, f.stderr.join("\n"));
+    assert.equal(entered, eligible);
+    if (!eligible) assert.match(f.stdout.join("\n"), /No eligible issue/);
+  });
+}
+
+for (const flag of ["--dry-run", "--plan-only"]) {
+  test(`--interactive rejects ${flag} before loading configuration`, async (t) => {
+    const f = await harness(t);
+    await rm(join(f.root, CONFIG_FILE));
+    assert.equal(
+      await main(["--issue", "9", "--interactive", flag], f.options),
+      1,
+    );
+    assert.deepEqual(f.stderr, [
+      "--interactive cannot be combined with --dry-run or --plan-only.",
+    ]);
+  });
+}
+
+test("--interactive hands the issue and real dependencies to the console", async (t) => {
+  const f = await harness(t);
+  const runner: typeof runCommand = async (command, args, options) => {
+    assert.equal(command, "git");
+    assert.deepEqual(args, ["fetch", "--prune", "origin"]);
+    assert.equal(options?.cwd, f.root);
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  let entered = false;
+  assert.equal(
+    await main(["--issue", "9", "--interactive"], {
+      ...f.options,
+      runner,
+      runOneIssue: async () => assert.fail("non-interactive kernel entered"),
+      startConsole: async ({ config, deps, issue }) => {
+        entered = true;
+        assert.equal(issue, 9);
+        assert.equal(config.labels.ready, "queue");
+        assert.equal(deps.repoRoot, f.root);
+        assert.equal(deps.runner, runner);
+        assert.equal(deps.piCommand.command, process.execPath);
+        assert.equal(typeof deps.host.viewIssue, "function");
+        await deps.git.fetch();
+        return 7;
+      },
+    }),
+    7,
+  );
+  assert.equal(entered, true);
+});
+
+for (const code of [0, 1]) {
+  test(`interactive completion exits ${code} only after console cleanup`, async (t) => {
+    const f = await harness(t);
+    const events: string[] = [];
+    assert.equal(
+      await main(["--interactive", "--issue", "9"], {
+        ...f.options,
+        startConsole: async () => {
+          events.push("start");
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          events.push("cleanup complete");
+          return code;
+        },
+        exit: (status) => {
+          events.push(`exit ${status}`);
+        },
+      }),
+      code,
+    );
+    assert.deepEqual(events, ["start", "cleanup complete", `exit ${code}`]);
+  });
+}

@@ -8,6 +8,8 @@ import {
   plan,
   done,
   branch,
+  implement,
+  merge,
 } from "../../test-support/run-once-fixture.ts";
 import { parseConfig } from "../config/config.ts";
 import { acquireLock } from "./lock.ts";
@@ -21,27 +23,11 @@ const planning = (files: Record<string, string>, pr = true) => ({
   ...(pr ? { pullRequest: { draft: false, body: "Refs #9" } } : {}),
   result: done,
 });
-const implement = {
-  writeFiles: { "login.ts": "code" },
-  commit: "Code",
-  push: true,
-  pullRequest: { draft: false, body: "Closes #9" },
-  result: done,
-};
 type Scenario = Awaited<ReturnType<typeof setupRun>>;
 function gates(c: Scenario, specRequired: boolean, planRequired: boolean) {
   Object.assign(c.config.workflow, {
     specApproval: { required: specRequired },
     planApproval: { required: planRequired },
-  });
-}
-async function merge(c: Scenario, head: string) {
-  const cwd = join(c.dir, "seed");
-  await c.git(["fetch", "origin", head], cwd);
-  await c.git(["merge", "--no-edit", "FETCH_HEAD"], cwd);
-  await c.git(["push", "origin", "HEAD:main"], cwd);
-  await c.mutate((s) => {
-    s.pullRequests.find((p) => p.headBranch === head)!.state = "merged";
   });
 }
 async function count(c: Scenario) {
@@ -140,9 +126,10 @@ for (const head of [planBranch, branch]) {
       implement,
     ]);
     gates(c, true, head === planBranch);
+    await c.run();
+    // Create a stale later workspace while the first gate is still waiting.
     await c.seed({ [spec]: "old spec", [plan]: "old plan" }, head);
     await c.git(["reset", "--hard", "origin/main"], join(c.dir, "seed"));
-    await c.run();
     await merge(c, specBranch);
     await c.run();
     assert.equal(await count(c), 1, "a stale artifact must stop before Pi");

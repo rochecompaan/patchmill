@@ -19,3 +19,9 @@ export function planningGateComment(facts: Facts): string {
     .filter(Boolean)
     .join("\n\n");
 }
+
+export function guidanceComment(text: string): string {
+  return [KERNEL_COMMENT, "Maintainer guidance from the console:", text].join(
+    "\n\n",
+  );
+}

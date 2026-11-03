@@ -1,6 +1,6 @@
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue, PullRequest } from "../host/types.ts";
-import { branchName } from "./names.ts";
+import { branchName, planningBranchName } from "./names.ts";
 import { findPullRequest, wrongTarget } from "./pull-request.ts";
 
 export type WorkflowStage = "spec" | "plan" | "implementation";
@@ -22,18 +22,20 @@ export async function planningWorkspace(input: {
   branches: string[];
   baseBranch: string;
   selected?: Pick<PlanningWorkspace, "stage" | "branch"> | undefined;
+  implementationArtifacts?: Partial<Record<"spec" | "plan", boolean>>;
 }): Promise<WorkspaceResult> {
   const { host, workflow, issue, branches, baseBranch, selected } = input;
   const pullRequest = (branch: string) =>
     findPullRequest(host, branch, baseBranch);
-  const specBranch = `agent/issue-${issue.number}--spec`;
-  const planBranch = `agent/issue-${issue.number}--plan`;
+  const specBranch = planningBranchName(issue.number, "spec");
+  const planBranch = planningBranchName(issue.number, "plan");
   const implementation = branches.filter(
     (b) => b !== specBranch && b !== planBranch,
   );
   if (implementation.length > 1)
     return { kind: "ambiguous-branches", branches: implementation };
   const merged: PlanningWorkspace["merged"] = [];
+  let chatApproved = false;
   const workspace = async (
     stage: WorkflowStage,
     branch: string,
@@ -57,9 +59,15 @@ export async function planningWorkspace(input: {
     if (!required) continue;
     const pr = await pullRequest(branch);
     // A merge into another branch stays at this gate; derivePhase reports it.
-    if (pr?.state !== "merged" || wrongTarget(pr, baseBranch))
-      return workspace(stage, branch, pr);
-    merged.push(stage);
+    if (pr?.state === "merged" && !wrongTarget(pr, baseBranch)) {
+      merged.push(stage);
+    } else if (input.implementationArtifacts?.[stage]) {
+      chatApproved = true;
+    } else {
+      return chatApproved
+        ? workspace(stage, implementation[0]!)
+        : workspace(stage, branch, pr);
+    }
   }
   const branch = implementation[0] ?? branchName(issue.number, issue.title);
   return workspace("implementation", branch, await pullRequest(branch));

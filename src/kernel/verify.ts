@@ -11,6 +11,7 @@ export type Outcome =
   | { kind: "advance" }
   | { kind: "stop"; label: OutcomeLabel; comment: string; warnings: string[] };
 export type VerifyInput = {
+  chatApproval?: boolean;
   issue: number;
   repository: Pick<Repository, "owner" | "repo">;
   phase: Phase;
@@ -59,7 +60,7 @@ export function verifyOutcome(input: VerifyInput): Outcome {
     if (!facts.specPath) missing.push("The spec path is missing.");
     if (facts.stage !== "spec" && !facts.planPath)
       missing.push("The plan path is missing.");
-    if (facts.stage !== "implementation") {
+    if (facts.stage !== "implementation" && !input.chatApproval) {
       if (!facts.pullRequest)
         missing.push("No planning pull request exists for the branch.");
       else {
@@ -81,7 +82,7 @@ export function verifyOutcome(input: VerifyInput): Outcome {
     }
     if (missing.length > 0) {
       reason = `The claim was not verified. ${missing.join(" ")}`;
-    } else if (facts.stage !== "implementation") {
+    } else if (facts.stage !== "implementation" && !input.chatApproval) {
       label = "inProgress";
       reason = planningGateComment(facts);
     } else {

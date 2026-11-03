@@ -24,14 +24,16 @@ narrow race between separate clones remains possible. The lock file and its
 parent directory must stay in place, even after a crash.
 
 Phase derivation reads git and the issue host. Spec and plan gates are optional
-and default off. Each required gate uses a separate planning pull request. Only
-merging that pull request unlocks the next stage. Logs, result files, and
-approval labels never decide what happens next.
+and default off. A required gate passes when its planning pull request is merged
+into base, or its document is on the pushed implementation branch after an
+interactive approval without a PR. Logs, result files, and approval labels never
+decide what happens next.
 
 Outcome verification checks facts after Pi finishes. Planning needs the pushed
 branch and required documents. A gated stage also needs its planning pull
-request. Implementation needs an open, non-draft pull request whose head matches
-the branch and whose body closes the issue. `agent-done` means that this pull
+request unless the maintainer approved it without a PR in an interactive run.
+Implementation needs an open, non-draft pull request whose head matches the
+branch and whose body closes the issue. `agent-done` means that this pull
 request exists, not that it merged.
 
 Stable names give humans and agents the same paths. Branches use
@@ -74,7 +76,10 @@ gate. The issue stays `in-progress` while waiting, and no Pi session runs then.
 With both gates enabled, merge the spec PR, then the plan PR, before
 implementation. Each later branch starts from the fetched base with the merged
 documents. Ungated documents go into the next gated PR or the implementation PR.
-The kernel never deletes these worktrees.
+After a confirmed implementation PR merge, interactive runs remove the issue's
+implementation, spec, and plan worktrees and local branches when each worktree's
+`git status --porcelain` is empty. Dirty worktrees are kept, with the reason
+shown in chat. Non-interactive runs leave them in place.
 
 ## Commands
 
@@ -89,6 +94,50 @@ The kernel never deletes these worktrees.
 | `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                       |
 | `patchmill version`                                        | Print the version.                                                                                                                                            |
 | `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
+
+## Interactive Issue runs
+
+```sh
+patchmill run-once --issue 225 --interactive
+```
+
+This opens a Pi console for planning with you and running implementation in a
+background worker, using the same Run-once workflow. `--issue N` (a positive
+integer) is optional: without it, the CLI selects the next eligible issue before
+opening the console. If none is eligible, it exits successfully without opening
+the console. `--interactive` cannot be combined with `--dry-run` or
+`--plan-only`. The console agent calls four tools:
+
+- `patchmill_submit_planning_result`: submit a planning outcome after your
+  review in one dialog; requesting changes or Escape keeps planning open.
+- `patchmill_continue_issue_run`: recheck a waiting merge and continue the run.
+- `patchmill_run_status`: show the current run, worker, wait, and estimated
+  cost.
+- `patchmill_confirm_block_guidance`: send guidance to a blocked worker after
+  your confirmation.
+
+The planning dialog names the issue and document, shows the files and branch
+with a short commit, and lists 2–5 key decisions rather than the agent's full
+summary. A required gate offers **Approve and open a planning PR**, **Approve
+without a PR (continue now)**, or **Request changes** in one dialog. Choosing PR
+waits for its merge; choosing no PR lets Patchmill push the approved planning
+head to the implementation branch and continue at once. Later documents stay on
+that branch. A later required gate offers **Approve (continue now)** or
+**Request changes** and explains which earlier document prevents a planning PR.
+Ungated planning asks whether you have reviewed the spec, plan, or both, with
+**Reviewed, continue** and **Request changes**. Requesting changes or Escape
+keeps planning open and pushes nothing through Patchmill. A restart derives
+approvals from the pushed documents, never saved workflow state.
+
+Type `/patchmill-issue <N>` to start another issue once the current run ends. It
+switches to that issue's conversation without a confirmation dialog. Sessions
+live under `<runsDir>/issue-<N>/console/`; reopening an issue resumes its newest
+session, while a new issue gets a fresh conversation.
+
+Quitting the console stops the worker. At startup, Patchmill checks for stray
+workers and stops them before starting an Issue run; if cleanup fails, it will
+not start the run. Do not launch this command inside a pi-subagents child
+process: `PI_SUBAGENT_CHILD=1` disables pi-subagents.
 
 ## Configuration
 

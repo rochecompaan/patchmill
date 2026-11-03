@@ -1,28 +1,39 @@
+import { listRunIssues } from "../../../kernel/issue-selection.ts";
+import { formatRunResult } from "../../../kernel/console.ts";
+import { startConsole } from "../../../console/start.ts";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
 import { createKernelGit } from "../../../kernel/git.ts";
-import { runOneIssue, type RunOnceOptions } from "../../../kernel/run-once.ts";
+import {
+  runOneIssue,
+  selectIssue,
+  type RunOnceOptions,
+} from "../../../kernel/run-once.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
 import { resolveBundledPiCommand } from "../../pi-cli.ts";
 
-const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only]
+const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only] [--interactive]
 Advance one issue. Use --dry-run to show the next phase without claiming it.
-Use --plan-only to stop after planning.`;
+Use --plan-only to stop after planning.
+Use --interactive to open the interactive chat.`;
 
 type Options = {
   runner?: CommandRunner;
   output?: CliOutput;
   repoRoot?: string;
   runOneIssue?: typeof runOneIssue;
+  startConsole?: typeof startConsole;
+  exit?: (code: number) => void;
 };
 
-function parseArgs(args: string[]): RunOnceOptions {
-  const options: RunOnceOptions = {};
+function parseArgs(args: string[]): RunOnceOptions & { interactive?: boolean } {
+  const options: RunOnceOptions & { interactive?: boolean } = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--dry-run") options.dryRun = true;
+    if (arg === "--interactive") options.interactive = true;
+    else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--plan-only") options.planOnly = true;
     else if (arg === "--issue") {
       const value = args[++i];
@@ -35,6 +46,12 @@ function parseArgs(args: string[]): RunOnceOptions {
       }
       options.issue = Number(value);
     } else throw new Error(`Unknown argument: ${arg}. Use --help for options.`);
+  }
+  if (options.interactive) {
+    if (options.dryRun || options.planOnly)
+      throw new Error(
+        "--interactive cannot be combined with --dry-run or --plan-only.",
+      );
   }
   return options;
 }
@@ -68,6 +85,33 @@ export async function main(
       now: () => new Date(),
       output,
     };
+    if (runOptions.interactive) {
+      const issue =
+        runOptions.issue ??
+        selectIssue(await listRunIssues(deps.host), config.labels)?.number;
+      if (issue === undefined) {
+        output.stdout(
+          formatRunResult({ label: "No eligible issue", severity: "success" }),
+        );
+        return 0;
+      }
+      const code = await (options.startConsole ?? startConsole)({
+        config,
+        deps,
+        issue,
+      });
+      // Pi's normal quit also exits after awaited cleanup. A stopped console
+      // can retain Pi-owned handles (for example custom-theme file watchers).
+      // Flush queued terminal output before exiting, especially the error hint.
+      await Promise.all(
+        [process.stdout, process.stderr].map(
+          (stream) =>
+            new Promise<void>((resolve) => stream.write("", () => resolve())),
+        ),
+      );
+      (options.exit ?? process.exit)(code);
+      return code;
+    }
     process.on("SIGINT", abort);
     process.on("SIGTERM", abort);
     const outcome = await (options.runOneIssue ?? runOneIssue)(config, deps, {

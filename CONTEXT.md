@@ -6,17 +6,22 @@ safety, policy, and human-control boundaries.
 ## Language
 
 **Spec gate**: A required pause until a human merges the specification pull
-request. Review approval alone does not unlock it. _Avoid_: Approval label
+request, or approves it without a PR in an Interactive Issue run, which puts the
+document on the pushed implementation branch. Review approval alone does not
+unlock it. _Avoid_: Approval label
 
 **Plan gate**: A required pause until a human merges the implementation-plan
-pull request. Review approval alone does not unlock it. _Avoid_: Approval label
+pull request, or approves it without a PR in an Interactive Issue run, which
+puts the document on the pushed implementation branch. Review approval alone
+does not unlock it. _Avoid_: Approval label
 
 **Planning pull request**: A pull request for documents that must merge before
 the next required stage. It does not complete the issue. _Avoid_: Implementation
 PR
 
 **Issue branch**: The implementation branch for one issue. Ungated planning
-documents accompany its code. Required planning gates use separate branches.
+documents and documents approved without a PR in an Interactive Issue run
+accompany its code. Required planning gates otherwise use separate branches.
 _Avoid_: One branch for every stage
 
 **Run-once workflow**: The atomic processing of one selected issue from claim
@@ -45,6 +50,18 @@ through any resumptions to a terminal outcome. _Avoid_: Run attempt
 
 **Run attempt**: One process entry into the run-once workflow for an Issue run.
 A later Run attempt may resume the same Issue run. _Avoid_: Issue run
+
+**Interactive Issue run**: An Issue run that takes human input through a console
+instead of issue comments. It uses the same Run-once workflow.
+
+**Console session**: The Pi session that holds the maintainer's conversation for
+one or more Interactive Issue runs. It never decides a phase.
+
+**Console agent**: The agent in the Console session. It plans with the
+maintainer and calls Patchmill tools, but never chooses a phase.
+
+**Review wait**: The part of an Interactive Issue run after the implementation
+pull request is verified and labeled `agent-done`, and before it is merged.
 
 **Normalized run outcome**: The small coordinator-facing result of one Run
 attempt — completed, no work, deferred, cancelled, or failed — produced from a

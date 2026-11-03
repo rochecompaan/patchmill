@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { createGitFixture } from "./git-fixture.ts";
 import { FakeHost, writeFakeHostState } from "./fake-host.ts";
+import { KERNEL_COMMENT } from "../src/kernel/comments.ts";
 import { DEFAULT_CONFIG } from "../src/config/config.ts";
 import { runCommand, type CommandRunner } from "../src/process/command.ts";
 import { createKernelGit } from "../src/kernel/git.ts";
@@ -17,6 +18,21 @@ export const spec = "docs/specs/2026-10-15-issue-9-add-login-design.md";
 export const plan = "docs/plans/2026-10-15-issue-9-add-login-plan.md";
 export const done = { status: "done", summary: "Login work complete" };
 export const branch = "agent/issue-9-add-login";
+export const implement = {
+  writeFiles: { "login.ts": "code" },
+  commit: "Code",
+  push: true,
+  pullRequest: { draft: false, body: "Closes #9" },
+  result: done,
+};
+export type Scenario = Awaited<ReturnType<typeof setupRun>>;
+export function kernelComments(c: Scenario) {
+  return c.host
+    .state()
+    .issues[0]!.comments.filter((comment) =>
+      comment.body.includes(KERNEL_COMMENT),
+    );
+}
 export async function setupRun(t: TestContext, steps: unknown[] = []) {
   const f = await createGitFixture();
   t.after(() => fs.rm(f.dir, { recursive: true, force: true }));
@@ -97,8 +113,10 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
     fn(state);
     return fs.writeFile(stateFile, JSON.stringify(state));
   };
-  const run = (options: RunOnceOptions = {}) =>
-    runOneIssue(config, deps, options);
+  const run = (
+    options: RunOnceOptions = {},
+    overrides: Partial<RunOnceDeps> = {},
+  ) => runOneIssue(config, { ...deps, ...overrides }, options);
   const records = async () => {
     const root = join(f.repoRoot, config.paths.runsDir, "issue-9");
     const entries = (await fs.readdir(root)).filter((n) => n !== "lock");
@@ -125,4 +143,18 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
     lockPath: join(f.repoRoot, config.paths.runsDir, "issue-9/lock"),
     worktree: join(f.repoRoot, ".worktrees/agent-issue-9-add-login"),
   };
+}
+
+export async function merge(c: Scenario, head: string) {
+  const cwd = join(c.dir, "seed");
+  await c.git(["fetch", "origin", head], cwd);
+  await c.git(["merge", "--no-edit", "FETCH_HEAD"], cwd);
+  await c.git(["push", "origin", "HEAD:main"], cwd);
+  await c.mutate((s) => {
+    s.pullRequests.find((p) => p.headBranch === head)!.state = "merged";
+  });
+}
+
+export async function mergePullRequest(c: Scenario, head = branch) {
+  await merge(c, head);
 }
