@@ -131,8 +131,10 @@ export async function selectRunIssue(input: {
       `run({ issue: 9 })` and `run({ issue: 9, dryRun: true })` return
       `refused`, make no `setLabels:` call, and leave no worktree and no
       `pi.pid`. Repeat for issue 9 labelled in-progress. In the CLI tests,
-      `--interactive` with a blocked or unreadable target prints the reason,
-      returns 1, and never calls `startConsole`.
+      `--interactive --issue 9` with a blocked or unreadable target prints the
+      reason, returns 1, and never calls `startConsole`. Automatic
+      `--interactive` with no eligible issue prints “No eligible issue”, returns
+      0, and never calls `startConsole`.
 - [ ] Run
       `node --test src/kernel/issue-selection.test.ts src/kernel/run-once.test.ts src/cli/commands/run-once/main.test.ts`.
       Expect failures.
@@ -219,6 +221,7 @@ export type TriageResult = {
       `npm --prefix site run build` pass.
 - [ ] `grep -rn blocked src README.md docs/agents site/src/content/docs skills`
       shows only the worker-guidance `blocked` state, the GitHub `blocked_by`
-      path, and the retired-key handling.
+      path, retired-key handling, intentional test references, and
+      manual-upgrade documentation.
 - [ ] Push the issue branch. The spec and plan ship with the implementation PR;
       do not open a separate planning PR.
