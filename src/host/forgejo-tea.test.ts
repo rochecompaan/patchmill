@@ -33,6 +33,133 @@ function fixture(
   };
 }
 
+test("native dependency reads paginate and preserve cross-repository identity", async () => {
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    {
+      match: /dependencies\?page=1&limit=50/,
+      result: {
+        stdout: JSON.stringify(
+          Array.from({ length: 50 }, (_, i) => ({
+            number: i + 1,
+            state: "closed",
+            repository: { full_name: "owner/repo" },
+          })),
+        ),
+      },
+    },
+    {
+      match: /dependencies\?page=2&limit=50/,
+      result: {
+        stdout: JSON.stringify([
+          {
+            number: 1,
+            state: "open",
+            repository: { full_name: "other/project" },
+          },
+        ]),
+      },
+    },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "work" });
+  const dependencies = await host.listIssueDependencies(9);
+  assert.equal(dependencies.length, 51);
+  assert.deepEqual(dependencies[0], {
+    repository: "owner/repo",
+    number: 1,
+    state: "closed",
+  });
+  assert.deepEqual(dependencies[50], {
+    repository: "other/project",
+    number: 1,
+    state: "open",
+  });
+  for (const [i, call] of runner.calls.entries()) {
+    assert.equal(runner.options[i]?.cwd, "/repo");
+    if (call[0] === "tea") {
+      assert.ok(call.includes("owner/repo"));
+      assert.ok(call.includes("work"));
+    }
+  }
+});
+
+for (const stdout of [
+  "invalid",
+  "{}",
+  "[null]",
+  '[{"number":1,"state":"open"}]',
+  '[{"number":1,"state":"unknown","repository":{"full_name":"a/b"}}]',
+  '[{"number":0,"state":"closed","repository":{"full_name":"a/b"}}]',
+  '[{"number":1,"state":"closed","repository":{"full_name":"missing-slash"}}]',
+]) {
+  test(`native dependency read rejects malformed payload: ${stdout}`, async () => {
+    await assert.rejects(fixture(stdout).host.listIssueDependencies(9));
+  });
+}
+
+test("native dependency read accepts empty results and rejects a failed later page", async () => {
+  assert.deepEqual(await fixture("[]").host.listIssueDependencies(9), []);
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    {
+      match: /page=1&/,
+      result: {
+        stdout: JSON.stringify(
+          Array.from({ length: 50 }, () => ({
+            number: 1,
+            state: "closed",
+            repository: { full_name: "owner/repo" },
+          })),
+        ),
+      },
+    },
+    { match: /page=2&/, result: { code: 1, stderr: "page two failed" } },
+  ]);
+  await assert.rejects(
+    new ForgejoHost({
+      runner,
+      repoRoot: "/repo",
+      login: "",
+    }).listIssueDependencies(9),
+    /page two failed/,
+  );
+});
+
+for (const login of ["work", ""]) {
+  test(`native dependency creation uses the dependency direction and JSON index with profile ${JSON.stringify(login)}`, async () => {
+    const { host, runner } = fixture("{}", login);
+    await host.addIssueDependency(9, 1);
+    assert.deepEqual(runner.calls.at(-1), [
+      "tea",
+      "api",
+      "/repos/{owner}/{repo}/issues/9/dependencies",
+      "--method",
+      "POST",
+      "-d",
+      '{"owner":"owner","repo":"repo","index":1}',
+      "--repo",
+      "owner/repo",
+      ...(login ? ["--login", login] : []),
+    ]);
+  });
+}
+
+test("native dependency creation propagates errors without rereading", async () => {
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    { match: /^tea /, result: { code: 1, stderr: "cycle" } },
+  ]);
+  await assert.rejects(
+    new ForgejoHost({
+      runner,
+      repoRoot: "/repo",
+      login: "",
+    }).addIssueDependency(9, 1),
+    /cycle/,
+  );
+  assert.equal(runner.calls.filter((call) => call[0] === "tea").length, 1);
+});
+
 test("clone guidance preserves the no-login command", () => {
   assert.equal(
     fixture("[]", "").host.cloneCommand(target),

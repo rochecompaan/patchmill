@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-10-31T20:50:21.118Z",
+  "installedAt": "2026-11-03T11:22:55.351Z",
   "sources": {
     "patchmill": "0.20.0",
     "superpowers": "7.0.1",
@@ -96,7 +96,7 @@
     },
     {
       "path": "patchmill-issue-triage/SKILL.md",
-      "sha256": "996495ad2e95fee4dff83f4939986426015787873ff6c0e9ba2854e976605224"
+      "sha256": "5e84478f66bea0130d34a835ba70b8eb633223a4628784b81ed79e41a436e02c"
     },
     {
       "path": "patchmill-label/SKILL.md",

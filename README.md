@@ -152,8 +152,7 @@ keys fail by name. `git.baseBranch: null` uses the remote default branch.
     "inProgress": "in-progress",
     "needsInfo": "needs-info",
     "done": "agent-done",
-    "unsuitable": "agent-unsuitable",
-    "blocked": "blocked"
+    "unsuitable": "agent-unsuitable"
   },
   "paths": {
     "specsDir": "docs/specs",
@@ -176,26 +175,57 @@ keys fail by name. `git.baseBranch: null` uses the remote default branch.
 ```
 
 `init` leaves valid existing configuration unchanged and rejects invalid
-configuration. Retired spec/plan review-label settings are accepted but ignored.
-New configuration omits them. Other removed keys remain invalid. GitHub init can
-seed `host.login` from the detected user. For Forgejo, an empty login selects
-Tea's default profile. Only an explicit profile alias selects another profile.
-The detected username is not that alias. The authenticated username and
-`host.trustedAuthors` identify trusted comment authors. GitHub also trusts its
-configured `host.login`. A Tea profile alias does not grant author trust.
+configuration. Retired spec/plan review-label settings and string-valued
+`labels.blocked` are accepted but ignored. New configuration omits them. Other
+removed keys remain invalid. GitHub init can seed `host.login` from the detected
+user. For Forgejo, an empty login selects Tea's default profile. Only an
+explicit profile alias selects another profile. The detected username is not
+that alias. The authenticated username and `host.trustedAuthors` identify
+trusted comment authors. GitHub also trusts its configured `host.login`. A Tea
+profile alias does not grant author trust.
 
 ## Label lifecycle
 
 | Label         | Meaning                                               | Set by                    | Removed by              |
 | ------------- | ----------------------------------------------------- | ------------------------- | ----------------------- |
-| `agent-ready` | Eligible for a Run attempt.                           | Human or triage           | Kernel on claim         |
+| `agent-ready` | Suitable for automation; dependencies must close.     | Human or triage           | Kernel on claim         |
 | `in-progress` | Work is active or waiting for a planning PR merge.    | Kernel on claim           | Kernel on final release |
 | `needs-info`  | The agent asked questions, or the Run attempt failed. | Kernel                    | Kernel on next claim    |
 | `agent-done`  | A ready pull request that closes the issue exists.    | Kernel after verification | Human                   |
 
-Triage returns one of `agent-ready`, `agent-unsuitable`, `blocked`, or
-`needs-info` by default. The kernel applies labels and comments. Agents own git
-and the pull request. They do not change issue labels or post issue comments.
+Triage returns one of `agent-ready`, `agent-unsuitable`, or `needs-info` by
+default, plus a comment and structured `blockedBy` issue numbers. The kernel
+adds missing native dependency links before it applies labels and comments.
+Agents own git and the pull request, not issue mutations.
+
+GitHub **Blocked by** and Forgejo/Gitea **Depends on** links control when work
+can start. Automatic runs skip issues with open or unreadable dependencies.
+Explicit runs refuse them, including interactive, dry-run, and resumed attempts.
+Closing the last blocker makes an issue eligible on the next selection without
+another triage run, label change, or comment. Reopening a blocker reverses that.
+Triage dry run previews links, labels, and comments without host writes.
+
+### Manual upgrade from blocked labels
+
+After upgrading, run `patchmill init` to refresh the managed triage skill.
+Custom triage skills must also return the required `blockedBy` array.
+
+There is no automatic migration. Before running the upgraded Patchmill, update
+each affected issue manually:
+
+1. Add its dependencies through GitHub **Blocked by** or Forgejo/Gitea **Depends
+   on**.
+2. Remove the old `blocked` label or its configured replacement.
+3. If the work suits automation, apply the configured ready label.
+4. Remove `labels.blocked` from `patchmill.config.json`.
+
+Old blocked labels no longer prevent work, and old comments do not create native
+links. If a dependency write fails, triage warns and skips the label and
+comment. Added links remain intact. Explicit re-triage of ready or in-progress
+issues can leave them runnable with missing links after an error. Resolve the
+warning before starting another run on that issue.
+
+### Releasing a stale claim
 
 After a hard crash, `patchmill release --issue N` acquires the same OS lock and
 resets a stale `in-progress` label to `agent-ready`. Contention prevents label

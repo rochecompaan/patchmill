@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { findPackageRoot } from "../package-root.ts";
 import type { LabelsConfig } from "../config/config.ts";
-import type { Issue, Repository } from "../host/types.ts";
+import type { Issue, IssueDependency, Repository } from "../host/types.ts";
 import type { Facts } from "./facts.ts";
 import { planningBranchName } from "./names.ts";
 import type { Phase } from "./phase.ts";
@@ -20,6 +20,7 @@ export type RunEnvelopeInput = {
 export type TriageEnvelopeInput = {
   repository: Repository;
   issue: Issue;
+  dependencies: IssueDependency[];
   skill: { name: string; path: string };
   labels: LabelsConfig;
   trusted: string[];
@@ -27,10 +28,19 @@ export type TriageEnvelopeInput = {
 export const UNTRUSTED_BEGIN = "<<<UNTRUSTED ISSUE CONTENT BEGIN>>>";
 export const UNTRUSTED_END = "<<<UNTRUSTED ISSUE CONTENT END>>>";
 
-export function renderIssue(issue: Issue, trusted: string[]): string {
+export function renderIssue(
+  issue: Issue,
+  trusted: string[],
+  dependencies?: IssueDependency[],
+): string {
   const content = [
     `# Issue #${issue.number}: ${issue.title}`,
     `URL: ${issue.url}\nAuthor: ${issue.author}\nCreated: ${issue.createdAt}\nState: ${issue.state}\nLabels: ${issue.labels.join(", ")}`,
+    ...(dependencies === undefined
+      ? []
+      : [
+          `Dependencies: ${dependencies.length ? dependencies.map((dependency) => `${dependency.repository}#${dependency.number} (${dependency.state})`).join(", ") : "none"}`,
+        ]),
     issue.body,
     ...issue.comments.map(
       (comment) =>
@@ -108,7 +118,6 @@ export function renderTriageEnvelope(input: TriageEnvelopeInput): string {
     ready: input.labels.ready,
     needsInfo: input.labels.needsInfo,
     unsuitable: input.labels.unsuitable,
-    blocked: input.labels.blocked,
-    issue: renderIssue(input.issue, input.trusted),
+    issue: renderIssue(input.issue, input.trusted, input.dependencies),
   });
 }

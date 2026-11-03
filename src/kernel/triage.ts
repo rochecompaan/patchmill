@@ -14,7 +14,11 @@ import { KERNEL_COMMENT } from "./comments.ts";
 import { parseJsonBlock } from "./result.ts";
 import { ensureLabels } from "./labels.ts";
 
-export type TriageResult = { label: string; comment: string };
+export type TriageResult = {
+  label: string;
+  comment: string;
+  blockedBy: number[];
+};
 export type TriageDeps = Pick<
   RunOnceDeps,
   "host" | "piCommand" | "repoRoot" | "now" | "output"
@@ -31,6 +35,7 @@ export type TriageProgressEvent =
       previousLabels: string[];
       finalLabels: string[];
       comment: string;
+      blockedBy: number[];
       applied: boolean;
       completed: number;
       total: number;
@@ -73,16 +78,37 @@ export function selectTriageCandidates(
 function validateResult(
   value: unknown,
   allowed: string[],
+  issue: number,
+  ready: string,
 ): TriageResult | string {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     return "result must be an object";
   const result = value as Record<string, unknown>;
-  if (Object.keys(result).some((key) => key !== "label" && key !== "comment"))
+  if (
+    Object.keys(result).some(
+      (key) => !["label", "comment", "blockedBy"].includes(key),
+    )
+  )
     return "unexpected result field";
   if (typeof result.label !== "string" || !allowed.includes(result.label))
     return "label must be a configured triage outcome";
   if (typeof result.comment !== "string") return "comment must be a string";
-  return { label: result.label, comment: result.comment };
+  if (
+    !Array.isArray(result.blockedBy) ||
+    result.blockedBy.some(
+      (number) =>
+        !Number.isSafeInteger(number) || number <= 0 || number === issue,
+    ) ||
+    new Set(result.blockedBy).size !== result.blockedBy.length
+  )
+    return "blockedBy must contain distinct positive issue numbers other than the target";
+  if (result.blockedBy.length && result.label !== ready)
+    return "only a ready result can propose blockers";
+  return {
+    label: result.label,
+    comment: result.comment,
+    blockedBy: result.blockedBy,
+  };
 }
 
 export async function runTriage(
@@ -118,7 +144,6 @@ export async function runTriage(
   const allowed = [
     config.labels.ready,
     config.labels.unsuitable,
-    config.labels.blocked,
     config.labels.needsInfo,
   ];
   const outcomes: Array<{ issue: number; label: string; applied: boolean }> =
@@ -133,6 +158,8 @@ export async function runTriage(
         !selectTriageCandidates([issue], config.labels, trusted).length
       )
         continue;
+      const dependencies = await host.listIssueDependencies(number);
+      const repository = await host.repository();
       const runDir = resolve(
         repoRoot,
         config.paths.runsDir,
@@ -148,7 +175,8 @@ export async function runTriage(
       await fs.writeFile(
         promptPath,
         renderTriageEnvelope({
-          repository: await host.repository(),
+          repository,
+          dependencies,
           issue,
           skill,
           labels: config.labels,
@@ -184,13 +212,22 @@ export async function runTriage(
         continue;
       }
       const parsed = parseJsonBlock(session.stdout, (value) =>
-        validateResult(value, allowed),
+        validateResult(value, allowed, number, config.labels.ready),
       );
       if (!parsed.ok) {
         warn(number, `${parsed.reason}; skipping.`);
         continue;
       }
       const { label, comment } = parsed.value;
+      const slug = `${repository.owner}/${repository.repo}`.toLowerCase();
+      const blockedBy = parsed.value.blockedBy.filter(
+        (blocker) =>
+          !dependencies.some(
+            (dependency) =>
+              dependency.number === blocker &&
+              dependency.repository.toLowerCase() === slug,
+          ),
+      );
       const remove = allowed.filter((value) => value !== label);
       const finalLabels = [
         ...new Set([
@@ -199,6 +236,21 @@ export async function runTriage(
         ]),
       ];
       if (!options.dryRun) {
+        for (const [index, blocker] of blockedBy.entries()) {
+          try {
+            await host.addIssueDependency(number, blocker);
+          } catch (error) {
+            throw new Error(
+              `Cannot add blockers ${blockedBy
+                .slice(index)
+                .map((n) => `#${n}`)
+                .join(
+                  ", ",
+                )}: ${error instanceof Error ? error.message : String(error)}`,
+              { cause: error },
+            );
+          }
+        }
         if (!labelsReady) {
           await ensureLabels(host, config.labels);
           labelsReady = true;
@@ -213,6 +265,7 @@ export async function runTriage(
         previousLabels: issue.labels,
         finalLabels,
         comment,
+        blockedBy,
         applied: !options.dryRun,
         completed: outcomes.length,
         total: candidates.length,

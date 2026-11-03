@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import type {
   Host,
   Issue,
+  IssueDependency,
   LabelDefinition,
   PullRequest,
   Repository,
@@ -12,6 +13,7 @@ export type FakeHostState = {
   /** owner/repo of origin; defaults to the repository, unlike a fork clone. */
   pushRepository?: string;
   issues: Issue[];
+  dependencies: Record<string, IssueDependency[]>;
   labels: string[];
   pullRequests: PullRequest[];
   calls: string[];
@@ -26,6 +28,7 @@ export function writeFakeHostState(
     JSON.stringify({
       repository: { owner: "fixture", repo: "repo", defaultBranch: "main" },
       issues: [],
+      dependencies: {},
       labels: [],
       pullRequests: [],
       calls: [],
@@ -81,6 +84,36 @@ export class FakeHost implements Host {
 
   async viewIssue(n: number) {
     return this.call(`viewIssue:${n}`, (state) => this.issue(state, n));
+  }
+
+  async listIssueDependencies(n: number): Promise<IssueDependency[]> {
+    return this.call(`listIssueDependencies:${n}`, (state) =>
+      (state.dependencies?.[n] ?? []).map((dependency) => {
+        const local =
+          dependency.repository.toLowerCase() ===
+          `${state.repository.owner}/${state.repository.repo}`.toLowerCase()
+            ? state.issues.find((issue) => issue.number === dependency.number)
+            : undefined;
+        return { ...dependency, state: local?.state ?? dependency.state };
+      }),
+    );
+  }
+
+  async addIssueDependency(n: number, blocker: number): Promise<void> {
+    this.call(`addIssueDependency:${n}:${blocker}`, (state) => {
+      const issue = this.issue(state, blocker);
+      const repository = `${state.repository.owner}/${state.repository.repo}`;
+      const links = (state.dependencies ??= {});
+      const dependencies = (links[n] ??= []);
+      if (
+        !dependencies.some(
+          (link) =>
+            link.number === blocker &&
+            link.repository.toLowerCase() === repository.toLowerCase(),
+        )
+      )
+        dependencies.push({ repository, number: blocker, state: issue.state });
+    });
   }
 
   async listLabels() {

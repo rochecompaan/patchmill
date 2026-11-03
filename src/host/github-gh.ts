@@ -8,6 +8,7 @@ import type {
   Host,
   HostCliCheck,
   Issue,
+  IssueDependency,
   LabelDefinition,
   PullRequest,
   Repository,
@@ -152,6 +153,61 @@ export class GitHubHost implements Host, RepositorySetupHost {
       `${issueFields},comments`,
     ]);
     return mapIssue(parseJson(result.stdout, "gh issue view") as RawIssue);
+  }
+  async listIssueDependencies(n: number): Promise<IssueDependency[]> {
+    const result = await this.ghOk([
+      "api",
+      "--paginate",
+      "--slurp",
+      `repos/{owner}/{repo}/issues/${n}/dependencies/blocked_by?per_page=100`,
+    ]);
+    const pages = parseJson(result.stdout, "gh api dependencies");
+    if (!Array.isArray(pages) || !pages.every(Array.isArray))
+      throw new Error("gh api dependencies returned invalid pages");
+    return pages.flat().map((raw) => {
+      const path =
+        typeof raw?.repository_url === "string"
+          ? new URL(raw.repository_url).pathname.match(
+              /\/repos\/([^/\s]+)\/([^/\s]+)$/,
+            )
+          : null;
+      if (
+        !Number.isSafeInteger(raw?.number) ||
+        raw.number <= 0 ||
+        (raw.state !== "open" && raw.state !== "closed") ||
+        !path
+      )
+        throw new Error("gh api dependencies returned an invalid dependency");
+      return {
+        repository: `${path[1]}/${path[2]}`,
+        number: raw.number,
+        state: raw.state,
+      };
+    });
+  }
+  async addIssueDependency(n: number, blocker: number): Promise<void> {
+    const result = await this.ghOk([
+      "api",
+      `repos/{owner}/{repo}/issues/${blocker}`,
+    ]);
+    const raw = parseJson(result.stdout, "gh api blocker") as {
+      id?: number;
+    } | null;
+    if (
+      !raw ||
+      typeof raw.id !== "number" ||
+      !Number.isSafeInteger(raw.id) ||
+      raw.id <= 0
+    )
+      throw new Error(`Issue #${blocker} has no valid database id`);
+    await this.ghOk([
+      "api",
+      "--method",
+      "POST",
+      `repos/{owner}/{repo}/issues/${n}/dependencies/blocked_by`,
+      "-F",
+      `issue_id=${raw.id}`,
+    ]);
   }
   async listLabels(target?: RepositoryTarget): Promise<string[]> {
     const result = await this.ghOk([

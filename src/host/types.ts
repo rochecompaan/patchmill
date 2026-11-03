@@ -11,6 +11,11 @@ export type Issue = {
   createdAt: string;
   comments: IssueComment[];
 };
+export type IssueDependency = {
+  repository: string;
+  number: number;
+  state: Issue["state"];
+};
 export type PullRequest = {
   number: number;
   url: string;
@@ -34,6 +39,8 @@ export interface Host {
   repository(): Promise<Repository>;
   listOpenIssues(): Promise<Issue[]>; // comments may be empty
   viewIssue(n: number): Promise<Issue>; // comments populated
+  listIssueDependencies(n: number): Promise<IssueDependency[]>;
+  addIssueDependency(n: number, blocker: number): Promise<void>;
   listLabels(): Promise<string[]>;
   createLabel(label: LabelDefinition): Promise<void>;
   setLabels(n: number, add: string[], remove: string[]): Promise<void>;

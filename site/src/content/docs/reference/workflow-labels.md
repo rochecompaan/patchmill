@@ -9,12 +9,11 @@ leaves existing labels unchanged.
 
 | Label              | Meaning                                               | Set by                    | Removed by              |
 | ------------------ | ----------------------------------------------------- | ------------------------- | ----------------------- |
-| `agent-ready`      | Eligible for a Run attempt.                           | Human or triage           | Kernel on claim         |
+| `agent-ready`      | Suitable for automation; dependencies must close.     | Human or triage           | Kernel on claim         |
 | `in-progress`      | Work is active or waiting for a planning PR merge.    | Kernel on claim           | Kernel on final release |
 | `needs-info`       | The agent asked questions, or the Run attempt failed. | Kernel                    | Kernel on next claim    |
 | `agent-done`       | A ready pull request that closes the issue exists.    | Kernel after verification | Human                   |
 | `agent-unsuitable` | The issue is not suitable for unattended agent work.  | Triage                    | Human                   |
-| `blocked`          | The issue has an unresolved blocker.                  | Triage                    | Human                   |
 
 ## Review and resume
 
@@ -32,10 +31,19 @@ merged.
 
 ## Triage outcomes
 
-Triage returns one configured value from `ready`, `unsuitable`, `blocked`, and
-`needsInfo`. Their defaults are `agent-ready`, `agent-unsuitable`, `blocked`,
-and `needs-info`. `wontfix` is accepted only if configured as one of those four
-values. There is no automatic blocker-resolution pass.
+Triage returns one configured value from `ready`, `unsuitable`, and `needsInfo`.
+Their defaults are `agent-ready`, `agent-unsuitable`, and `needs-info`.
+`wontfix` is accepted only if configured as one of those three values.
+
+A suitable issue can have native dependencies. GitHub **Blocked by** and
+Forgejo/Gitea **Depends on** links prevent selection until every dependency is
+closed. Unreadable dependencies also prevent selection. Closing the last blocker
+requires no label change or triage session. Explicit runs cannot bypass this
+restriction.
+
+The old blocked outcome is retired. String-valued `labels.blocked` is accepted
+but ignored, and old labels no longer prevent work. Before using the upgrade,
+[add native links and replace old labels manually](/using-patchmill/triage/#manual-upgrade).
 
 The kernel changes issue labels and posts run comments. Planning and
 implementation agents own git and pull requests, not issue mutations.

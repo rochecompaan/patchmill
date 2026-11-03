@@ -7,7 +7,7 @@ export function labelCatalog(labels: LabelsConfig): LabelDefinition[] {
     {
       name: labels.ready,
       color: "#2ea043",
-      description: "Ready for automated agent processing",
+      description: "Suitable for automated agent processing",
     },
     {
       name: labels.inProgress,
@@ -29,11 +29,6 @@ export function labelCatalog(labels: LabelsConfig): LabelDefinition[] {
       name: labels.unsuitable,
       color: "#8b949e",
       description: "Not suitable for automated implementation",
-    },
-    {
-      name: labels.blocked,
-      color: "#d876e3",
-      description: "Blocked by another issue or dependency",
     },
   ];
 }

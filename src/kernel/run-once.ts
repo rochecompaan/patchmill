@@ -32,7 +32,7 @@ import type { OutcomeLabel } from "./verify.ts";
 import { verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
-import { selectIssue, listRunIssues } from "./issue-selection.ts";
+import { selectRunIssue } from "./issue-selection.ts";
 export { selectIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 
@@ -81,27 +81,26 @@ export async function runOneIssue(
   options: RunOnceOptions,
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
-  let issues: Issue[];
-  try {
-    issues = await listRunIssues(host, options.issue);
-  } catch (error) {
-    if (options.issue === undefined) throw error;
-    return { status: "refused", issue: options.issue, reason: String(error) };
+  const selection = await selectRunIssue({
+    host,
+    labels: config.labels,
+    ...(options.issue !== undefined ? { issue: options.issue } : {}),
+    warn: (issue, message) =>
+      output.stderr(`Warning: Issue #${issue}: ${message}`),
+  });
+  if (selection.kind === "refused")
+    return {
+      status: "refused",
+      issue: selection.issue,
+      reason: selection.reason,
+    };
+  if (selection.kind === "none") {
+    output.stdout(
+      formatRunResult({ label: "No eligible issue", severity: "success" }),
+    );
+    return { status: "no-work" };
   }
-  const selected = selectIssue(issues, config.labels, options.issue);
-  if (!selected) {
-    if (options.issue === undefined)
-      output.stdout(
-        formatRunResult({ label: "No eligible issue", severity: "success" }),
-      );
-    return options.issue === undefined
-      ? { status: "no-work" }
-      : {
-          status: "refused",
-          issue: options.issue,
-          reason: "Issue is missing or closed.",
-        };
-  }
+  const selected = selection.issue;
   const issueNumber = selected.number;
   const collect = (issue: Issue, workspace?: Pick<Facts, "stage" | "branch">) =>
     collectFacts({ ...deps, config }, issue, workspace);

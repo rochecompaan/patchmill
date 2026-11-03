@@ -12,6 +12,7 @@ import { main } from "../src/cli/commands/run-once/main.ts";
 import { createConsoleSessionHost } from "../src/console/session-host.ts";
 import { runConsoleRuntime } from "../src/console/start.ts";
 import { resolvePiSubagentsPackageRoot } from "../src/pi/pi-subagents-package.ts";
+import { recordingRunner } from "./recording-runner.ts";
 
 // Real Pi run loop and theme watcher, with an inert terminal instead of a TTY.
 const terminal: Terminal = {
@@ -35,6 +36,29 @@ const terminal: Terminal = {
 const root = process.argv[2]!;
 const code = await main(["--interactive", "--issue", "9"], {
   repoRoot: root,
+  runner: recordingRunner([
+    {
+      match: /^gh issue view 9 /,
+      result: {
+        stdout: JSON.stringify({
+          number: 9,
+          title: "Fixture",
+          body: "",
+          state: "OPEN",
+          labels: [],
+          author: { login: "fixture" },
+          url: "https://example.invalid/9",
+          createdAt: "2026-01-01",
+          comments: [],
+        }),
+      },
+    },
+    {
+      match:
+        /^gh api --paginate --slurp .*\/issues\/9\/dependencies\/blocked_by/,
+      result: { stdout: "[[]]" },
+    },
+  ]),
   startConsole: async () => {
     const fatal = Promise.withResolvers<string>();
     const host = createConsoleSessionHost({

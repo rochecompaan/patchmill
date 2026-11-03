@@ -115,8 +115,183 @@ async function setup(t: TestContext, outputs: string[], issues = [issue(9)]) {
     run: (options: TriageOptions = {}) => runTriage(config, deps, options),
   };
 }
-const block = (label = "agent-ready", comment = "Looks clear.") =>
-  `\`\`\`json\n${JSON.stringify({ label, comment })}\n\`\`\``;
+const block = (
+  label = "agent-ready",
+  comment = "Looks clear.",
+  blockedBy: number[] = [],
+) => `\`\`\`json\n${JSON.stringify({ label, comment, blockedBy })}\n\`\`\``;
+
+for (const blockedBy of [
+  [9],
+  [1, 1],
+  [0],
+  [-1],
+  [1.5],
+  ["1"],
+  [9007199254740992],
+  null,
+  undefined,
+]) {
+  test(`invalid structured blockers cannot mutate the host: ${JSON.stringify(blockedBy)}`, async (t) => {
+    const value = JSON.stringify({
+      label: "agent-ready",
+      comment: "",
+      blockedBy,
+    });
+    const f = await setup(t, [`\`\`\`json\n${value}\n\`\`\``]);
+    assert.deepEqual(await f.run(), []);
+    assert.equal(
+      f.host
+        .state()
+        .calls.some((call) =>
+          /createLabel|setLabels|commentIssue|addIssueDependency/.test(call),
+        ),
+      false,
+    );
+  });
+}
+
+for (const label of ["needs-info", "agent-unsuitable", "blocked"]) {
+  test(`non-ready outcome ${label} cannot add blockers`, async (t) => {
+    const f = await setup(t, [block(label, "", [1])]);
+    assert.deepEqual(await f.run(), []);
+    assert.equal(
+      f.host
+        .state()
+        .calls.some((call) =>
+          /createLabel|setLabels|commentIssue|addIssueDependency/.test(call),
+        ),
+      false,
+    );
+  });
+}
+
+test("triage adds only missing local links before labels and includes current dependencies in the prompt", async (t) => {
+  const f = await setup(
+    t,
+    [block("agent-ready", "Wait for prerequisites", [1, 2])],
+    [issue(9), issue(1, ["agent-unsuitable"]), issue(2, ["agent-unsuitable"])],
+  );
+  writeFakeHostState(join(f.root, "host.json"), {
+    ...f.host.state(),
+    dependencies: {
+      9: [
+        { repository: "FIXTURE/REPO", number: 1, state: "open" },
+        { repository: "other/project", number: 2, state: "open" },
+      ],
+    },
+  });
+  const progress: TriageProgressEvent[] = [];
+  assert.deepEqual(
+    await f.run({ onProgress: (event) => progress.push(event) }),
+    [{ issue: 9, label: "agent-ready", applied: true }],
+  );
+  const state = f.host.state();
+  assert.deepEqual(
+    state.calls.filter((call) => call.startsWith("addIssueDependency:")),
+    ["addIssueDependency:9:2"],
+  );
+  assert.ok(
+    state.calls.indexOf("addIssueDependency:9:2") <
+      state.calls.indexOf("setLabels:9"),
+  );
+  assert.equal(state.dependencies[9]!.length, 3);
+  const event = progress.find((event) => event.type === "triaged");
+  assert.ok(event && event.type === "triaged");
+  assert.deepEqual(event.blockedBy, [2]);
+  const launch = JSON.parse(
+    (await fs.readFile(join(f.root, "launches"), "utf8")).trim(),
+  );
+  const prompt = await fs.readFile(launch.args.at(-1).slice(1), "utf8");
+  assert.match(
+    prompt,
+    /Dependencies: FIXTURE\/REPO#1 \(open\), other\/project#2 \(open\)/,
+  );
+});
+
+test("partial dependency writes warn, preserve added links, and retry only missing links", async (t) => {
+  const f = await setup(
+    t,
+    [
+      block("agent-ready", "", [1, 2]),
+      block(),
+      block("agent-ready", "", [1, 2]),
+    ],
+    [
+      issue(9),
+      issue(10),
+      issue(1, ["agent-unsuitable"]),
+      issue(2, ["agent-unsuitable"]),
+    ],
+  );
+  const add = f.host.addIssueDependency.bind(f.host);
+  let fail = true;
+  f.host.addIssueDependency = async (n, blocker) => {
+    if (blocker === 2 && fail) throw new Error("write refused");
+    await add(n, blocker);
+  };
+  assert.deepEqual(await f.run(), [
+    { issue: 10, label: "agent-ready", applied: true },
+  ]);
+  assert.equal(f.host.state().calls.includes("setLabels:9"), false);
+  assert.equal(f.host.state().calls.includes("commentIssue:9"), false);
+  assert.deepEqual(
+    f.host.state().dependencies[9]!.map((link) => link.number),
+    [1],
+  );
+  assert.match(f.stderr.join("\n"), /#9.*#2.*write refused/);
+  fail = false;
+  assert.deepEqual(await f.run(), [
+    { issue: 9, label: "agent-ready", applied: true },
+  ]);
+  assert.deepEqual(
+    f.host
+      .state()
+      .calls.filter((call) => call.startsWith("addIssueDependency:")),
+    ["addIssueDependency:9:1", "addIssueDependency:9:2"],
+  );
+});
+
+test("unreadable dependency context skips Pi for that issue and continues independently", async (t) => {
+  const f = await setup(t, [block()], [issue(9), issue(10)]);
+  f.host.listIssueDependencies = async (n) => {
+    if (n === 9) throw new Error("read denied");
+    return [];
+  };
+  assert.deepEqual(await f.run(), [
+    { issue: 10, label: "agent-ready", applied: true },
+  ]);
+  assert.match(f.stderr.join("\n"), /9.*read denied/);
+  assert.equal(
+    (await fs.readFile(join(f.root, "launches"), "utf8")).trim().split("\n")
+      .length,
+    1,
+  );
+});
+
+test("dependency dry-run previews missing links without any host writes", async (t) => {
+  const f = await setup(
+    t,
+    [block("agent-ready", "", [1])],
+    [issue(9), issue(1, ["agent-unsuitable"])],
+  );
+  const progress: TriageProgressEvent[] = [];
+  await f.run({ dryRun: true, onProgress: (event) => progress.push(event) });
+  assert.equal(
+    f.host
+      .state()
+      .calls.some((call) =>
+        /createLabel|listLabels|setLabels|commentIssue|addIssueDependency/.test(
+          call,
+        ),
+      ),
+    false,
+  );
+  const event = progress.find((event) => event.type === "triaged");
+  assert.ok(event && event.type === "triaged");
+  assert.deepEqual(event.blockedBy, [1]);
+  assert.equal(event.applied, false);
+});
 
 test("applies a validated result and launches isolated Pi with the configured envelope", async (t) => {
   const f = await setup(t, [block()]);
@@ -207,7 +382,6 @@ test("creates missing configured workflow labels once before applying triage res
       "in-progress",
       "agent-done",
       "agent-unsuitable",
-      "blocked",
     ]),
   );
   assert.equal(
@@ -217,7 +391,7 @@ test("creates missing configured workflow labels once before applying triage res
   assert.equal(
     f.host.state().calls.filter((call) => call.startsWith("createLabel:"))
       .length,
-    5,
+    4,
   );
   assert.deepEqual(f.stderr, []);
 });
@@ -295,12 +469,11 @@ test("explicit closed issue bypasses selection; configured needsInfo is not also
     ready: "queue",
     needsInfo: "question",
     unsuitable: "nope",
-    blocked: "wait",
   };
   const set = f.host.setLabels.bind(f.host);
   f.host.setLabels = async (n, add, remove) => {
     assert.deepEqual(add, ["question"]);
-    assert.deepEqual(remove.sort(), ["nope", "queue", "wait"]);
+    assert.deepEqual(remove.sort(), ["nope", "queue"]);
     await set(n, add, remove);
   };
   assert.deepEqual(await f.run({ issue: 9 }), [
@@ -308,6 +481,7 @@ test("explicit closed issue bypasses selection; configured needsInfo is not also
   ]);
   assert.deepEqual(f.host.state().issues[0]!.labels, [
     "question",
+    "wait",
     "bug",
     "agent-done",
   ]);

@@ -26,8 +26,8 @@ function issue(number: number, labels: string[] = []): Issue {
   };
 }
 
-function result(label: string, comment = "") {
-  return `\`\`\`json\n${JSON.stringify({ label, comment })}\n\`\`\``;
+function result(label: string, comment = "", blockedBy: number[] = []) {
+  return `\`\`\`json\n${JSON.stringify({ label, comment, blockedBy })}\n\`\`\``;
 }
 
 async function harness(t: TestContext, issues: Issue[], responses: string[]) {
@@ -168,6 +168,33 @@ test("dry-run previews label changes and comments without claiming or making hos
     false,
   );
 });
+
+for (const dryRun of [false, true]) {
+  test(`native link output distinguishes applied additions from previews (dryRun=${dryRun})`, async (t) => {
+    const f = await harness(
+      t,
+      [issue(9), issue(2, ["agent-unsuitable"])],
+      [result("queue", "", [2])],
+    );
+    assert.equal(await f.run(dryRun ? ["--dry-run"] : []), 0);
+    const text = f.stdout.join("\n");
+    assert.match(
+      text,
+      dryRun ? /dependencies to add: #2/ : /dependencies added: #2/,
+    );
+    if (dryRun) {
+      assert.doesNotMatch(text, /dependencies added:/);
+      assert.equal(
+        f.host
+          .state()
+          .calls.some((call) =>
+            /createLabel|setLabels|commentIssue|addIssueDependency/.test(call),
+          ),
+        false,
+      );
+    }
+  });
+}
 
 test("no candidates displays an explicit no-issues summary without starting Pi", async (t) => {
   const f = await harness(t, [issue(9, ["queue"])], []);

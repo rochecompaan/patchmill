@@ -9,7 +9,6 @@ export type LabelsConfig = {
   needsInfo: string;
   done: string;
   unsuitable: string;
-  blocked: string;
 };
 export type PatchmillConfig = {
   host: { provider: HostProviderId; login: string; trustedAuthors: string[] };
@@ -36,7 +35,6 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
     needsInfo: "needs-info",
     done: "agent-done",
     unsuitable: "agent-unsuitable",
-    blocked: "blocked",
   },
   paths: {
     specsDir: "docs/specs",
@@ -68,7 +66,6 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "labels.needsInfo", kind: "string" },
   { path: "labels.done", kind: "string" },
   { path: "labels.unsuitable", kind: "string" },
-  { path: "labels.blocked", kind: "string" },
   { path: "paths.specsDir", kind: "string" },
   { path: "paths.plansDir", kind: "string" },
   { path: "paths.worktreeDir", kind: "string" },
@@ -112,7 +109,9 @@ export function parseConfig(raw: unknown): PatchmillConfig {
         throw new ConfigError(`Unknown config key: ${path}`);
       // Accept retired generated settings on upgrade, without retaining or using them.
       if (
-        /^labels\.(specReview|specApproved|planReview|planApproved)$/.test(path)
+        /^labels\.(blocked|specReview|specApproved|planReview|planApproved)$/.test(
+          path,
+        )
       ) {
         if (typeof value !== "string")
           throw new ConfigError(`Invalid type for ${path}`);

@@ -64,12 +64,7 @@ async function harness(t: TestContext, fail?: "auth" | "list" | "create") {
 test("labels setup creates missing labels and prints each created name, then reports all present", async (t) => {
   const h = await harness(t);
   assert.equal(await h.run(["setup"]), 0);
-  assert.deepEqual(h.created, [
-    "needs-info",
-    "agent-done",
-    "agent-unsuitable",
-    "blocked",
-  ]);
+  assert.deepEqual(h.created, ["needs-info", "agent-done", "agent-unsuitable"]);
   assert.deepEqual(
     h.stdout,
     h.created.map((name) => `Created label: ${name}`),
