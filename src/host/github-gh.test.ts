@@ -28,6 +28,137 @@ const deleted = {
   baseRefName: "main",
 };
 
+test("native dependency reads preserve every page and repository identity", async () => {
+  const runner = recordingRunner([
+    {
+      match: /gh api --paginate --slurp/,
+      result: {
+        stdout: JSON.stringify([
+          [
+            {
+              number: 1,
+              state: "closed",
+              repository_url: "https://api.github.com/repos/owner/repo",
+            },
+          ],
+          [
+            {
+              number: 1,
+              state: "open",
+              repository_url: "https://api.github.com/repos/other/project",
+            },
+          ],
+        ]),
+      },
+    },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.listIssueDependencies(9), [
+    { repository: "owner/repo", number: 1, state: "closed" },
+    { repository: "other/project", number: 1, state: "open" },
+  ]);
+  assert.deepEqual(runner.calls[0], [
+    "gh",
+    "api",
+    "--paginate",
+    "--slurp",
+    "repos/{owner}/{repo}/issues/9/dependencies/blocked_by?per_page=100",
+  ]);
+  assert.equal(runner.options[0]?.cwd, "/repo");
+});
+
+for (const stdout of [
+  "invalid",
+  "{}",
+  "[{}]",
+  "[[null]]",
+  '[[{"number":1,"state":"open"}]]',
+  '[[{"number":0,"state":"closed","repository_url":"https://api.github.com/repos/a/b"}]]',
+  '[[{"number":1,"state":"unknown","repository_url":"https://api.github.com/repos/a/b"}]]',
+  '[[{"number":1,"state":"closed","repository_url":"not-a-repository"}]]',
+]) {
+  test(`native dependency read rejects malformed payload: ${stdout}`, async () => {
+    const runner = recordingRunner([{ match: /gh api/, result: { stdout } }]);
+    await assert.rejects(
+      new GitHubHost({ runner, repoRoot: "/repo" }).listIssueDependencies(9),
+    );
+  });
+}
+
+test("native dependency read accepts a complete empty list but rejects failed pagination", async () => {
+  const empty = recordingRunner([
+    { match: /gh api/, result: { stdout: "[[]]" } },
+  ]);
+  assert.deepEqual(
+    await new GitHubHost({
+      runner: empty,
+      repoRoot: "/repo",
+    }).listIssueDependencies(9),
+    [],
+  );
+  const failed = recordingRunner([
+    {
+      match: /gh api/,
+      result: {
+        code: 1,
+        stdout: '[[{"number":1}]]',
+        stderr: "page two failed",
+      },
+    },
+  ]);
+  await assert.rejects(
+    new GitHubHost({ runner: failed, repoRoot: "/repo" }).listIssueDependencies(
+      9,
+    ),
+    /page two failed/,
+  );
+});
+
+test("native dependency creation resolves the database id, not the issue number", async () => {
+  const runner = recordingRunner([
+    {
+      match: /gh api repos\/\{owner\}\/\{repo\}\/issues\/1$/,
+      result: { stdout: '{"id":1001}' },
+    },
+    { match: /gh api --method POST/, result: { stdout: "{}" } },
+  ]);
+  await new GitHubHost({ runner, repoRoot: "/repo" }).addIssueDependency(9, 1);
+  assert.deepEqual(runner.calls[1], [
+    "gh",
+    "api",
+    "--method",
+    "POST",
+    "repos/{owner}/{repo}/issues/9/dependencies/blocked_by",
+    "-F",
+    "issue_id=1001",
+  ]);
+});
+
+for (const response of [
+  { stdout: '{"id":"node-id"}' },
+  { code: 1, stderr: "not found" },
+]) {
+  test(`native dependency creation stops after a failed database id lookup: ${JSON.stringify(response)}`, async () => {
+    const runner = recordingRunner([{ match: /gh api/, result: response }]);
+    await assert.rejects(
+      new GitHubHost({ runner, repoRoot: "/repo" }).addIssueDependency(9, 1),
+    );
+    assert.equal(runner.calls.length, 1);
+  });
+}
+
+test("native dependency creation propagates cycle rejection without a reread", async () => {
+  const runner = recordingRunner([
+    { match: /gh api --method POST/, result: { code: 1, stderr: "cycle" } },
+    { match: /gh api/, result: { stdout: '{"id":1001}' } },
+  ]);
+  await assert.rejects(
+    new GitHubHost({ runner, repoRoot: "/repo" }).addIssueDependency(9, 1),
+    /cycle/,
+  );
+  assert.equal(runner.calls.length, 2);
+});
+
 test("listPullRequests maps head repository and base branch from repo cwd", async () => {
   const runner = recordingRunner([
     {

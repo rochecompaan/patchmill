@@ -5,6 +5,7 @@ import type {
   HostCliCheck,
   Issue,
   IssueComment,
+  IssueDependency,
   LabelDefinition,
   PullRequest,
   RepositorySetupHost,
@@ -171,6 +172,36 @@ export class ForgejoHost implements Host, RepositorySetupHost {
         createdAt: comment.created_at,
       })),
     );
+  }
+  async listIssueDependencies(n: number): Promise<IssueDependency[]> {
+    const entries = await this.pages<{
+      number: number;
+      state: Issue["state"];
+      repository?: { full_name?: string };
+    }>(`/repos/{owner}/{repo}/issues/${n}/dependencies`);
+    return entries.map((raw) => {
+      const repository = raw?.repository?.full_name;
+      if (
+        !Number.isSafeInteger(raw?.number) ||
+        raw.number <= 0 ||
+        (raw.state !== "open" && raw.state !== "closed") ||
+        typeof repository !== "string" ||
+        !/^[^/\s]+\/[^/\s]+$/.test(repository)
+      )
+        throw new Error("tea returned an invalid dependency");
+      return { repository, number: raw.number, state: raw.state };
+    });
+  }
+  async addIssueDependency(n: number, blocker: number): Promise<void> {
+    const [owner, repo] = (await this.slug()).split("/");
+    await this.scoped([
+      "api",
+      `/repos/{owner}/{repo}/issues/${n}/dependencies`,
+      "--method",
+      "POST",
+      "-d",
+      JSON.stringify({ owner, repo, index: blocker }),
+    ]);
   }
   async listLabels(target?: RepositoryTarget): Promise<string[]> {
     const result = await this.scoped(
