@@ -23,6 +23,12 @@ prints selection and the derived phase without claiming or running Pi.
 `--plan-only` stops after planning completes and never starts implementation. It
 does not bypass either planning gate.
 
+Every selection also requires all native issue dependencies to be closed.
+Automatic selection skips issues with open or unreadable dependencies. Explicit
+selection refuses them, including `--interactive`, `--dry-run`, and resumed
+in-progress issues. Closing the last blocker makes the issue eligible on the
+next selection without another triage run.
+
 ## Claim and release
 
 The kernel holds an exclusive OS lock on `<runsDir>/issue-N/lock` throughout the

@@ -1,14 +1,10 @@
-import { listRunIssues } from "../../../kernel/issue-selection.ts";
+import { selectRunIssue } from "../../../kernel/issue-selection.ts";
 import { formatRunResult } from "../../../kernel/console.ts";
 import { startConsole } from "../../../console/start.ts";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
 import { createKernelGit } from "../../../kernel/git.ts";
-import {
-  runOneIssue,
-  selectIssue,
-  type RunOnceOptions,
-} from "../../../kernel/run-once.ts";
+import { runOneIssue, type RunOnceOptions } from "../../../kernel/run-once.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
@@ -86,10 +82,18 @@ export async function main(
       output,
     };
     if (runOptions.interactive) {
-      const issue =
-        runOptions.issue ??
-        selectIssue(await listRunIssues(deps.host), config.labels)?.number;
-      if (issue === undefined) {
+      const selection = await selectRunIssue({
+        host: deps.host,
+        labels: config.labels,
+        ...(runOptions.issue !== undefined ? { issue: runOptions.issue } : {}),
+        warn: (issue, message) =>
+          output.stderr(`Warning: Issue #${issue}: ${message}`),
+      });
+      if (selection.kind === "refused") {
+        output.stderr(selection.reason);
+        return 1;
+      }
+      if (selection.kind === "none") {
         output.stdout(
           formatRunResult({ label: "No eligible issue", severity: "success" }),
         );
@@ -98,7 +102,7 @@ export async function main(
       const code = await (options.startConsole ?? startConsole)({
         config,
         deps,
-        issue,
+        issue: selection.issue.number,
       });
       // Pi's normal quit also exits after awaited cleanup. A stopped console
       // can retain Pi-owned handles (for example custom-theme file watchers).

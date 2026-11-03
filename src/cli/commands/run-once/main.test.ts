@@ -8,6 +8,26 @@ import type { RunOnceOutcome } from "../../../kernel/run-once.ts";
 import { runCommand } from "../../../process/command.ts";
 import { main } from "./main.ts";
 
+const cliIssue = {
+  number: 9,
+  title: "Work",
+  body: "",
+  state: "OPEN",
+  author: { login: "owner" },
+  labels: [{ name: "queue" }],
+  url: "url",
+  createdAt: "2026-01-01",
+  comments: [],
+};
+const interactiveRunner: typeof runCommand = async (command, args) => {
+  assert.equal(command, "gh");
+  return {
+    code: 0,
+    stderr: "",
+    stdout: JSON.stringify(args[0] === "issue" ? cliIssue : [[]]),
+  };
+};
+
 async function harness(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), "patchmill-run-cli-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -23,6 +43,7 @@ async function harness(t: TestContext) {
     stderr,
     options: {
       repoRoot: root,
+      runner: interactiveRunner,
       exit: (_code: number) => {},
       output: {
         stdout: (line: string) => stdout.push(line),
@@ -194,6 +215,8 @@ for (const eligible of [true, false]) {
       runner: async (command, args) => {
         assert.equal(command, "gh");
         assert.equal(args[0], "api");
+        if (args.some((arg) => arg.includes("/dependencies/blocked_by")))
+          return { code: 0, stderr: "", stdout: "[[]]" };
         assert.ok(
           args.includes("repos/{owner}/{repo}/issues?state=open&per_page=100"),
         );
@@ -256,9 +279,68 @@ for (const flag of ["--dry-run", "--plan-only"]) {
   });
 }
 
+for (const unreadable of [false, true]) {
+  for (const explicit of [false, true]) {
+    test(`interactive dependency refusal never opens a console (explicit=${explicit}, unreadable=${unreadable})`, async (t) => {
+      const f = await harness(t);
+      const code = await main(
+        ["--interactive", ...(explicit ? ["--issue", "9"] : [])],
+        {
+          ...f.options,
+          runner: async (_command, args) => {
+            if (args[0] === "issue")
+              return { code: 0, stderr: "", stdout: JSON.stringify(cliIssue) };
+            if (args.some((arg) => arg.includes("/dependencies/blocked_by")))
+              return unreadable
+                ? { code: 1, stderr: "dependencies unavailable", stdout: "" }
+                : {
+                    code: 0,
+                    stderr: "",
+                    stdout: JSON.stringify([
+                      [
+                        {
+                          number: 1,
+                          state: "open",
+                          repository_url:
+                            "https://api.github.com/repos/owner/repo",
+                        },
+                      ],
+                    ]),
+                  };
+            return {
+              code: 0,
+              stderr: "",
+              stdout: JSON.stringify([
+                [
+                  {
+                    ...cliIssue,
+                    state: "open",
+                    user: { login: "owner" },
+                    html_url: "url",
+                    created_at: "2026-01-01",
+                  },
+                ],
+              ]),
+            };
+          },
+          startConsole: async () => assert.fail("console opened"),
+        },
+      );
+      assert.equal(code, explicit ? 1 : 0);
+      if (explicit)
+        assert.match(
+          f.stderr.join("\n"),
+          unreadable ? /dependencies unavailable/ : /owner\/repo#1/,
+        );
+      else assert.match(f.stdout.join("\n"), /No eligible issue/);
+    });
+  }
+}
+
 test("--interactive hands the issue and real dependencies to the console", async (t) => {
   const f = await harness(t);
   const runner: typeof runCommand = async (command, args, options) => {
+    if (command === "gh") return interactiveRunner(command, args, options);
     assert.equal(command, "git");
     assert.deepEqual(args, ["fetch", "--prune", "origin"]);
     assert.equal(options?.cwd, f.root);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { test } from "node:test";
 import {
   setupRun,
@@ -11,6 +11,32 @@ import {
 } from "../../test-support/run-once-fixture.ts";
 import { acquireLock } from "./lock.ts";
 import { selectIssue } from "./run-once.ts";
+
+for (const dryRun of [false, true]) {
+  for (const label of ["agent-ready", "in-progress"]) {
+    test(`open dependencies refuse an explicit ${label} run before any effects (dryRun=${dryRun})`, async (t) => {
+      const c = await setupRun(t);
+      await c.mutate((state) => {
+        state.issues[0]!.labels = [label];
+      });
+      c.host.listIssueDependencies = async () => [
+        { repository: "fixture/repo", number: 1, state: "open" },
+      ];
+      const outcome = await c.run({ issue: 9, dryRun });
+      assert.equal(outcome.status, "refused");
+      if (outcome.status === "refused")
+        assert.match(outcome.reason, /fixture\/repo#1/);
+      assert.equal(
+        c.host
+          .state()
+          .calls.some((call) => /setLabels:|commentIssue:/.test(call)),
+        false,
+      );
+      await assert.rejects(fs.stat(c.worktree), { code: "ENOENT" });
+      await assert.rejects(fs.stat(join(c.dir, "pi.pid")), { code: "ENOENT" });
+    });
+  }
+}
 
 // Missing claims, verification, or cleanup break these persisted observations.
 test("gated planning publishes a spec PR and keeps in-progress with one cost comment", async (t) => {
