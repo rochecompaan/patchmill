@@ -207,6 +207,9 @@ Triage dry run previews links, labels, and comments without host writes.
 
 ### Manual upgrade from blocked labels
 
+After upgrading, run `patchmill init` to refresh the managed triage skill.
+Custom triage skills must also return the required `blockedBy` array.
+
 There is no automatic migration. Before running the upgraded Patchmill, update
 each affected issue manually:
 

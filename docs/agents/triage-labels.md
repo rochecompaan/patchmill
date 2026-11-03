@@ -48,6 +48,9 @@ workflow labels. Dry runs and invalid results do not create labels.
 
 ## Manual upgrade from the blocked label
 
+After upgrading, run `patchmill init` to refresh the managed triage skill.
+Custom triage skills must also return the required `blockedBy` array.
+
 There is no automatic migration. Old blocked labels no longer prevent work.
 Before running the upgraded Patchmill, update each affected issue manually:
 

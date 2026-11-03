@@ -62,6 +62,9 @@ another run on that issue.
 
 ## Manual upgrade
 
+After upgrading, run `patchmill init` to refresh the managed triage skill.
+Custom triage skills must also return the required `blockedBy` array.
+
 There is no automatic migration from the old blocked label. Before using the
 upgraded Patchmill, update each affected issue manually:
 
