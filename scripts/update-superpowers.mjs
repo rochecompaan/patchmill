@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { repairMissingLockfileIntegrities } from "./lockfile-integrity.mjs";
 import {
@@ -30,8 +30,9 @@ const trackedRoots = [
   "THIRD_PARTY_NOTICES.md",
   ".patchmill/skills",
 ];
-const installerPath = "src/cli/commands/init/skill-installer.ts";
-const installerModule = `import { installSkills } from "./${installerPath}"; await installSkills({ repoRoot: process.cwd(), skillDir: ".patchmill/skills", packageRoot: process.cwd() });`;
+// Run `patchmill skills update` so files dropped upstream are removed too.
+const skillsCommandPath = "src/cli/commands/skills/main.ts";
+const installerModule = `import { main } from "./${skillsCommandPath}"; process.exitCode = await main(["update"], { repoRoot: process.cwd(), packageRoot: process.cwd() });`;
 export const validationCommands = [
   "npm ci",
   `node --input-type=module -e '${installerModule}'`,
@@ -141,7 +142,8 @@ async function assertSynchronizedRepository(rootDir, expectedVersion) {
     );
   const require = createRequire(join(rootDir, "package.json"));
   const installer = await import(
-    pathToFileURL(join(rootDir, installerPath)).href
+    pathToFileURL(join(rootDir, "src/cli/commands/init/skill-installer.ts"))
+      .href
   );
   const packs = [
     [rootDir, installer.PATCHMILL_SKILLS, "patchmill"],
@@ -204,6 +206,26 @@ async function assertSynchronizedRepository(rootDir, expectedVersion) {
     if (createHash("sha256").update(installed).digest("hex") !== file.sha256)
       throw new Error(`Installed skill content hash differs: ${file.path}`);
   }
+  const listed = new Set(metadata.files.map((file) => file.path));
+  const unlisted = (
+    await readdir(join(rootDir, ".patchmill/skills"), {
+      recursive: true,
+      withFileTypes: true,
+    })
+  )
+    .filter((entry) => !entry.isDirectory())
+    .map((entry) =>
+      relative(
+        join(rootDir, ".patchmill/skills"),
+        join(entry.parentPath, entry.name),
+      ),
+    )
+    .filter((path) => path !== "patchmill-skill-pack.json" && !listed.has(path))
+    .sort();
+  if (unlisted.length > 0)
+    throw new Error(
+      `Installed skill files are not in the skill manifest: ${unlisted.join(", ")}`,
+    );
 }
 async function regenerateLockfiles(rootDir, runCommand) {
   await runCommand(
