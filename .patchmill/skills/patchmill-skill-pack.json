@@ -1,8 +1,8 @@
 {
-  "installedAt": "2026-11-06T06:33:33.203Z",
+  "installedAt": "2026-11-06T06:48:43.734Z",
   "sources": {
     "patchmill": "0.20.0",
-    "superpowers": "7.0.1",
+    "superpowers": "7.0.2",
     "simpleEnglish": "1.2.0"
   },
   "files": [
@@ -24,7 +24,7 @@
     },
     {
       "path": "brainstorming/scripts/start-server.sh",
-      "sha256": "a4e5ae84275bcaacd2f84345afeabe59cf7b00ba080e123da7cc1fb226f12847"
+      "sha256": "314dd68dc00e8dd94c7491aca8a5f004c7fddffc161e2b07482f29f48d13659a"
     },
     {
       "path": "brainstorming/scripts/stop-server.sh",
@@ -32,7 +32,7 @@
     },
     {
       "path": "brainstorming/SKILL.md",
-      "sha256": "61a7ef918652108c76a3fd01e02dd92d39996c6b46d4cb2819cbd03f6c45e46a"
+      "sha256": "2c9ca71f94886f9ca9f4aef055f7cafb3e1a9bdf3aeebf8f4cb547c69405d207"
     },
     {
       "path": "brainstorming/visual-companion.md",
@@ -44,15 +44,15 @@
     },
     {
       "path": "executing-plans/scripts/task-done",
-      "sha256": "d0d4f2397c85a4426443ea955e699ef12568b41b408ec6122d4ec2433ee3a5f6"
+      "sha256": "ac0b5ebafc7d471507b7e94d88da77a11f187ba277c8d48fefaf8ff3e4fee50e"
     },
     {
       "path": "executing-plans/scripts/task-start",
-      "sha256": "f833693c8fce3700fc9f841562d80f8015cd40f652c168a3405ac3e46947a1fe"
+      "sha256": "4ae7ce3b6777c3240af786197836a6b4bbf3b0ee831c25f147c149ea8db54a21"
     },
     {
       "path": "executing-plans/SKILL.md",
-      "sha256": "e4649e59880ef2643d1da128e3d607e87e3f969410d72095a5bf65811b6036dc"
+      "sha256": "deaf176fa179827e80f2ea3101db3ea90fdf562ebef340eba761e4687940f5f5"
     },
     {
       "path": "finishing-a-development-branch/SKILL.md",
@@ -152,7 +152,7 @@
     },
     {
       "path": "subagent-driven-development/re-review-prompt.md",
-      "sha256": "0828a5e9cbb12ba49f14621dd8c3953c48c0fc383e75bb5494f055ed0d6d824f"
+      "sha256": "ad54d0a10f1c2c8e656456e0a46e654af5dfe5ee6bcef63428cfd69b8dcd9311"
     },
     {
       "path": "subagent-driven-development/references/batching.md",
@@ -164,11 +164,11 @@
     },
     {
       "path": "subagent-driven-development/references/final-review.md",
-      "sha256": "2fd999d86e5dd0b9b32aaf93f2a41663ef30b3e3cb78fb2fd5cb450eb59eb9de"
+      "sha256": "6c9e12093e46c4ad0a203bc07709c17e3470f855f1b78e55c5e7b722a012a32c"
     },
     {
       "path": "subagent-driven-development/references/fix-loop.md",
-      "sha256": "eafff1f801af2ced86e8761f3eeef04b701860d986ba5d0a8b20d506a75104bb"
+      "sha256": "1938ce707915efc44021e563ebc29666329e20ad861b6c50b89f305b8f4e8d8b"
     },
     {
       "path": "subagent-driven-development/references/handling-reports.md",
@@ -184,23 +184,27 @@
     },
     {
       "path": "subagent-driven-development/scripts/review-package",
-      "sha256": "f9275175b2276b1d5fdb1bae0bedaadd2a950659b7c6f311ea37ff85e1861b1f"
+      "sha256": "aed7c6e09fc660417d28898ed975e84651cb9f18f4675141cd475edfb7037f3d"
+    },
+    {
+      "path": "subagent-driven-development/scripts/sdd-repo",
+      "sha256": "6f8256a776968d394bae679572e41ce572fd45c72074b98f9a8eb8b4f160e06f"
     },
     {
       "path": "subagent-driven-development/scripts/sdd-workspace",
-      "sha256": "4fd9770e7a49b6bde488c0e92bac1b3bd01fcbdaf8f06b6c4efbe3a1abd99f86"
+      "sha256": "de3af5252fa595fc2000ba05cf69e06187d5c8aae9d283cced4c167ad1813061"
     },
     {
       "path": "subagent-driven-development/scripts/task-brief",
-      "sha256": "cc563538e09abf719b34ddf4b2fa7a65cf3b301729039dbfa923cb060f729146"
+      "sha256": "0f244a12e146393c552ba62069d3eedcc85cb3f76de67b01f4e11219e5ebbcd8"
     },
     {
       "path": "subagent-driven-development/SKILL.md",
-      "sha256": "ba41f697136cba88a7962d60c8e2f97488ba04a8688b1d0fbeb27f6953808e75"
+      "sha256": "1baf70e307bde682c462513c86116333f1f066168c6710f45145bf5f0b00828d"
     },
     {
       "path": "subagent-driven-development/task-reviewer-prompt.md",
-      "sha256": "bfed55c8f19d0ff6ed57b0fe09127c92890e9311c6c73917129598826bf9ebe8"
+      "sha256": "61a04c2fb29907887d8babee1594f5e35ae26d461e7e584f5b7c283215165e08"
     },
     {
       "path": "systematic-debugging/condition-based-waiting-example.ts",
@@ -209,10 +213,6 @@
     {
       "path": "systematic-debugging/condition-based-waiting.md",
       "sha256": "e89fec8400d6cd50f43407cec9fab50976ba4d55d0ec2eb51c0bd68036b54c26"
-    },
-    {
-      "path": "systematic-debugging/CREATION-LOG.md",
-      "sha256": "c24733a5b1821bd6bed1fc950261f0b9f4e90097e0bbb96459d8179713730789"
     },
     {
       "path": "systematic-debugging/defense-in-depth.md",
@@ -229,22 +229,6 @@
     {
       "path": "systematic-debugging/SKILL.md",
       "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202"
-    },
-    {
-      "path": "systematic-debugging/test-academic.md",
-      "sha256": "fe2ba480d78ac0d686dc025f41c2a32a43d642bf533f91b0c6053a04d35d6486"
-    },
-    {
-      "path": "systematic-debugging/test-pressure-1.md",
-      "sha256": "0b6a915db0054577819834c79be9eb614e97bddba10d73768e1fbe91cfed048a"
-    },
-    {
-      "path": "systematic-debugging/test-pressure-2.md",
-      "sha256": "b2030aeffba07050e8ad573ddf87486457c4a016a786bb326235bebd856f2016"
-    },
-    {
-      "path": "systematic-debugging/test-pressure-3.md",
-      "sha256": "96b50a52e2c7989c9cf20fb752c47c1e9a3a70dc362f8f7989f8f5b64dac7708"
     },
     {
       "path": "test-driven-development/SKILL.md",
