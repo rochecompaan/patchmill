@@ -53,6 +53,7 @@ explicit extension paths. This does not guarantee global extension isolation.
 | `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                                         |
 | `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                                                        |
 | `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                       |
+| `patchmill skills update`                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files dropped from the pack.                       |
 | `patchmill version`                                        | Print the version.                                                                                                                                            |
 | `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
 

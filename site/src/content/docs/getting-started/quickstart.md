@@ -70,6 +70,6 @@ repository. The `--reset` flag deletes and recreates it. For Forgejo, use
 `--provider forgejo-tea` and an optional `--login PROFILE`. Clone the resulting
 repository, then follow the initialization commands above.
 
-To reinstall the shipped skills for the installed Patchmill version, run
-`patchmill init` again. Review and commit configuration and skill changes. Keep
-credentials, logs, and sessions local.
+After upgrading Patchmill, run `patchmill skills update` to update the shipped
+skills to the installed version. Review and commit configuration and skill
+changes. Keep credentials, logs, and sessions local.

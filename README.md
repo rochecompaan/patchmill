@@ -92,6 +92,7 @@ shown in chat. Non-interactive runs leave them in place.
 | `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                                         |
 | `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                                                        |
 | `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                       |
+| `patchmill skills update`                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files dropped from the pack.                       |
 | `patchmill version`                                        | Print the version.                                                                                                                                            |
 | `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
 
@@ -207,8 +208,8 @@ Triage dry run previews links, labels, and comments without host writes.
 
 ### Manual upgrade from blocked labels
 
-After upgrading, run `patchmill init` to refresh the managed triage skill.
-Custom triage skills must also return the required `blockedBy` array.
+After upgrading, run `patchmill skills update` to refresh the managed triage
+skill. Custom triage skills must also return the required `blockedBy` array.
 
 There is no automatic migration. Before running the upgraded Patchmill, update
 each affected issue manually:

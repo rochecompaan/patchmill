@@ -14,7 +14,8 @@ test("createCliMain prints help for the skills-first commands", async () => {
   assert.deepEqual(stdout, [HELP_TEXT]);
   assert.deepEqual(stderr, []);
   assert.match(HELP_TEXT, /release/);
-  assert.doesNotMatch(HELP_TEXT, /set-spec|skills|run /);
+  assert.match(HELP_TEXT, /skills/);
+  assert.doesNotMatch(HELP_TEXT, /set-spec|run /);
 });
 
 test("createCliMain reports unknown commands with help", async () => {

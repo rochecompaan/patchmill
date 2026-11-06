@@ -110,10 +110,15 @@ Visual evidence and module size are skill advice. The kernel does not inspect
 screenshots or enforce task lists. Use behavioral tests for meaningful changes
 and direct inspection for static prose and configuration.
 
-## Reinstall and review
+## Update and review
 
-To reinstall the shipped pack for the installed version, run `patchmill init`.
-Review the resulting diff and commit shared skills. Do not hand-edit managed
-copies to disguise hash mismatches. Keep custom entry points separate from
-managed files. See [Interactive skills](/using-patchmill/interactive-skills/)
-for human-controlled planning, labels, and cleanup.
+After upgrading Patchmill, run `patchmill skills update` to bring the managed
+pack up to the installed version. The command compares each managed file with
+the hash in `.patchmill/skills/patchmill-skill-pack.json`. It refuses to run if
+any managed file was edited or deleted, and lists those files. Otherwise it
+copies the shipped skills, removes files the new pack no longer ships, and
+rewrites the manifest. Review the resulting diff and commit shared skills. Do
+not hand-edit managed copies to disguise hash mismatches. Keep custom entry
+points separate from managed files. See
+[Interactive skills](/using-patchmill/interactive-skills/) for human-controlled
+planning, labels, and cleanup.

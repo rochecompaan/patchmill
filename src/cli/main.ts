@@ -6,6 +6,7 @@ import { main as runOnceMain } from "./commands/run-once/main.ts";
 import { main as releaseMain } from "./commands/release/main.ts";
 import { main as labelsMain } from "./commands/labels/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
+import { main as skillsMain } from "./commands/skills/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
 
 export const HELP_TEXT = `Usage:
@@ -19,6 +20,7 @@ Commands:
   triage      Classify repository issues for agent readiness.
   run-once    Advance one issue.
   release     Reset an issue from in-progress to ready.
+  skills      Update the managed project-local skill pack.
   version     Print the Patchmill CLI version.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;
@@ -104,6 +106,7 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["run-once", runOnceMain],
   ["release", releaseMain],
   ["labels", labelsMain],
+  ["skills", skillsMain],
   ["version", versionMain],
   ["setup-test-repo", setupTestRepoMain],
 ]);
