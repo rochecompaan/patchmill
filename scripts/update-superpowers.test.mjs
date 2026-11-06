@@ -91,10 +91,13 @@ async function createFixture() {
   const spec = tarballUrlForVersion(currentVersion);
   await mkdir(join(fixture, "nix"), { recursive: true });
   await mkdir(join(fixture, "src/cli/commands/init"), { recursive: true });
-  await cp(
-    join(rootDir, "src/cli/commands/init/skill-installer.ts"),
-    join(fixture, "src/cli/commands/init/skill-installer.ts"),
-  );
+  await mkdir(join(fixture, "src/cli/commands/skills"), { recursive: true });
+  for (const path of [
+    "src/cli/commands/init/skill-installer.ts",
+    "src/cli/commands/skills/main.ts",
+    "src/package-root.ts",
+  ])
+    await cp(join(rootDir, path), join(fixture, path));
   await Promise.all([
     writeJson(join(fixture, "package.json"), {
       type: "module",
@@ -167,6 +170,12 @@ async function fixtureRunCommand(command, args, fixture, calls) {
       ),
       "new resource\n",
     );
+    await rm(
+      join(
+        fixture,
+        "node_modules/superpowers/skills/writing-plans/references/example.md",
+      ),
+    );
   }
   if (command === "node") {
     assert.equal(args[0], "--input-type=module");
@@ -229,6 +238,16 @@ test("validate-only no-update checks a synchronized repository without commands"
       /hash|content/i,
     );
     await installFixture(fixture);
+    const stray = join(fixture, ".patchmill/skills/brainstorming/stray.md");
+    await writeFile(stray, "left behind by an earlier pack\n");
+    await assert.rejects(
+      runSuperpowersUpgrade(
+        ["--superpowers-version", "6.2.0", "--validate-only"],
+        { rootDir: fixture, fetchImpl: releaseFetch },
+      ),
+      /not in the skill manifest: brainstorming\/stray\.md/,
+    );
+    await rm(stray);
     await writeFile(
       join(
         fixture,
@@ -318,6 +337,16 @@ test("upgrades metadata transactionally and reports nested skill changes without
     assert.ok(
       summary.changedFiles.includes(
         ".patchmill/skills/brainstorming/references/example.md",
+      ),
+    );
+    // Files dropped upstream are removed, not left behind.
+    await assert.rejects(
+      readFile(join(fixture, ".patchmill/skills/writing-plans/references")),
+      { code: "ENOENT" },
+    );
+    assert.ok(
+      summary.changedFiles.includes(
+        ".patchmill/skills/writing-plans/references/example.md",
       ),
     );
     assert.equal(
