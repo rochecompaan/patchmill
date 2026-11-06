@@ -55,10 +55,23 @@ Required spec approval stops planning before the plan.
 
 The implementation skill prepares the environment, executes the approved plan,
 validates the work, commits, pushes, and marks the pull request ready. It
-follows sibling `executing-plans` for inline work. Kernel-launched sessions do
-not require subagent tools. An interactive operator can authorize available
-subagent tools and the sibling `subagent-driven-development` workflow. The
-canonical independent review role is `reviewer`, not `code-reviewer`.
+follows sibling `executing-plans` for inline work. An interactive operator can
+ask for per-task review through the sibling `subagent-driven-development`
+workflow.
+
+Every implementation gets one independent whole-branch review from a
+fresh-context `reviewer` subagent, not `code-reviewer`. The reviewer task
+combines the upstream `code-reviewer.md` template with the skill's
+`review-appendix.md`, which adds finding filters, error-boundary, security, and
+structure and readability checks, and a human reviewer callouts section. The
+agent makes one ordered fix pass and defers Minor findings. If no reviewer is
+available, the run stops with `needs-input` rather than reviewing its own work.
+
+The pull request stays in draft until its checks pass on the current head. The
+agent ignores failures for older heads, makes at most two repair passes for
+failures caused by the code, and reports base-branch and operator failures
+instead of changing code for them. The pull request body records rulings,
+deferred Minor findings, validation results, and the reviewer's callouts.
 
 `init` provisions `agents/reviewer.md` in the Pi agent directory. Run-once loads
 `pi-subagents` through runtime `-e` arguments, not copied extension files. The
@@ -82,10 +95,9 @@ The kernel does not check mockups.
 
 After validation, implementation follows `patchmill-frontend-review` for
 applicable work. The review uses pinned local rules and never fetches rules at
-runtime. Kernel-launched sessions run it as a separate self-review pass. An
-interactive operator can authorize a fresh `reviewer` subagent instead. Every
-valid finding is fixed and reviewed again before the pull request is marked
-ready. The pull request body records the decision, findings, and repairs.
+runtime. A fresh `reviewer` subagent performs it. Every valid finding is fixed
+and reviewed again before the pull request is marked ready. The pull request
+body records the decision, findings, and repairs.
 
 ## Results and evidence
 

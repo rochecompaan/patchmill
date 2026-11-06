@@ -70,17 +70,15 @@ keyboard finding needs observed user impact, not handler absence alone.
 
 ## Reviewer
 
-Kernel-launched sessions do not depend on subagent tools. There, run the review
-as a separate pass after validation. Base each finding on the inputs and pinned
-rules, not on what you intended while writing the code. Label the result as a
-self-review in the pull request body.
-
-If an interactive operator authorizes available subagent tools, dispatch a
-fresh-context canonical `reviewer` instead. Pass explicitly resolved model and
-thinking values. Keep the reviewer read-only and shell-less, and do not let it
-start subagents. Never use the disabled `code-reviewer` role. If the reviewer
-asks for command output, run the commands and supply the results. Run
-file-writing commands in a disposable copy of the reviewed state.
+Dispatch a fresh-context canonical `reviewer` with the inputs above and this
+skill's rules. Kernel runs load the `pi-subagents` extension. Pass explicitly
+resolved model and thinking values. Run it in the foreground (`async: false`)
+and read its whole result before you continue. Keep the reviewer read-only, and
+do not let it start subagents. Never use the disabled `code-reviewer` role. If
+the reviewer asks for command output, run the commands and supply the results.
+Run file-writing commands in a disposable copy of the reviewed state. If no
+`reviewer` agent or subagent tool is available, stop with `needs-input`. Do not
+replace the review with a self-review.
 
 ## Result and repair contract
 
