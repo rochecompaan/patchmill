@@ -103,7 +103,7 @@ directory belongs to one repository, so records do not repeat the repository.
 Add `.patchmill/state/` to `.gitignore` in this repository and to the ignore
 entries `patchmill init` manages.
 
-```
+```text
 .patchmill/state/
   issues/sync.json        sync cursor
   issues/<n>.json         one issue with its comments
@@ -116,7 +116,7 @@ edits or deletes lines in it.
 
 ### Entities
 
-```
+```text
  ┌─────────────────────────┐
  │ SyncCursor              │  issues/sync.json
  │ repository   owner/repo │
