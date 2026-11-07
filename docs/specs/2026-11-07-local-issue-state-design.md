@@ -106,7 +106,7 @@ entries `patchmill init` manages.
 ```
 .patchmill/state/
   issues/sync.json        sync cursor
-  issues/<n>.json         one issue with its comments and dependencies
+  issues/<n>.json         one issue with its comments
   status/<n>.jsonl     status changes for issue <n>, appended only
 ```
 
@@ -129,16 +129,16 @@ edits or deletes lines in it.
  │ title, body, url        │               │ status       ready|inProgress|  │
  │ state  open|closed      │               │              needsInfo|done|    │
  │ author                  │               │              unsuitable         │
- │ labels[], assignees[]   │               │ runId?                          │
- │ createdAt, updatedAt    │               │ summary?                        │
- └──┬───────────────┬──────┘               │ cost?                           │
-    │ *             │ *                    │ warnings?[]                     │
- ┌──▼────────┐  ┌───▼────────────┐         │ questionUrl?                    │
- │ Comment   │  │ Dependency     │         └─────────────────────────────────┘
- │ id        │  │ repository     │
- │ author    │  │ number         │
- │ body      │  │ state          │
- │ createdAt │  └────────────────┘
+ │ labels[]                │               │ runId?                          │
+ │ createdAt               │               │ summary?                        │
+ └──┬──────────────────────┘               │ cost?                           │
+    │ *                                    │ warnings?[]                     │
+ ┌──▼────────┐                             │ questionUrl?                    │
+ │ Comment   │                             └─────────────────────────────────┘
+ │ id, url   │
+ │ author    │
+ │ body      │
+ │ createdAt │
  │ updatedAt │
  └───────────┘
 ```
@@ -185,15 +185,21 @@ A sync module reads upstream and writes `issues/`. It is used only in local
 mode.
 
 - **First sync:** if `issues/sync.json` is missing, fetch every issue in every
-  state, all issue comments, and all dependencies. Write one file per issue and
-  then the cursor.
-- **Later syncs:** fetch issues and comments updated since `syncedUpTo`. Rewrite
-  each changed issue's file in full.
+  state and all issue comments. Write one file per issue and then the cursor.
+- **Later syncs:** fetch issues and comments updated since `syncedUpTo`. Replace
+  the issue fields of each changed issue and add or replace its changed comments
+  by comment ID.
 - **Cursor:** set `syncedUpTo` to the start time of the sync request, not its
-  end time, so changes made during a sync are fetched again next time. Write the
-  cursor only after all issue files are written. A failed sync leaves the old
-  cursor, so the next sync repeats the work.
+  end time, so changes made during a sync are fetched again next time. Ask for
+  changes since five minutes before `syncedUpTo`, so a local clock that runs
+  ahead of the host does not skip changes. Fetching a change twice is harmless.
+  Write the cursor only after all issue files are written. A failed sync leaves
+  the old cursor, so the next sync repeats the work.
 - **Pull requests:** GitHub's issue list includes pull requests. Skip them.
+- **Dependencies are not synced.** Triage and run selection read them from the
+  host for each issue they consider, as label mode does today. This avoids
+  relying on dependency changes updating an issue's `updatedAt`, which is
+  unverified, and keeps the first sync to a few list calls.
 - **When:** `triage` and `run-once` sync before selecting or reading issues. If
   sync fails, the command stops with the error and does nothing else.
   `patchmill status` reads local state without syncing and shows `syncedUpTo`.
@@ -209,10 +215,6 @@ Known gaps for the builder to settle:
 
 - Incremental `since=` does not report deleted comments or deleted issues.
   Accept this for the first version. A full resync (delete `issues/`) recovers.
-- It is unverified whether adding or removing a native dependency updates an
-  issue's `updatedAt` on GitHub and on Forgejo. If it does not, refresh
-  dependencies for all open issues on every sync. On GitHub this was one GraphQL
-  query of about 3 pages (`blockedBy` on `repository.issues`).
 - Forgejo needs the same calls through `tea` or its API. Gitea's issue list
   accepts `since`. Verify the comment endpoint does too.
 
@@ -226,7 +228,6 @@ type WorkflowState = {
   sync(options?: { issue?: number }): Promise<void>;
   issue(n: number): Promise<Issue>;
   status(n: number): Promise<StatusChange | undefined>;
-  dependencies(n: number): Promise<IssueDependency[]>;
   triageCandidates(trusted: string[]): Promise<Issue[]>;
   runCandidates(): Promise<Issue[]>; // ready or inProgress, oldest first
   setStatus(n: number, change: StatusChange, question?: string): Promise<void>;
@@ -287,8 +288,8 @@ the dry run should see current issues._
 ### Issue runs
 
 - Selection uses `runCandidates`: `ready` or `inProgress` issues, oldest first,
-  skipping issues with open or unreadable dependencies from the synced data.
-  `--issue N` runs any open issue, as today.
+  skipping issues with open or unreadable dependencies read from the host, as
+  today. `--issue N` runs any open issue, as today.
 - Claim appends `inProgress` with the run ID. The "claimed elsewhere" check
   becomes "issue is open in the synced copy". The per-issue lock already guards
   local concurrency.
@@ -302,7 +303,9 @@ the dry run should see current issues._
 - Upstream, local mode posts only when a run stops with `needsInfo` because the
   worker returned `needs-input`. It posts the worker's summary as a question,
   without the kernel marker or status lines, and records `questionUrl`. Errors,
-  failed verification, gate waits, and completion post nothing.
+  failed verification, gate waits, and completion post nothing. In a console run
+  the maintainer already sees the worker's question, so a console run posts
+  nothing even when it stops with `needsInfo`.
 - Console guidance still goes to the worker. It is written to the run log, not
   posted.
 
@@ -377,7 +380,7 @@ guess._
 - Exact `WorkflowState` interface and how `run-once.ts`, `triage.ts`,
   `publish.ts`, `review-wait.ts`, `interactive-loop.ts`, and `release` are
   changed to use it.
-- Host additions needed for sync (listing all issues and comments since a time,
-  bulk dependencies) for GitHub and Forgejo.
+- Host additions needed for sync (listing all issues and all comments since a
+  time) and for posting a comment that returns its URL, for GitHub and Forgejo.
 - Wording of question comments without the kernel marker.
 - Status output layout.
