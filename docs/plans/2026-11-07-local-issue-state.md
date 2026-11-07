@@ -9,10 +9,11 @@
 workflow status in `.patchmill/state/` and syncs issues from the host, so
 Patchmill never writes labels or status comments upstream.
 
-**Architecture:** A `WorkflowState` interface becomes the only kernel path for
-workflow status. `LabelWorkflowState` wraps today's label and comment calls
-unchanged. `LocalWorkflowState` reads a synced issue copy and appends status
-lines through a `StateStore`. A `syncIssues` function keeps the copy current.
+**Architecture:** A four-method `WorkflowState` interface (`sync`, `openIssues`,
+`issue`, `setStatus`) becomes the only kernel path for issue reads and status
+writes. `LabelWorkflowState` maps it to labels and kernel comments.
+`LocalWorkflowState` reads a synced issue copy and appends status lines through
+a `StateStore`. Triage and run code keep all policy.
 
 **Tech Stack:** TypeScript on Node (`node --test`), `gh` and `tea` through the
 existing `CommandRunner`, JSON and JSONL files. No new dependencies.
@@ -32,8 +33,12 @@ existing `CommandRunner`, JSON and JSONL files. No new dependencies.
 - In local mode Patchmill never calls `setLabels`, `createLabel`, `listLabels`,
   or `commentIssue`. It posts only question comments, through `postComment`,
   without `KERNEL_COMMENT`.
-- Label mode behaviour, output, and existing tests stay unchanged. Every task
-  ends with the full suite green: `npm test`.
+- Label mode keeps working with exactly three changes: every status change
+  leaves one workflow label; triage comments use the shared kernel comment
+  format; console guidance is not posted. Every task ends with the full suite
+  green: `npm test`.
+- `WorkflowState` stores and reads status only. Candidate rules, the reply rule,
+  outcome choice, and when to ask stay in triage and run code.
 - Dependencies are read live from the host, never synced.
 - Sync asks for changes since `syncedUpTo` minus 5 minutes.
 - Issue files and the cursor are written atomically (temporary file, then
@@ -46,7 +51,9 @@ existing `CommandRunner`, JSON and JSONL files. No new dependencies.
    `createLabel`, `listLabels`, or `commentIssue` host calls. Test: Task 7,
    `local mode never writes labels or status comments`.
 2. Patchmill's own question is not a reply. A later trusted comment is, and an
-   untrusted one is not. Test: Task 6, `needsInfo reply rule`.
+   untrusted one is not. Tests: Task 5,
+   `hasReply needs a trusted, non-Patchmill comment after the status`; Task 6,
+   `own question is fromPatchmill and later comments are not`.
 3. A crash-truncated last status line is ignored with a warning, while a bad
    line in the middle stops the command. Test: Task 3, `status file recovery`.
 4. A sync that fails part way keeps the old cursor, so the next sync repeats the
@@ -322,7 +329,8 @@ Run: `node --test src/state/sync.test.ts` Expected: FAIL.
 
 ### Task 5: WorkflowState interface and label backend
 
-A refactor. Label behaviour must not change. The existing suite is the test.
+Moves every kernel status write and issue read behind `WorkflowState`, with the
+three agreed label-mode changes. Triage and run keep all policy.
 
 **Files:**
 
@@ -330,96 +338,143 @@ A refactor. Label behaviour must not change. The existing suite is the test.
 - Modify: `src/kernel/triage.ts`, `src/kernel/run-once.ts`,
   `src/kernel/issue-selection.ts`, `src/kernel/publish.ts`,
   `src/kernel/review-wait.ts`, `src/kernel/interactive-loop.ts`,
-  `src/cli/commands/release/main.ts`, `src/cli/commands/run-once/main.ts`
-- Test: existing suites; `src/kernel/label-workflow.test.ts`
+  `src/kernel/comments.ts`, `src/kernel/labels.ts`,
+  `src/cli/commands/release/main.ts`
+- Test: `src/kernel/label-workflow.test.ts`, `src/kernel/triage.test.ts`, and
+  the existing suites listed in Step 5
 
 **Interfaces:**
 
+- Consumes: `WorkflowStatus` from `src/state/store.ts` (Task 3).
 - Produces in `src/kernel/workflow-state.ts`:
 
 ```ts
-export type StopRecord = StopPublication & {
-  runId: string;
-  /** Unattended needs-input question. Local mode posts it; labels ignore it. */
-  question?: string;
+export type TrackedComment = IssueComment & { fromPatchmill: boolean };
+export type TrackedIssue = Omit<Issue, "comments"> & {
+  status: WorkflowStatus | "untriaged";
+  statusSince?: string;
+  comments: TrackedComment[];
+};
+export type StatusUpdate = {
+  status: WorkflowStatus;
+  runId?: string;
+  summary?: string;
+  cost?: string;
+  warnings?: string[];
+  ask?: boolean;
 };
 export interface WorkflowState {
   sync(issue?: number): Promise<void>;
-  viewIssue(n: number): Promise<Issue>;
-  /** Open issues eligible to run, oldest first, or [issue] when explicit. */
-  runCandidates(explicit?: number): Promise<Issue[]>;
-  triageCandidates(trusted: string[]): Promise<number[]>;
-  isTriageCandidate(issue: Issue, trusted: string[]): boolean;
-  /** Labels or statuses shown in triage progress, before and after. */
-  triagePreview(
-    issue: Issue,
-    label: string,
-  ): { previous: string[]; final: string[] };
-  /** `label` is a configured triage label name. */
-  recordTriage(issue: Issue, label: string, comment: string): Promise<void>;
-  /** Returns the claimed issue, or undefined when claimed elsewhere. */
-  claim(n: number, runId: string): Promise<Issue | undefined>;
-  restoreDone(n: number): Promise<void>;
-  publishStop(n: number, stop: StopRecord): Promise<string[]>;
-  recordGuidance(n: number, runId: string, text: string): Promise<void>;
-  /** True when an in-progress issue was released to ready. */
-  release(n: number): Promise<boolean>;
+  openIssues(): Promise<TrackedIssue[]>;
+  issue(n: number): Promise<TrackedIssue>;
+  /** Returns publication errors. */
+  setStatus(n: number, update: StatusUpdate): Promise<string[]>;
 }
 ```
 
 - Produces in `src/kernel/label-workflow.ts`:
   `export class LabelWorkflowState implements WorkflowState` with
-  `constructor(host: Host, labels: LabelsConfig)`. It moves today's code: `sync`
-  does nothing; `viewIssue` is `host.viewIssue`; `runCandidates` is today's
-  `listRunIssues` plus `selectIssue`; `triageCandidates` and `isTriageCandidate`
-  are today's loop and `selectTriageCandidates`; `triagePreview` is today's
-  `finalLabels` formula; `recordTriage` runs `ensureLabels` once per instance,
-  `setLabels`, then the kernel comment; `claim` is the claim swap plus today's
-  open and `inProgress` check; `restoreDone` removes `inProgress`; `publishStop`
-  is today's `publishStop(host, labels, n, stop)`; `recordGuidance` posts
-  `guidanceComment(text)`; `release` is today's release command logic.
-- `RunOnceDeps` and `TriageDeps` gain `workflow?: WorkflowState`. Kernel entry
-  points use
-  `deps.workflow ?? new LabelWorkflowState(deps.host, config.labels)`, so
-  existing tests need no changes.
-- `selectRunIssue` input becomes `{ workflow, host, issue?, warn }`. It gets
-  candidates from `workflow.runCandidates(issue)` and keeps reading dependencies
-  from `host`.
-- `publishAttemptStop` input replaces `labels` with `workflow` and passes
-  `{ ...stop, cost, runId: current.runId }` to `workflow.publishStop`.
-- `reviewWait` input replaces `labels` with `workflow` and calls
-  `workflow.restoreDone(issue)` on restart. Its `publish` callback keeps passing
-  `[labels.done]` as `remove`. Pass `config.labels.done` in from run-once.
-- `workerGuidance` takes `record: (text: string) => Promise<void>` instead of
-  using `host.commentIssue`.
-- Every kernel issue read goes through `workflow.viewIssue`: the three calls in
-  `run-once.ts` (claim check moves into `claim`, the loop read, and the
-  after-session read), the per-candidate read in `runTriage`, and
-  `collectReviewFacts`, which takes `workflow` instead of `host`. After this
-  task, `grep -n "host.viewIssue\|host.listOpenIssues" src/kernel/*.ts` lists
-  only `label-workflow.ts` and tests.
+  `constructor(host: Host, labels: LabelsConfig)`.
+  - `status` from labels with precedence
+    `inProgress > ready > done > unsuitable > needsInfo`; no workflow label is
+    `untriaged`. This order keeps today's selection for every mixed-label
+    combination. `statusSince` is never set.
+  - `fromPatchmill` is `body.startsWith(KERNEL_COMMENT)`.
+  - `sync` does nothing. `openIssues` maps `host.listOpenIssues()`. `issue` maps
+    `host.viewIssue(n)`.
+  - `setStatus`: the first call per instance runs `ensureLabels`. Then
+    `setLabels(n, [labels[status]], <the other four labels>)`. Then, if
+    `summary` is set, `commentIssue(n, kernelComment(...))`. A failed swap or
+    comment is collected as `Label update failed: <reason>` or
+    `Comment failed: <reason>` and returned, as `publishStop` does today. `ask`
+    is ignored.
+- Produces in `src/kernel/comments.ts`:
+  `kernelComment(input: { issue: number; label: string; summary: string; cost?: string; warnings?: string[] }): string`,
+  which joins `KERNEL_COMMENT`, `Issue #<n>: <label>`, the summary, the cost,
+  and each warning with `"\n\n"`, leaving out empty parts. Delete
+  `guidanceComment`.
+- Produces in `src/kernel/triage.ts`:
+  `hasReply(issue: TrackedIssue, trusted: string[]): boolean`. It is true when
+  the latest comment by `createdAt` has a trusted author, is not
+  `fromPatchmill`, and, if `statusSince` is set, was created after it.
+  `selectTriageCandidates(issues: TrackedIssue[], trusted: string[])` keeps open
+  issues that are `untriaged`, or `needsInfo` with `hasReply`.
+- Call-site changes:
+  - `RunOnceDeps` and `TriageDeps` gain `workflow?: WorkflowState`. Entry points
+    use `deps.workflow ?? new LabelWorkflowState(deps.host, config.labels)`.
+  - `runTriage` lists with `workflow.openIssues()`, reads `needsInfo` issues and
+    each candidate with `workflow.issue(n)`, and records the outcome with
+    `setStatus(n, { status, summary: comment || undefined, ask: status === "needsInfo" && comment !== "" })`.
+    The `ensureLabels` call and direct label writes go. `previousLabels` and
+    `finalLabels` in the progress event become `previousStatus` and
+    `finalStatus` strings.
+  - `selectRunIssue({ workflow, host, issue?, warn })` filters
+    `workflow.openIssues()` to `ready` or `inProgress`, oldest first, or reads
+    `workflow.issue(issue)` when explicit. It keeps reading dependencies from
+    `host`. `selectIssue` and `listRunIssues` go.
+  - `runOneIssue` claims with `setStatus(n, { status: "inProgress", runId })`,
+    then `workflow.issue(n)` must be open and `inProgress`, else
+    `claimed-elsewhere`. All three loop reads use `workflow.issue(n)`.
+  - `publishStop` and `publishAttemptStop` take `workflow` instead of `host` and
+    `labels`, and call
+    `setStatus(n, { status: stop.label, runId, summary, cost, warnings, ask })`.
+    `StopPublication.remove` goes; the one swap rule covers it.
+    `StopPublication` gains `ask?: boolean`.
+  - `reviewWait` takes `workflow` instead of `labels`. On restart it calls
+    `setStatus(issue, { status: "done" })`. `collectReviewFacts` takes
+    `workflow` instead of `host`.
+  - `workerGuidance` drops the issue comment. `run-once.ts` appends the guidance
+    text and a blank line to `<runDir>/guidance.md`.
+  - `release` reads `workflow.issue(n)` and, when `inProgress`, calls
+    `setStatus(n, { status: "ready" })`. Output stays
+    `Issue #N: <inProgress label> -> <ready label>.` and
+    `Issue #N: nothing to release.`
+  - `claimSwap` and `releaseSwap` go from `labels.ts`.
 
-- [ ] **Step 1: Write `src/kernel/label-workflow.test.ts`** with `FakeHost`:
-  - `label claim swaps labels and reports claimed elsewhere`: claim on an open
-    `agent-ready` issue returns the issue with `in-progress`; claim on a closed
-    issue returns `undefined`.
-  - `label release swaps in-progress back to ready`: returns `true`, then
-    `false` once ready.
+- [ ] **Step 1: Write failing tests** in `src/kernel/label-workflow.test.ts`
+      with `FakeHost`:
+  - `label status follows label precedence`: no workflow label is `untriaged`;
+    `[needs-info, agent-unsuitable]` is `unsuitable`;
+    `[agent-ready, agent-done]` is `ready`; `[in-progress, agent-ready]` is
+    `inProgress`.
+  - `setStatus leaves exactly one workflow label`: an issue with
+    `[bug, in-progress, agent-ready]` set to `needsInfo` ends with
+    `[bug, needs-info]`.
+  - `setStatus posts the kernel comment only with a summary`: one `commentIssue`
+    whose body equals
+    `kernelComment({ issue: 9, label: "needs-info", summary: "S", cost: "C", warnings: ["W"] })`;
+    a second update without summary posts nothing.
+  - `labels are ensured once per instance`: two updates record one `listLabels`.
+  - `publication failures are returned`: a host whose `setLabels` throws returns
+    `["Label update failed: <message>"]` and still comments.
 
-- [ ] **Step 2: Run** `node --test src/kernel/label-workflow.test.ts`. Expected:
-      FAIL.
+  In `src/kernel/triage.test.ts`:
+  - `hasReply needs a trusted, non-Patchmill comment after the status`: false
+    when the latest comment is `fromPatchmill`; false for an untrusted author;
+    true for a trusted author; with `statusSince` later than the comment, false.
 
-- [ ] **Step 3: Implement** the interface and backend, then move each call site
-      listed above onto `WorkflowState`. After this step,
-      `grep -n     "setLabels\|commentIssue\|createLabel\|ensureLabels" src/kernel/*.ts     src/cli/commands/release/main.ts`
-      lists only `label-workflow.ts`, `labels.ts`, and tests.
+- [ ] **Step 2: Run**
+      `node --test src/kernel/label-workflow.test.ts     src/kernel/triage.test.ts`.
+      Expected: the new tests FAIL.
 
-- [ ] **Step 4: Run** `npm test`. Expected: PASS with no edits to existing test
-      files other than the `selectRunIssue` call in
-      `src/kernel/issue-selection.test.ts`, which now passes
-      `workflow: new     LabelWorkflowState(host, DEFAULT_CONFIG.labels)`.
+- [ ] **Step 3: Implement** the interface, the label backend, `kernelComment`,
+      and `hasReply`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Move the call sites** listed above. Afterwards
+      `grep -n "setLabels\|commentIssue\|createLabel\|ensureLabels\|viewIssue\|listOpenIssues" src/kernel/*.ts src/cli/commands/release/main.ts | grep -v "\.test\.ts"`
+      lists only `label-workflow.ts` and `labels.ts`.
+
+- [ ] **Step 5: Run** `npm test`. Update existing assertions only for the three
+      agreed label-mode changes: the triage comment format in
+      `src/kernel/triage.test.ts`, guidance no longer posted in
+      `src/kernel/interactive-block.test.ts`, and the removed swap helpers in
+      `src/kernel/labels.test.ts`. Update `selectRunIssue` and progress-event
+      callers (`src/kernel/issue-selection.test.ts`,
+      `src/cli/commands/triage/progress-output.ts` and its test) for the new
+      signatures. Any other failing assertion is a regression to fix in the
+      code, not the test. Expected: PASS.
+
+- [ ] **Step 6: Commit**
       `refactor(kernel): route workflow status through WorkflowState`
 
 ---
@@ -433,64 +488,40 @@ export interface WorkflowState {
 
 **Interfaces:**
 
-- Consumes: `WorkflowState` (Task 5); `StateStore` (Task 3); `syncIssues`,
-  `refreshIssue` (Task 4); `Host.postComment` (Task 2).
+- Consumes: `WorkflowState`, `TrackedIssue`, `StatusUpdate` (Task 5);
+  `StateStore` (Task 3); `syncIssues`, `refreshIssue` (Task 4);
+  `Host.postComment` (Task 2).
 - Produces: `export class LocalWorkflowState implements WorkflowState` with
-  `constructor(input: { host: Host; store: StateStore; labels: LabelsConfig; runsDir: string; now: () => Date })`,
-  where `runsDir` is absolute.
+  `constructor(input: { host: Host; store: StateStore; now: () => Date })`.
 
-Behaviour, per method:
+Behaviour:
 
-- `sync(issue)`: `syncIssues`.
-- `viewIssue(n)`: `refreshIssue`. If that fails, the error propagates (the run
-  treats it as today's failed `viewIssue`).
-- `runCandidates()`: stored open issues whose last status is `ready` or
-  `inProgress`, oldest `createdAt` first. `runCandidates(n)`: stored issue `n`
-  (refreshed if missing) when open, else `[]`.
-- `isTriageCandidate(issue, trusted)`: open, and either no status, or last
-  status `needsInfo` with a reply. A reply is a comment by a trusted author,
-  whose `url` is not the line's `questionUrl`, created after the question
-  comment's `createdAt` (found by `questionUrl` in the issue's comments), or
-  after the line's `at` when the question is absent.
-- `triageCandidates(trusted)`: numbers of stored issues passing
-  `isTriageCandidate`.
-- `triagePreview(issue, label)`: `previous` is `[last status]` or `[]`; `final`
-  is `[status for label]`.
-- `recordTriage(issue, label, comment)`: map the label name to its
-  `LabelsConfig` key. For `needsInfo` with a non-empty comment, `postComment`
-  first and set `questionUrl`. Append
-  `{ at, status, summary: comment, questionUrl? }`.
-- `claim(n, runId)`: refresh `n`; return `undefined` when closed; else append
-  `{ status: "inProgress", runId }` and return it.
-- `restoreDone(n)`: append `{ status: "done" }`.
-- `publishStop(n, stop)`: if `stop.question` is set, `postComment` it; a failed
-  post adds `Comment failed: <reason>` to the returned errors and no
-  `questionUrl`. Append
-  `{ status: stop.label, runId, summary, cost, warnings, questionUrl? }`. An
-  append failure is returned as `Status update failed: <reason>`. `stop.remove`
-  is ignored.
-- `recordGuidance(n, runId, text)`: append text plus a blank line to
-  `<runsDir>/issue-<n>/<runId>/guidance.md`.
-- `release(n)`: if the last status is `inProgress`, append
-  `{ status: "ready", summary: "Released" }` and return `true`; else `false`.
+- `sync(issue)`: `syncIssues({ host, store, now, issue })`.
+- `openIssues()`: stored issues with `state === "open"`, tracked.
+- `issue(n)`: `refreshIssue(host, store, n)`, tracked. Errors propagate.
+- Tracking an issue: `status` and `statusSince` come from the last line of
+  `store.readStatus(n)` (`untriaged` and unset when empty). A comment is
+  `fromPatchmill` when its `url` equals any line's `questionUrl`.
+- `setStatus(n, update)`: if `ask` and `summary` is set,
+  `postComment(n, summary)` first. A failed post adds `Comment failed: <reason>`
+  to the returned errors and leaves `questionUrl` unset. Then append
+  `{ at: now().toISOString(), status, runId, summary, cost, warnings, questionUrl }`
+  without undefined fields. An append failure is returned as
+  `Status update failed: <reason>`, with the question URL in the message when
+  one was posted.
 
-- [ ] **Step 1: Write the failing tests** with `FakeHost` and a temporary
-      `StateStore`:
-  - `needsInfo reply rule`: after `recordTriage` with `needs-info` and a
-    comment, the issue is not a candidate (its own question is the latest
-    comment, authored by trusted `owner`); an untrusted later comment keeps it
-    out; a later `owner` comment makes it a candidate.
-  - `triage posts only needsInfo questions`: `agent-ready` and
-    `agent-unsuitable` record a status and make no `postComment` call.
-  - `run candidates are ready or in progress, oldest first`.
-  - `stop posts the question only when given`: with `question` the line has
-    `questionUrl` and one `postComment`; without it, no call.
+- [ ] **Step 1: Write failing tests** with `FakeHost` and a temporary
+      `StateStore`. Every test also asserts the host calls contain no
+      `setLabels`, `createLabel`, `listLabels`, or `commentIssue`.
+  - `status and statusSince come from the last line`.
+  - `own question is fromPatchmill and later comments are not`: after
+    `setStatus(9, { status: "needsInfo", summary: "Q?", ask: true })`,
+    `issue(9)` has the question with `fromPatchmill: true`; a comment added
+    later in host state has `fromPatchmill: false`.
+  - `ask posts once; no ask posts nothing`: one `postComment:9` and the line has
+    `questionUrl`; a second update without `ask` records no host call.
   - `failed question post is reported and the status still recorded`.
-  - `release only releases in-progress issues`.
-  - `guidance goes to the run log`: file contents equal the text; no host write
-    calls.
-  - Every test asserts the host `calls` contain no `setLabels`, `createLabel`,
-    `listLabels`, or `commentIssue`.
+  - `issue refreshes from the host`: records `viewIssue:9`.
 
 - [ ] **Step 2: Run** `node --test src/kernel/local-workflow.test.ts`. Expected:
       FAIL.
@@ -532,35 +563,36 @@ It returns `LabelWorkflowState` for `"labels"` and `LocalWorkflowState` with
 
 Changes:
 
-- `runTriage` calls `workflow.sync(options.issue)` before selecting. A sync
-  error propagates and the command fails.
+- `runTriage` calls `workflow.sync(options.issue)` before listing. A sync error
+  propagates and the command fails.
 - `runOneIssue` calls `workflow.sync(options.issue)` before `selectRunIssue`.
   The interactive path in `run-once/main.ts` does the same before its
   `selectRunIssue`.
-- `runOneIssue` sets `question` when `!deps.human`, the phase stopped with
-  `needsInfo`, and
-  `run.result.ok && run.result.result.status === "needs-input"`. The question is
-  `run.result.result.summary`. Pass it on the stop to `publishAttemptStop`.
+- `runOneIssue` sets `ask: true` on the stop when `!deps.human`, the stop status
+  is `needsInfo`, and the last session's result is `ok` with
+  `status === "needs-input"`.
 - The three CLI commands build `workflow` with `createWorkflowState` and pass it
-  in `deps`. `release` calls `workflow.release(n)` and prints today's messages
-  in label mode, and `Issue #N: inProgress -> ready.` in local mode.
+  in `deps`.
 
 - [ ] **Step 1: Write failing tests** in `src/kernel/local-mode.test.ts`,
       reusing `setupRun` from `test-support/run-once-fixture.ts` with
-      `config.workflow.stateTracking = "local"` and the issue's labels emptied:
+      `config.workflow.stateTracking = "local"`, the issue's labels emptied, and
+      `workflow` passed through `run(options, { workflow })`:
   - `local mode never writes labels or status comments`: triage the issue as
-    ready with the fake Pi, then run it to a verified pull request. Assert host
-    calls contain none of `setLabels`, `createLabel`, `listLabels`,
-    `commentIssue`; `status/9.jsonl` ends with `ready`, `inProgress`, `done`;
-    the pull request body still has the cost report.
+    ready with the fake Pi, then run it to a verified pull request. Host calls
+    contain none of `setLabels`, `createLabel`, `listLabels`, `commentIssue`;
+    `status/9.jsonl` ends with `ready`, `inProgress`, `done`; the pull request
+    body still has the cost report.
   - `unattended needs-input posts one question`: the worker returns
-    `needs-input`; one `postComment:9`, no `KERNEL_COMMENT` in its body, last
-    line `needsInfo` with `questionUrl`.
+    `needs-input`; one `postComment:9` whose body does not contain
+    `KERNEL_COMMENT`; last line `needsInfo` with `questionUrl`.
+  - `errors post nothing`: the worker fails; no `postComment`; last line
+    `needsInfo` without `questionUrl`.
   - `sync failure stops the run before claiming`: `listIssuesSince` throws;
     `runOneIssue` rejects and no status file exists.
 
 - [ ] **Step 2: Run**
-      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test     src/kernel/local-mode.test.ts`.
+      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test src/kernel/local-mode.test.ts`.
       Expected: FAIL.
 
 - [ ] **Step 3: Implement** the factory and wiring.
