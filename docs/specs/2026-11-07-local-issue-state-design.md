@@ -236,18 +236,28 @@ type WorkflowState = {
 In label mode `setStatus` swaps labels and posts the kernel comment as today. In
 local mode it posts `question` upstream if given, then appends the line.
 
-The exact shape is the builder's. The constraint is that kernel code no longer
-calls `host.setLabels`, `host.createLabel`, or `host.commentIssue` directly for
-workflow purposes.
+The exact shape is the builder's.
+
+`WorkflowState` is the only path for workflow status. Kernel code uses it for
+every status change and for every read that depends on status or on the synced
+issue copy. Kernel code no longer calls `host.setLabels`, `host.createLabel`, or
+`host.commentIssue` directly. A factory picks the backend from
+`workflow.stateTracking` once per command, the same way `createHost` picks the
+provider from `host.provider`.
 
 - **Label backend:** wraps today's calls with no behaviour change. `sync` does
   nothing. Reads go to the host as today.
 - **Local backend:** reads from `issues/` and `status/`, appends status changes,
   and posts upstream only the questions described below.
 
-Writes that stay on the host in both modes: `addIssueDependency`,
-`updatePullRequestBody` (cost report), pull request creation by skills, and
-ticket creation.
+These stay outside `WorkflowState` because they are not workflow status:
+
+- Writes on `Host` in both modes: `addIssueDependency`, `updatePullRequestBody`
+  (cost report), pull request creation by skills, and ticket creation.
+- Label tools that work on labels directly: `patchmill labels setup`, the
+  `doctor` label check, and the `patchmill-label` skill. They are label-mode
+  tools. In local mode they refuse or skip, as described under Labels and
+  doctor.
 
 ## Behaviour in local mode
 
@@ -305,6 +315,8 @@ the dry run should see current issues._
 
 - `patchmill labels setup` exits with a message that local state mode does not
   use labels.
+- The `patchmill-label` skill already reads `patchmill.config.json`. In local
+  mode it tells the user that Patchmill does not use labels and changes nothing.
 - `patchmill doctor` skips the labels check and instead checks that
   `.patchmill/state/` is writable and reports `syncedUpTo`.
 
