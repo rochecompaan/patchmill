@@ -470,8 +470,8 @@ export interface WorkflowState {
       `src/kernel/interactive-block.test.ts`, and the removed swap helpers in
       `src/kernel/labels.test.ts`. Update `selectRunIssue` and progress-event
       callers (`src/kernel/issue-selection.test.ts`,
-      `src/cli/commands/triage/progress-output.ts` and its test) for the new
-      signatures. Any other failing assertion is a regression to fix in the
+      `src/cli/commands/triage/progress-output.ts` and `output.test.ts`) for the
+      new signatures. Any other failing assertion is a regression to fix in the
       code, not the test. Expected: PASS.
 
 - [ ] **Step 6: Commit**
