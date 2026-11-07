@@ -220,36 +220,89 @@ Known gaps for the builder to settle:
 
 ## Workflow state interface
 
-Add a kernel interface used by triage, run-once, review wait, release, and
-status. Sketch:
+`WorkflowState` stores and reads workflow status. It knows nothing about triage
+or runs. Triage and runs own every policy: which issues are candidates, what
+counts as a reply, which status an outcome sets, and when a question is asked.
 
 ```ts
-type WorkflowState = {
-  sync(options?: { issue?: number }): Promise<void>;
-  issue(n: number): Promise<Issue>;
-  status(n: number): Promise<StatusChange | undefined>;
-  triageCandidates(trusted: string[]): Promise<Issue[]>;
-  runCandidates(): Promise<Issue[]>; // ready or inProgress, oldest first
-  setStatus(n: number, change: StatusChange, question?: string): Promise<void>;
+type TrackedIssue = Issue & {
+  status: WorkflowStatus | "untriaged";
+  /** When the status was set. Local mode only; labels carry no timestamp. */
+  statusSince?: string;
+  comments: (IssueComment & { fromPatchmill: boolean })[];
 };
+
+type StatusUpdate = {
+  status: WorkflowStatus;
+  runId?: string;
+  summary?: string;
+  cost?: string;
+  warnings?: string[];
+  /** The summary is a question for a human. */
+  ask?: boolean;
+};
+
+interface WorkflowState {
+  sync(issue?: number): Promise<void>;
+  openIssues(): Promise<TrackedIssue[]>;
+  issue(n: number): Promise<TrackedIssue>;
+  /** Returns publication errors. */
+  setStatus(n: number, update: StatusUpdate): Promise<string[]>;
+}
 ```
 
-In label mode `setStatus` swaps labels and posts the kernel comment as today. In
-local mode it posts `question` upstream if given, then appends the line.
-
-The exact shape is the builder's.
+`openIssues` may return issues without comments, as `listOpenIssues` does today.
+Callers that need comments read the issue with `issue(n)`.
 
 `WorkflowState` is the only path for workflow status. Kernel code uses it for
-every status change and for every read that depends on status or on the synced
-issue copy. Kernel code no longer calls `host.setLabels`, `host.createLabel`, or
-`host.commentIssue` directly. A factory picks the backend from
+every status change and every issue read. Kernel code no longer calls
+`host.setLabels`, `host.createLabel`, `host.listOpenIssues`, `host.viewIssue`,
+or `host.commentIssue` directly. A factory picks the backend from
 `workflow.stateTracking` once per command, the same way `createHost` picks the
 provider from `host.provider`.
 
-- **Label backend:** wraps today's calls with no behaviour change. `sync` does
-  nothing. Reads go to the host as today.
-- **Local backend:** reads from `issues/` and `status/`, appends status changes,
-  and posts upstream only the questions described below.
+The backends answer only storage questions:
+
+| Question        | Label backend                                              | Local backend                                                 |
+| --------------- | ---------------------------------------------------------- | ------------------------------------------------------------- |
+| `sync`          | Does nothing                                               | Syncs `issues/`                                               |
+| `status`        | The workflow label on the issue, or `untriaged`            | The last status line, or `untriaged`                          |
+| `statusSince`   | Not set                                                    | The last line's `at`                                          |
+| `fromPatchmill` | The comment contains the kernel marker                     | The comment's URL is a `questionUrl` in the status file       |
+| `setStatus`     | Ensures labels exist, swaps labels, posts a kernel comment | Posts the summary as a question if `ask`, then appends a line |
+
+The label backend's swap adds the new status's label and removes the other four
+workflow labels, so an issue carries exactly one. It posts a kernel comment
+whenever the update has a summary:
+
+```text
+<KERNEL_COMMENT>
+
+Issue #<n>: <label>
+
+<summary>
+
+<cost>
+
+<warnings, one per paragraph>
+```
+
+Empty parts are left out. Failures to swap labels or post the comment are
+returned as publication errors, as `publishStop` does today.
+
+### Shared rules
+
+Triage owns the reply rule, and it is the same in both modes. A `needsInfo`
+issue has a reply when its latest comment is by a trusted author (`host.login`
+or `host.trustedAuthors`), is not `fromPatchmill`, and, when `statusSince` is
+set, was created after it. Label mode does not need `statusSince`, because a
+kernel comment always follows a status change there. Local mode does, because
+most status changes post nothing, so an old trusted comment could otherwise look
+like a reply.
+
+Console guidance is not workflow status. In both modes it goes to the worker and
+to the run log in `.patchmill/runs/`. It is no longer posted as an issue
+comment.
 
 These stay outside `WorkflowState` because they are not workflow status:
 
@@ -264,19 +317,14 @@ These stay outside `WorkflowState` because they are not workflow status:
 
 ### Triage
 
-- Candidates: open issues with no status file, plus `needsInfo` issues with a
-  reply. A reply is a comment created after the last line's `at` by a trusted
-  author (`host.login` or `host.trustedAuthors`) that is not the comment at
-  `questionUrl`. Today's rule ("latest comment is trusted and not a kernel
-  comment") does not work here, because Patchmill's own question is posted as
-  `host.login` without the kernel marker.
+- Candidates: open `untriaged` issues, plus `needsInfo` issues with a reply,
+  using the shared reply rule.
 - `--issue N` triages issue N regardless of status, as today.
 - Patchmill adds missing dependency links upstream as today.
-- If the outcome is `needsInfo` and the triage comment is not empty, Patchmill
-  posts it upstream without the kernel marker and records its URL as
-  `questionUrl`. For `ready` and `unsuitable`, it posts nothing and keeps the
-  comment as `summary`.
-- It never calls `ensureLabels`.
+- Triage sets the outcome status with the comment as `summary`, and with
+  `ask: true` for a `needsInfo` outcome with a non-empty comment. In local mode
+  that posts the question without the kernel marker and records `questionUrl`.
+  For `ready` and `unsuitable`, nothing is posted.
 - If the dependency write fails, append nothing and warn, as label mode skips
   the label today.
 - Dry run syncs, calls Pi, and previews. It appends nothing and writes nothing
@@ -287,32 +335,28 @@ the dry run should see current issues._
 
 ### Issue runs
 
-- Selection uses `runCandidates`: `ready` or `inProgress` issues, oldest first,
+- Selection filters `openIssues` to `ready` or `inProgress`, oldest first,
   skipping issues with open or unreadable dependencies read from the host, as
   today. `--issue N` runs any open issue, as today.
-- Claim appends `inProgress` with the run ID. The "claimed elsewhere" check
-  becomes "issue is open in the synced copy". The per-issue lock already guards
-  local concurrency.
-- At each point where today's loop calls `host.viewIssue`, local mode refreshes
-  that one issue from upstream into `issues/<n>.json` and reads it back. This
-  keeps comments current during a run without a full sync.
-- Wherever label mode releases or swaps labels, local mode appends the same
-  status with the summary, cost, and warnings label mode would comment. This
-  covers planning gate waits (`inProgress`), completion (`done`), stops, and
-  review wait outcomes. The cost report still goes in the pull request body.
-- Upstream, local mode posts only when a run stops with `needsInfo` because the
-  worker returned `needs-input`. It posts the worker's summary as a question,
-  without the kernel marker or status lines, and records `questionUrl`. Errors,
-  failed verification, gate waits, and completion post nothing. In a console run
-  the maintainer already sees the worker's question, so a console run posts
-  nothing even when it stops with `needsInfo`.
-- Console guidance still goes to the worker. It is written to the run log, not
-  posted.
+- Claim sets `inProgress` with the run ID, then reads the issue back. The run
+  continues only if the issue is open and `inProgress`; otherwise it was claimed
+  elsewhere. The per-issue lock already guards local concurrency.
+- In local mode, `issue(n)` refreshes that one issue from upstream into
+  `issues/<n>.json` and reads it back. This keeps comments current during a run
+  without a full sync.
+- Planning gate waits, completion, stops, and review wait outcomes each set the
+  status with the summary, cost, and warnings. The cost report still goes in the
+  pull request body.
+- A run sets `ask: true` only when it stops with `needsInfo` because the worker
+  returned `needs-input` and no maintainer is at the console. In a console run
+  the maintainer already sees the worker's question. So in local mode, errors,
+  failed verification, gate waits, and completion post nothing.
 
 ### Release
 
-`patchmill release --issue N` appends `ready` if the current status is
-`inProgress`, otherwise prints "nothing to release".
+`patchmill release --issue N` sets `ready` if the current status is
+`inProgress`, otherwise prints "nothing to release". It works the same in both
+modes.
 
 ### Labels and doctor
 
@@ -369,7 +413,12 @@ guess._
   utilities.
 - Write issue files and the cursor atomically (write a temporary file, then
   rename). Append each status change with a single write.
-- Label mode output, upstream writes, and tests stay unchanged.
+- Label mode stays the default and keeps working. It changes in three ways:
+  - One label swap rule: every status change leaves exactly one workflow label,
+    so `triage --issue N` on an in-progress issue now removes `in-progress`.
+  - Triage comments use the shared kernel comment format, which adds the
+    `Issue #N: <label>` line.
+  - Console guidance is no longer posted as an issue comment.
 - Skills keep their current rules. They already never change labels or post
   issue comments. Envelopes in local mode omit the "Labels" line or show
   upstream labels only, never workflow state.
@@ -377,9 +426,8 @@ guess._
 ## Left to the builder
 
 - Module layout for the sync module, local backend, and status command.
-- Exact `WorkflowState` interface and how `run-once.ts`, `triage.ts`,
-  `publish.ts`, `review-wait.ts`, `interactive-loop.ts`, and `release` are
-  changed to use it.
+- How `run-once.ts`, `triage.ts`, `publish.ts`, `review-wait.ts`,
+  `interactive-loop.ts`, and `release` are changed to use it.
 - Host additions needed for sync (listing all issues and all comments since a
   time) and for posting a comment that returns its URL, for GitHub and Forgejo.
 - Wording of question comments without the kernel marker.
