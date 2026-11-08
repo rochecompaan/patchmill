@@ -6,6 +6,7 @@ const DIVIDER =
 export function createTriageProgressReporter(options: {
   command: string;
   dryRun: boolean;
+  localState: boolean;
   writeLine: (line: string) => void;
 }) {
   let total = 0;
@@ -31,7 +32,15 @@ export function createTriageProgressReporter(options: {
           );
         }
         if (event.comment) {
-          write(event.applied ? "  comment added:" : "  comment:");
+          write(
+            !event.applied
+              ? "  comment:"
+              : !options.localState
+                ? "  comment added:"
+                : event.asked
+                  ? "  question posted:"
+                  : "  summary recorded:",
+          );
           for (const line of event.comment.split(/\r?\n/u).slice(0, 5))
             write(`  ${line}`);
         }

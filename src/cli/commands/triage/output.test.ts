@@ -156,6 +156,31 @@ test("triage shows per-issue progress instead of model JSON and retains raw sess
   assert.match(raw, /Pi diagnostic/);
 });
 
+// Local summaries stay on disk; only questions are posted upstream.
+test("local triage distinguishes posted questions from recorded summaries", async (t) => {
+  const f = await harness(
+    t,
+    [issue(9), issue(10)],
+    [
+      result("needs-info", "Which browser?"),
+      result("queue", "Ready to implement."),
+    ],
+  );
+  await fs.writeFile(
+    join(f.root, CONFIG_FILE),
+    JSON.stringify({
+      workflow: { stateTracking: "local" },
+      labels: { ready: "queue" },
+    }),
+  );
+  assert.equal(await f.run(), 0);
+  const text = f.stdout.join("\n");
+  assert.match(text, / {2}question posted:\n {2}Which browser\?/);
+  assert.match(text, / {2}summary recorded:\n {2}Ready to implement\./);
+  assert.doesNotMatch(text, /comment added:/);
+  assert.deepEqual(f.stderr, []);
+});
+
 test("dry-run previews label changes and comments without claiming or making host writes", async (t) => {
   const f = await harness(
     t,

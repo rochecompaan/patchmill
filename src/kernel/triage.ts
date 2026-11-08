@@ -32,6 +32,7 @@ export type TriageProgressEvent =
       previousStatus: TrackedIssue["status"];
       finalStatus: TrackedIssue["status"];
       comment: string;
+      asked: boolean;
       blockedBy: number[];
       applied: boolean;
       completed: number;
@@ -233,6 +234,7 @@ export async function runTriage(
       const status = (
         ["ready", "unsuitable", "needsInfo"] as WorkflowStatus[]
       ).find((status) => config.labels[status] === label)!;
+      const asked = status === "needsInfo" && comment !== "";
       if (!options.dryRun) {
         for (const [index, blocker] of blockedBy.entries()) {
           try {
@@ -252,7 +254,7 @@ export async function runTriage(
         const warnings = await workflow.setStatus(number, {
           status,
           ...(comment ? { summary: comment } : {}),
-          ask: status === "needsInfo" && comment !== "",
+          ask: asked,
         });
         for (const warning of warnings) warn(number, warning);
       }
@@ -262,6 +264,7 @@ export async function runTriage(
         previousStatus: issue.status,
         finalStatus: status,
         comment,
+        asked,
         blockedBy,
         applied: !options.dryRun,
         completed: outcomes.length,
