@@ -1,6 +1,10 @@
 import type { Host, Issue } from "../host/types.ts";
 import type { StateStore, StatusChange } from "../state/store.ts";
-import { refreshIssue, syncIssues } from "../state/sync.ts";
+import {
+  checkStateRepository,
+  refreshIssue,
+  syncIssues,
+} from "../state/sync.ts";
 import type {
   StatusUpdate,
   TrackedIssue,
@@ -8,6 +12,7 @@ import type {
 } from "./workflow-state.ts";
 
 export class LocalWorkflowState implements WorkflowState {
+  private repositoryChecked = false;
   private host: Host;
   private store: StateStore;
   private now: () => Date;
@@ -33,6 +38,14 @@ export class LocalWorkflowState implements WorkflowState {
       ...(issue !== undefined ? { issue } : {}),
       warn: this.warn,
     });
+    this.repositoryChecked = true;
+  }
+
+  private async checkRepository(): Promise<void> {
+    if (!this.repositoryChecked) {
+      await checkStateRepository(this.host, this.store);
+      this.repositoryChecked = true;
+    }
   }
 
   private async tracked(issue: Issue): Promise<TrackedIssue> {
@@ -68,10 +81,12 @@ export class LocalWorkflowState implements WorkflowState {
   }
 
   async issue(n: number): Promise<TrackedIssue> {
+    await this.checkRepository();
     return this.tracked(await refreshIssue(this.host, this.store, n));
   }
 
   async setStatus(n: number, update: StatusUpdate): Promise<string[]> {
+    await this.checkRepository();
     let questionUrl: string | undefined;
     if (update.ask && update.summary !== undefined) {
       try {

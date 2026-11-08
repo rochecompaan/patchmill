@@ -54,6 +54,42 @@ async function setup(t: TestContext) {
   return { root, path, host, store, workflow, expectedComments };
 }
 
+// Missing ownership checks would overwrite another repository's issue or history.
+for (const operation of ["issue", "setStatus"] as const) {
+  test(`${operation} refuses foreign state without writing`, async (t) => {
+    const { root, host, store, workflow } = await setup(t);
+    await store.writeCursor({
+      repository: "other/project",
+      fullSyncAt: at,
+      syncedUpTo: at,
+    });
+    await store.writeIssue({
+      ...host.state().issues[0]!,
+      title: "Foreign issue",
+    });
+    await store.appendStatus(9, { at, status: "inProgress" });
+    const paths = [store.issuePath(9), join(root, "status/9.jsonl")];
+    const before = await Promise.all(paths.map((path) => fs.readFile(path)));
+    await assert.rejects(
+      operation === "issue"
+        ? workflow.issue(9)
+        : workflow.setStatus(9, {
+            status: "needsInfo",
+            summary: "Q?",
+            ask: true,
+          }),
+      {
+        message:
+          "Local state in .patchmill/state belongs to other/project, not fixture/repo. Move .patchmill/state aside to start again.",
+      },
+    );
+    assert.deepEqual(
+      await Promise.all(paths.map((path) => fs.readFile(path))),
+      before,
+    );
+  });
+}
+
 // Reading the first record, or deriving status from labels, selects wrong work.
 test("status and statusSince come from the last line", async (t) => {
   const { host, store, workflow } = await setup(t);

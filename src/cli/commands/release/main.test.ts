@@ -52,6 +52,13 @@ async function harness(t: TestContext) {
           ].map((name) => ({ name })),
         ),
       );
+    if (args.join(" ") === "repo view --json nameWithOwner,defaultBranchRef")
+      return ok(
+        JSON.stringify({
+          nameWithOwner: "owner/current",
+          defaultBranchRef: { name: "main" },
+        }),
+      );
     if (args[0] === "issue" && ["view", "edit"].includes(args[1]!)) {
       // Reading and resetting labels must both run inside the critical section.
       await assert.rejects(acquireLock(lockPath), LockHeldError);
@@ -233,6 +240,49 @@ test("help returns before configuration or host access", async (t) => {
   assert.equal(await h.run(["--help"]), 0);
   assert.deepEqual(h.stderr, []);
   assert.deepEqual(h.calls, []);
+});
+
+// Release must validate ownership without syncing or changing foreign state.
+test("local release refuses another repository's state without writing", async (t) => {
+  const h = await harness(t);
+  await writeFile(
+    join(h.root, CONFIG_FILE),
+    JSON.stringify({
+      workflow: { stateTracking: "local" },
+      paths: { runsDir: "owned-runs" },
+    }),
+  );
+  const stateRoot = join(h.root, ".patchmill/state");
+  const issuePath = join(stateRoot, "issues/9.json");
+  const statusPath = join(stateRoot, "status/9.jsonl");
+  await mkdir(dirname(issuePath), { recursive: true });
+  await mkdir(dirname(statusPath), { recursive: true });
+  await writeFile(
+    join(stateRoot, "issues/sync.json"),
+    JSON.stringify({
+      repository: "other/project",
+      fullSyncAt: "2026-10-15T00:00:00Z",
+      syncedUpTo: "2026-10-15T00:00:00Z",
+    }),
+  );
+  await writeFile(issuePath, '{"number":9,"title":"Foreign issue"}\n');
+  await writeFile(
+    statusPath,
+    '{"at":"2026-10-15T00:00:00Z","status":"inProgress"}\n',
+  );
+  const before = await Promise.all(
+    [issuePath, statusPath].map((path) => readFile(path)),
+  );
+  assert.equal(await h.run(), 1);
+  assert.match(
+    h.stderr.join("\n"),
+    /other\/project, not owner\/current\. Move \.patchmill\/state aside/,
+  );
+  assert.deepEqual(
+    await Promise.all([issuePath, statusPath].map((path) => readFile(path))),
+    before,
+  );
+  assert.deepEqual(h.stdout, []);
 });
 
 // Choosing labels instead of local state would incorrectly report a successful release.
