@@ -1,10 +1,11 @@
 import type { Host } from "../../../host/types.ts";
+import { cleanValue } from "../../../kernel/terminal-layout.ts";
 import type { StateStore } from "../../../state/store.ts";
 import { checkStateRepository } from "../../../state/sync.ts";
 
 export type BlockerHost = Pick<Host, "repository" | "listIssueDependencies">;
 const message = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
+  cleanValue(error instanceof Error ? error.message : String(error));
 
 export async function readBlockers(
   candidates: number[],
@@ -15,10 +16,16 @@ export async function readBlockers(
   const results = new Map<number, string>();
   if (!candidates.length) return results;
   let host: BlockerHost;
-  let repository: string | undefined;
+  let repository: string;
   try {
     host = getHost();
-    ({ repository } = await checkStateRepository(host, store));
+    const checked = await checkStateRepository(host, store);
+    // Without a cursor nothing was checked, so ask the host for its name.
+    if (checked.repository !== undefined) repository = checked.repository;
+    else {
+      const { owner, repo } = await host.repository();
+      repository = `${owner}/${repo}`;
+    }
   } catch (error) {
     warn(`Cannot read blockers: ${message(error)}`);
     for (const n of candidates) results.set(n, "Blockers unknown");
@@ -34,9 +41,9 @@ export async function readBlockers(
           const open = dependencies
             .filter((d) => d.state === "open")
             .map((d) =>
-              d.repository.toLowerCase() === repository?.toLowerCase()
+              d.repository.toLowerCase() === repository.toLowerCase()
                 ? `#${d.number}`
-                : `${d.repository}#${d.number}`,
+                : `${cleanValue(d.repository)}#${d.number}`,
             );
           if (open.length) results.set(n, `Blocked by ${open.join(", ")}`);
         } catch (error) {

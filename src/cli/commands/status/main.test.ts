@@ -384,3 +384,52 @@ test("open issue detail reads blockers even when untriaged", async (t) => {
     "No status changes.",
   ]);
 });
+
+// Without a cursor the repository still comes from the host, so local blockers stay short.
+test("blockers without a sync cursor abbreviate this repository", async (t) => {
+  const h = await harness(t);
+  await h.issue(3, "Login");
+  await h.store.appendStatus(3, {
+    at: "2026-09-03T19:05:00Z",
+    status: "ready",
+  });
+  h.dependencies.set(3, [
+    { repository: "Owner/Repo", number: 2, state: "open" },
+    { repository: "other/project", number: 7, state: "open" },
+  ]);
+  assert.equal(await h.run(), 0);
+  assert.ok(h.stdout.includes("      Blocked by #2, other/project#7"));
+  assert.deepEqual(h.calls, ["repository", 3]);
+});
+
+// Terminal control sequences in stored or tracker text must not reach the terminal.
+test("status cleans control sequences from every printed value", async (t) => {
+  const h = await harness(t);
+  await h.issue(3, "Login");
+  await h.store.appendStatus(3, {
+    at: "2026-09-03T19:05:00Z",
+    status: "needsInfo",
+    runId: "run\u001b[31m-3",
+    cost: "$0\u001b[2J.12",
+    warnings: ["Missing\u001b]0;x\u0007 tests"],
+    questionUrl: "https://example.invalid/q\u001b[0m/3",
+  });
+  h.dependencies.set(3, [
+    { repository: "other\u001b[31m/project", number: 7, state: "open" },
+  ]);
+  h.dependencies.set(4, new Error("gh failed\u001b[2J"));
+  assert.equal(await h.run(["--issue", "3"]), 0);
+  assert.ok(
+    h.stdout.every((line) => !/[\u0000-\u001f\u007f-\u009f]/u.test(line)),
+  );
+  assert.ok(h.stdout.includes("Blocked by other/project#7"));
+  await h.issue(4, "API");
+  await h.store.appendStatus(4, {
+    at: "2026-09-03T19:05:00Z",
+    status: "ready",
+  });
+  assert.equal(await h.run(), 0);
+  assert.ok(
+    h.stderr.every((line) => !/[\u0000-\u001f\u007f-\u009f]/u.test(line)),
+  );
+});

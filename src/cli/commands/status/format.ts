@@ -116,7 +116,8 @@ export function formatter(color: boolean, timeZone?: string) {
           "",
           `${dimDate(change.at)}  ${style(TITLES[change.status], COLORS[change.status])}`,
         );
-        if (change.runId !== undefined) lines.push(`  Run: ${change.runId}`);
+        if (change.runId !== undefined)
+          lines.push(`  Run: ${cleanValue(change.runId)}`);
         if (change.summary !== undefined)
           change.summary
             .split(/\r\n?|\n/u)
@@ -125,11 +126,12 @@ export function formatter(color: boolean, timeZone?: string) {
                 `${index === 0 ? "  Summary: " : "           "}${cleanValue(line)}`,
               ),
             );
-        if (change.cost !== undefined) lines.push(`  Cost: ${change.cost}`);
+        if (change.cost !== undefined)
+          lines.push(`  Cost: ${cleanValue(change.cost)}`);
         for (const warning of change.warnings ?? [])
-          lines.push(`  Warning: ${warning}`);
+          lines.push(`  Warning: ${cleanValue(warning)}`);
         if (change.questionUrl !== undefined)
-          lines.push(`  Question: ${change.questionUrl}`);
+          lines.push(`  Question: ${cleanValue(change.questionUrl)}`);
       }
       return lines;
     },
