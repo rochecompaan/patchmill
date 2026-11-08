@@ -48,12 +48,16 @@ export class StateStore {
     return this.writeJson(join(this.issuesPath, "sync.json"), cursor);
   }
 
+  issuePath(n: number): string {
+    return join(this.issuesPath, `${n}.json`);
+  }
+
   readIssue(n: number): Promise<Issue | undefined> {
-    return this.readJson(join(this.issuesPath, `${n}.json`));
+    return this.readJson(this.issuePath(n));
   }
 
   writeIssue(issue: Issue): Promise<void> {
-    return this.writeJson(join(this.issuesPath, `${issue.number}.json`), issue);
+    return this.writeJson(this.issuePath(issue.number), issue);
   }
 
   async listIssues(): Promise<{ issues: Issue[]; damaged: number[] }> {
@@ -81,7 +85,7 @@ export class StateStore {
   }
 
   async removeIssue(n: number): Promise<void> {
-    await fs.rm(join(this.issuesPath, `${n}.json`), { force: true });
+    await fs.rm(this.issuePath(n), { force: true });
   }
 
   async readStatus(n: number): Promise<StatusChange[]> {
