@@ -104,6 +104,45 @@ test("checks are ordered, read-only, and smoke uses configured paths and supervi
   );
 });
 
+test("doctor checks state instead of labels in local mode", async (t) => {
+  const f = await fixture(t);
+  f.config.workflow.stateTracking = "local";
+  const statePath = join(f.repoRoot, ".patchmill/state");
+  for (const syncedUpTo of [undefined, "2026-11-07T12:00:00Z"]) {
+    if (syncedUpTo) {
+      await mkdir(join(statePath, "issues"), { recursive: true });
+      await writeFile(
+        join(statePath, "issues/sync.json"),
+        JSON.stringify({
+          repository: "owner/repo",
+          fullSyncAt: syncedUpTo,
+          syncedUpTo,
+        }),
+      );
+    }
+    const checks = await runDoctorChecks(f.deps);
+    assert.equal(
+      checks.some((c) => c.name === "labels"),
+      false,
+    );
+    assert.deepEqual(
+      checks.find((c) => c.name === "state"),
+      {
+        name: "state",
+        status: "pass",
+        message: syncedUpTo
+          ? `Synced up to ${syncedUpTo}`
+          : "Writable, not synced yet",
+      },
+    );
+    assert.equal(f.host.state().calls.includes("listLabels"), false);
+    assert.ok(f.probes.includes(".patchmill/state/"));
+    if (!syncedUpTo) {
+      await assert.rejects(readdir(statePath), { code: "ENOENT" });
+    }
+  }
+});
+
 test("missing resources fail or warn without preventing later probes", async (t) => {
   const f = await fixture(t);
   writeFakeHostState(join(f.repoRoot, "host.json"), {

@@ -1,10 +1,12 @@
-import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { constants } from "node:fs";
+import { access, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import type { PatchmillConfig } from "../../../config/config.ts";
 import type { Host } from "../../../host/types.ts";
 import { supervisePi } from "../../../kernel/pi-supervisor.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { commandOutput, type CommandRunner } from "../../../process/command.ts";
+import { STATE_DIR, StateStore } from "../../../state/store.ts";
 import type { PiCommandSpec } from "../../pi-cli.ts";
 
 export type DoctorCheck = {
@@ -44,14 +46,15 @@ export async function runDoctorChecks(deps: {
   async function check(
     name: string,
     severity: "warn" | "fail",
-    probe: () => Promise<string | undefined>,
+    probe: () => Promise<string | { message: string } | undefined>,
   ) {
     try {
-      const message = await probe();
+      const result = await probe();
       checks.push({
         name,
-        status: message ? severity : "pass",
-        message: message ?? "Ready",
+        status: typeof result === "string" && result ? severity : "pass",
+        message:
+          typeof result === "object" ? result.message : (result ?? "Ready"),
       });
     } catch (error) {
       checks.push({
@@ -65,19 +68,51 @@ export async function runDoctorChecks(deps: {
     const result = await host.checkCli();
     return result.ok ? undefined : result.message || "Host CLI check failed";
   });
-  await check("labels", "fail", async () => {
-    const labels = await host.listLabels();
-    const missing = Object.values(config.labels).filter(
-      (name) => !labels.includes(name),
-    );
-    return missing.length ? `Missing labels: ${missing.join(", ")}` : undefined;
-  });
+  if (config.workflow.stateTracking === "local") {
+    await check("state", "fail", async () => {
+      const statePath = resolve(repoRoot, STATE_DIR);
+      let writablePath = statePath;
+      for (;;) {
+        try {
+          await stat(writablePath);
+          break;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          writablePath = dirname(writablePath);
+        }
+      }
+      try {
+        await access(writablePath, constants.W_OK);
+      } catch {
+        return `Not writable: ${writablePath}`;
+      }
+      const cursor = await new StateStore(statePath)
+        .readCursor()
+        .catch(() => undefined);
+      return {
+        message: cursor
+          ? `Synced up to ${cursor.syncedUpTo}`
+          : "Writable, not synced yet",
+      };
+    });
+  } else {
+    await check("labels", "fail", async () => {
+      const labels = await host.listLabels();
+      const missing = Object.values(config.labels).filter(
+        (name) => !labels.includes(name),
+      );
+      return missing.length
+        ? `Missing labels: ${missing.join(", ")}`
+        : undefined;
+    });
+  }
   await check("excludes", "warn", async () => {
     const warnings: string[] = [];
     for (const path of [
       config.paths.worktreeDir,
       config.paths.runsDir,
       config.pi.agentDir,
+      ...(config.workflow.stateTracking === "local" ? [`${STATE_DIR}/`] : []),
     ]) {
       try {
         const result = await runner("git", ["check-ignore", "-q", path], {

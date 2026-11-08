@@ -10,6 +10,7 @@ import { createHost } from "../../../host/factory.ts";
 import type { Host, HostProviderId } from "../../../host/types.ts";
 import { findPackageRoot } from "../../../package-root.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
+import { STATE_DIR } from "../../../state/store.ts";
 import type { CliOutput } from "../../main.ts";
 import {
   ensureLocalExcludes,
@@ -116,9 +117,12 @@ export async function main(
     output.stdout(`Agent directory: ${unchanged ? "unchanged" : "written"}`);
     const added = await ensureLocalExcludes(
       repoRoot,
-      [config.paths.worktreeDir, config.pi.agentDir, config.paths.runsDir].map(
-        (path) => `${path.replace(/\/+$/, "")}/`,
-      ),
+      [
+        config.paths.worktreeDir,
+        config.pi.agentDir,
+        config.paths.runsDir,
+        STATE_DIR,
+      ].map((path) => `${path.replace(/\/+$/, "")}/`),
     );
     output.stdout(
       `Local excludes: ${added.length ? `${added.length} added` : "unchanged"}`,
