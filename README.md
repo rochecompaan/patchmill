@@ -92,7 +92,7 @@ shown in chat. Non-interactive runs leave them in place.
 | `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                                         |
 | `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                                                        |
 | `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                       |
-| `patchmill status [--all] [--issue N]`                     | Show local issue state and sync time, or one issue's full status history.                                                                                     |
+| `patchmill status [--all] [--issue N]`                     | Read local state without syncing; read blockers of ready and in-progress issues live from the tracker.                                                        |
 | `patchmill skills update`                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files dropped from the pack.                       |
 | `patchmill version`                                        | Print the version.                                                                                                                                            |
 | `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
@@ -244,9 +244,10 @@ requests, adds cost reports to PR bodies, and adds dependency links upstream.
 Questions are its only upstream issue comments in this mode.
 
 `patchmill status` reads local state without syncing and shows when it last
-synced. Add `--all` to include closed issues, or `--issue N` to see one issue's
-full status history. `patchmill labels setup` refuses in local mode;
-`patchmill doctor` checks the state folder instead of labels.
+synced. It reads blockers of ready and in-progress issues live from the tracker.
+Add `--all` to include closed issues, or `--issue N` to see one issue's full
+status history and, if open, its live blockers. `patchmill labels setup` refuses
+in local mode; `patchmill doctor` checks the state folder instead of labels.
 
 Local state mode is for one user on one machine. Switching modes does not
 migrate state.

@@ -215,6 +215,7 @@ mode.
 - **When:** `triage` and `run-once` sync before selecting or reading issues. If
   sync fails, the command stops with the error and does nothing else.
   `patchmill status` reads local state without syncing and shows `syncedUpTo`.
+  It reads blockers of ready and in-progress issues live from the tracker.
 - **Explicit issues:** `--issue N` also refreshes issue N directly after the
   sync, so a just-created issue is present even if the list call lags.
 
@@ -415,18 +416,32 @@ modes.
 
 ### Status command
 
-`patchmill status` lists issues with local workflow state, grouped by status,
-with issue number, title, and the time of the last change. It also prints
-`syncedUpTo`. Closed issues are hidden unless `--all` is passed.
+`patchmill status` lists issues with local workflow state under In Progress,
+Needs Info, Ready, Done, and Unsuitable headings with counts. Each row has
+aligned issue number, title, and last-change date columns. Blank lines separate
+groups. It first prints the last sync time. Dates use local time, for example
+`8 Nov 2026, 16:46`. Terminals use colored headings and dim dates unless
+`NO_COLOR` is set. Closed issues are hidden unless `--all` is passed.
+
+Blockers of shown open ready and in-progress issues are read live from the
+tracker by default, after checking the local state's repository. Up to eight
+lookups run at once. Only open dependencies appear, below the issue title;
+dependencies in other repositories include their owner and repository. A failed
+lookup prints a warning and `Blockers unknown` for that issue. A repository
+check failure prints one warning, marks all candidates' blockers unknown, and
+skips dependency lookups. These failures do not hide local rows or fail the
+command.
 
 `patchmill status --issue N` prints the issue's title, upstream state, current
 status, and every status change in order with its run ID, summary, cost,
-warnings, and question URL.
+warnings, and question URL. Blank lines separate changes, and multi-line
+summaries align under the summary text. Any open issue's blockers are read live
+in this view, regardless of status.
 
 In label mode, `patchmill status` prints that it requires local state mode.
 
-_Builder's call taken here: `status` reads local data only and does not sync, so
-it is fast and works offline._
+_User decision: `status` does not sync, but reads blockers live by default. The
+list needs no network when no shown open issue is ready or in progress._
 
 ## Failure handling
 
