@@ -12,7 +12,7 @@ export type StopPublication = {
   summary: string;
   cost: string;
   warnings: string[];
-  ask?: boolean;
+  question?: string;
 };
 
 /** Record the stop, returning required-write errors and optional-comment warnings. */
@@ -29,7 +29,7 @@ export async function publishStop(
       summary: stop.summary,
       cost: stop.cost,
       warnings: stop.warnings,
-      ...(stop.ask !== undefined ? { ask: stop.ask } : {}),
+      ...(stop.question !== undefined ? { question: stop.question } : {}),
     });
   } catch (error) {
     return [errorMessage(error)];

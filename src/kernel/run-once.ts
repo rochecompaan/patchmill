@@ -163,7 +163,7 @@ export async function runOneIssue(
   let displayFacts: Facts | undefined;
   let totalOutputTokens = 0;
   let published = false;
-  let ask = false;
+  let question: string | undefined;
   const publicationErrors: string[] = [];
   const publish = async () => {
     publicationErrors.push(
@@ -174,7 +174,12 @@ export async function runOneIssue(
         issueDir,
         current: { runId, sessions },
         ...(displayFacts ? { facts: displayFacts } : {}),
-        stop: { label, summary, warnings, ask },
+        stop: {
+          label,
+          summary,
+          warnings,
+          ...(question !== undefined ? { question } : {}),
+        },
       })),
     );
   };
@@ -346,13 +351,15 @@ export async function runOneIssue(
           label = verified.label;
           summary = verified.comment;
           warnings = verified.warnings;
-          ask =
+          question =
             label === "needsInfo" &&
             !deps.human &&
             !session.aborted &&
             !session.timedOut &&
             result.ok &&
-            result.result.status === "needs-input";
+            result.result.status === "needs-input"
+              ? result.result.summary
+              : undefined;
           if (phase === "planning")
             summary = planningStopSummary(summary, facts, after.facts);
           if (

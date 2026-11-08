@@ -76,7 +76,7 @@ for (const operation of ["issue", "setStatus"] as const) {
         : workflow.setStatus(9, {
             status: "needsInfo",
             summary: "Q?",
-            ask: true,
+            question: "Q?",
           }),
       {
         message:
@@ -117,7 +117,7 @@ test("own question is fromPatchmill and later comments are not", async (t) => {
   await workflow.setStatus(9, {
     status: "needsInfo",
     summary: "Q?",
-    ask: true,
+    question: "Q?",
   });
   await workflow.setStatus(9, { status: "ready" });
   const state = host.state();
@@ -139,15 +139,15 @@ test("own question is fromPatchmill and later comments are not", async (t) => {
   );
 });
 
-// Optional summaries must remain local, and ask must never enter the journal.
-test("ask posts once; no ask posts nothing", async (t) => {
+// Optional summaries stay local, and question text never enters the journal.
+test("question posts once; absent or whitespace question posts nothing", async (t) => {
   const { store, workflow, expectedComments } = await setup(t);
   expectedComments.push("Q?");
   assert.deepEqual(
     await workflow.setStatus(9, {
       status: "needsInfo",
       summary: "Q?",
-      ask: true,
+      question: "Q?",
       runId: "run-1",
       cost: "$1",
       warnings: ["warning"],
@@ -159,7 +159,7 @@ test("ask posts once; no ask posts nothing", async (t) => {
     [],
   );
   assert.deepEqual(
-    await workflow.setStatus(9, { status: "done", ask: true }),
+    await workflow.setStatus(9, { status: "done", question: " \n\t" }),
     [],
   );
   assert.deepEqual(await store.readStatus(9), [
@@ -177,6 +177,28 @@ test("ask posts once; no ask posts nothing", async (t) => {
   ]);
 });
 
+// Posting the stop summary would leak diagnostic noise into the question.
+test("question posts only its text and keeps the full summary locally", async (t) => {
+  const { host, store, workflow, expectedComments } = await setup(t);
+  expectedComments.push("Q?");
+  await workflow.setStatus(9, {
+    status: "needsInfo",
+    summary: "Reason\n\nQ?\n\nExit code: 0",
+    question: "Q?",
+  });
+  const comments = host.state().issues[0]!.comments;
+  assert.equal(comments.length, 1);
+  assert.equal(comments[0]!.body, "Q?");
+  assert.deepEqual(await store.readStatus(9), [
+    {
+      at,
+      status: "needsInfo",
+      summary: "Reason\n\nQ?\n\nExit code: 0",
+      questionUrl: comments[0]!.url,
+    },
+  ]);
+});
+
 // Recording needsInfo before a failed question would silently lose the question.
 test("failed question rejects and records nothing", async (t) => {
   const { host, store, workflow } = await setup(t);
@@ -185,7 +207,11 @@ test("failed question rejects and records nothing", async (t) => {
     throw new Error("question denied");
   };
   await assert.rejects(
-    workflow.setStatus(9, { status: "needsInfo", summary: "Q?", ask: true }),
+    workflow.setStatus(9, {
+      status: "needsInfo",
+      summary: "Q?",
+      question: "Q?",
+    }),
     {
       message: "Comment failed: question denied",
     },
@@ -199,7 +225,11 @@ test("failed append rejects with the question URL", async (t) => {
   await fs.writeFile(join(root, "status"), "not a directory");
   expectedComments.push("Q?");
   await assert.rejects(
-    workflow.setStatus(9, { status: "needsInfo", summary: "Q?", ask: true }),
+    workflow.setStatus(9, {
+      status: "needsInfo",
+      summary: "Q?",
+      question: "Q?",
+    }),
     /Status update failed: .* \(question posted at https:\/\/example.invalid\/9#c0\)/,
   );
 });

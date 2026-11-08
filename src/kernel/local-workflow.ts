@@ -88,9 +88,9 @@ export class LocalWorkflowState implements WorkflowState {
   async setStatus(n: number, update: StatusUpdate): Promise<string[]> {
     await this.checkRepository();
     let questionUrl: string | undefined;
-    if (update.ask && update.summary !== undefined) {
+    if (update.question?.trim()) {
       try {
-        questionUrl = await this.host.commentIssue(n, update.summary);
+        questionUrl = await this.host.commentIssue(n, update.question);
       } catch (error) {
         throw new Error(`Comment failed: ${errorMessage(error)}`, {
           cause: error,

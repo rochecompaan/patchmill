@@ -137,7 +137,7 @@ test("a failed required question rejects and leaves the labels", async (t) => {
     throw new Error("question denied");
   };
   await assert.rejects(
-    workflow.setStatus(9, { status: "needsInfo", summary: "S", ask: true }),
+    workflow.setStatus(9, { status: "needsInfo", summary: "S", question: "S" }),
     { message: "Comment failed: question denied" },
   );
   assert.deepEqual(host.state().issues[0]!.labels, ["agent-ready"]);
@@ -149,7 +149,7 @@ test("a failed swap after a required question reports its URL", async (t) => {
     throw new Error("swap denied");
   };
   await assert.rejects(
-    workflow.setStatus(9, { status: "needsInfo", summary: "S", ask: true }),
+    workflow.setStatus(9, { status: "needsInfo", summary: "S", question: "S" }),
     {
       message:
         "Label update failed: swap denied (comment posted at https://example.invalid/9#c1)",

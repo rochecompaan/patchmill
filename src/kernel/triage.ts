@@ -254,7 +254,7 @@ export async function runTriage(
         const warnings = await workflow.setStatus(number, {
           status,
           ...(comment ? { summary: comment } : {}),
-          ask: asked,
+          ...(asked ? { question: comment } : {}),
         });
         for (const warning of warnings) warn(number, warning);
       }

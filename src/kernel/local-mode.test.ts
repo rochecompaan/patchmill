@@ -80,10 +80,12 @@ test("unattended needs-input posts one question", async (t) => {
   assert.equal((await c.run({}, { workflow: c.workflow })).status, "stopped");
   const comments = c.host.state().issues[0]!.comments;
   assert.equal(comments.length, 1);
-  assert.match(comments[0]!.body, /Which login provider\?/);
+  assert.equal(comments[0]!.body, "Which login provider?");
   assert.equal(comments[0]!.body.includes(KERNEL_COMMENT), false);
   const last = (await c.store.readStatus(9)).at(-1)!;
-  assert.equal(comments[0]!.body, last.summary);
+  assert.match(last.summary!, /The agent reported needs-input\./);
+  assert.match(last.summary!, /Which login provider\?/);
+  assert.match(last.summary!, /Exit code: 0/);
   assert.equal(last.status, "needsInfo");
   assert.equal(last.questionUrl, comments[0]!.url);
 });

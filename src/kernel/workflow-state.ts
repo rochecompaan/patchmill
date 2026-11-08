@@ -13,7 +13,8 @@ export type StatusUpdate = {
   summary?: string;
   cost?: string;
   warnings?: string[];
-  ask?: boolean;
+  /** Text to ask a human. Required questions are posted before recording status. */
+  question?: string;
 };
 export interface WorkflowState {
   sync(issue?: number): Promise<void>;
@@ -21,7 +22,9 @@ export interface WorkflowState {
   issue(n: number): Promise<TrackedIssue>;
   /**
    * Rejects when the status was not recorded. Resolves to warnings about
-   * optional comments that failed after the status was recorded.
+   * optional comments that failed after the status was recorded. When question
+   * is set, posting is required before recording; a posting failure rejects
+   * and leaves the status unchanged.
    */
   setStatus(n: number, update: StatusUpdate): Promise<string[]>;
 }

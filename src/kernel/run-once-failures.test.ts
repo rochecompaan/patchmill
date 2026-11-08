@@ -399,8 +399,10 @@ for (const mode of [
     assert.equal(updates[0]!.runId, (await c.records()).result.runId);
     assert.equal(updates[1]!.status, "needsInfo");
     assert.equal(
-      updates[1]!.ask,
-      mode === "question" || mode === "nonzero question",
+      updates[1]!.question,
+      mode === "question" || mode === "nonzero question"
+        ? "Which provider?"
+        : undefined,
     );
     assert.match(updates[1]!.summary!, /Which provider/);
     assert.equal(updates[1]!.runId, updates[0]!.runId);

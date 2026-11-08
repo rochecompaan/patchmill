@@ -68,7 +68,7 @@ export class LabelWorkflowState implements WorkflowState {
         }),
       );
     let questionUrl: string | undefined;
-    if (update.ask && update.summary) {
+    if (update.question !== undefined && update.summary) {
       try {
         questionUrl = await comment();
       } catch (error) {
@@ -89,7 +89,7 @@ export class LabelWorkflowState implements WorkflowState {
         { cause: error },
       );
     }
-    if (update.summary && !update.ask) {
+    if (update.summary && update.question === undefined) {
       try {
         await comment();
       } catch (error) {
