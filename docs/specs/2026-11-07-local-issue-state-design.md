@@ -176,25 +176,37 @@ with it. The five statuses are the five configured labels:
 - Console guidance is not a status change. It goes to the run log in
   `.patchmill/runs/` with the rest of the run's evidence.
 
-The file is appended only, not overwritten, so `patchmill status --issue N` can
-show the history that the issue timeline shows in label mode.
+A record is complete when it ends with a newline. Complete records are never
+changed, so `patchmill status --issue N` can show the history that the issue
+timeline shows in label mode. Bytes after the last newline are a write cut off
+by a crash. Reads ignore them, and the next append discards them before it
+writes. Each append holds a short lock on the status file, so the discard and
+the write cannot interleave with another append.
 
 ## Sync
 
 A sync module reads upstream and writes `issues/`. It is used only in local
 mode.
 
-- **First sync:** if `issues/sync.json` is missing, fetch every issue in every
-  state and all issue comments. Write one file per issue and then the cursor.
+- **First sync:** if `issues/sync.json` is missing or unreadable, fetch every
+  issue in every state and all issue comments. Write one file per issue and then
+  the cursor.
 - **Later syncs:** fetch issues and comments updated since `syncedUpTo`. Replace
   the issue fields of each changed issue and add or replace its changed comments
-  by comment ID.
+  by comment URL.
 - **Cursor:** set `syncedUpTo` to the start time of the sync request, not its
   end time, so changes made during a sync are fetched again next time. Ask for
   changes since five minutes before `syncedUpTo`, so a local clock that runs
   ahead of the host does not skip changes. Fetching a change twice is harmless.
   Write the cursor only after all issue files are written. A failed sync leaves
   the old cursor, so the next sync repeats the work.
+- **Damaged copies:** before a later sync, look for issue files that do not
+  parse. An unchanged issue never appears in an incremental response, so a
+  damaged copy would hide it from selection. If any file is damaged, run a full
+  sync instead, which rewrites every issue file. Then remove damaged files for
+  issues the host did not return, with a warning. The cursor moves only after
+  this succeeds. If it fails, the command stops, so no work is selected from an
+  incomplete copy. Status files are never touched.
 - **Pull requests:** GitHub's issue list includes pull requests. Skip them.
 - **Dependencies are not synced.** Triage and run selection read them from the
   host for each issue they consider, as label mode does today. This avoids
@@ -214,7 +226,8 @@ seconds. An incremental sync with no changes took 0.7 seconds.
 Known gaps for the builder to settle:
 
 - Incremental `since=` does not report deleted comments or deleted issues.
-  Accept this for the first version. A full resync (delete `issues/`) recovers.
+  Accept this for the first version. Deleting `issues/` forces a full resync,
+  which recovers.
 - Forgejo needs the same calls through `tea` or its API. Gitea's issue list
   accepts `since`. Verify the comment endpoint does too.
 
@@ -246,7 +259,10 @@ interface WorkflowState {
   sync(issue?: number): Promise<void>;
   openIssues(): Promise<TrackedIssue[]>;
   issue(n: number): Promise<TrackedIssue>;
-  /** Returns publication errors. */
+  /**
+   * Rejects when the status was not recorded. Resolves to warnings about
+   * optional comments that failed after the status was recorded.
+   */
   setStatus(n: number, update: StatusUpdate): Promise<string[]>;
 }
 ```
@@ -287,8 +303,33 @@ Issue #<n>: <label>
 <warnings, one per paragraph>
 ```
 
-Empty parts are left out. Failures to swap labels or post the comment are
-returned as publication errors, as `publishStop` does today.
+Empty parts are left out.
+
+### Write failures
+
+Write failures use ordinary error handling. `setStatus` rejects when the status
+was not recorded, and each caller handles that as it handles a failed label
+write today:
+
+- Triage warns and skips the issue. It does not count it as applied. Warnings
+  that `setStatus` resolves to are printed, and the issue counts as applied.
+- `release` prints the error and exits 1.
+- A run stop records the error as a publication error. The run still writes its
+  result and summary and exits 1, as it does for publication errors today.
+
+Questions and comments:
+
+- **With `ask`, the question is required.** Both backends post it before they
+  change the status. If posting fails, `setStatus` rejects and the status is
+  unchanged, so a later triage or run asks again. If the question was posted but
+  the status write fails, the error includes the comment URL.
+- **Without `ask`, the label backend's kernel comment is optional.** The label
+  backend swaps labels first. A failed swap rejects, and no comment is posted. A
+  failed comment after a successful swap is returned as a warning.
+- The local backend posts nothing without `ask`, so it returns no warnings.
+
+`host.commentIssue` returns the new comment's URL. The local backend records it
+as `questionUrl`. Other callers ignore it.
 
 ### Shared rules
 
@@ -392,17 +433,23 @@ guess._
   tells the user to move `.patchmill/state/` aside. Do not sync or write.
 - **Missing issue file.** If `sync.json` exists but `issues/<n>.json` is missing
   for an issue Patchmill needs, refresh that issue from upstream.
-- **Corrupt issue file or cursor.** Treat it as missing. The `issues/` copy can
-  always be fetched again. A corrupt `sync.json` triggers a full sync.
-- **Corrupt status file.** Status files are never repaired or rewritten. If the
-  last line has no trailing newline and does not parse, it is a write cut off by
-  a crash: ignore it and warn with the file path. Any other line that does not
-  parse stops the command with the file path and line number.
+- **Corrupt issue file or cursor.** Reads treat it as missing. The next sync is
+  a full sync, which rebuilds `issues/` before any work is selected (see Damaged
+  copies under Sync).
+- **Corrupt status file.** Complete records are never repaired or rewritten. If
+  the last line has no trailing newline, it is a write cut off by a crash: reads
+  ignore it and warn with the file path, and the next append discards it. Any
+  complete line that does not parse stops the command with the file path and
+  line number.
 - **Question comment, then status change.** Post the upstream question first,
-  then append the line with its `questionUrl`. If the append fails, report the
-  error with the comment URL. The issue keeps its previous state, so a later
-  triage or run may ask again. A duplicate question is accepted over a status
-  change that points at nothing.
+  then append the line with its `questionUrl`. If posting fails, the status is
+  unchanged and the command reports the failure. If the append fails, report the
+  error with the comment URL. In both cases the issue keeps its previous status,
+  so a later triage or run may ask again. A duplicate question is accepted over
+  a status change that points at nothing, or a status that waits for an answer
+  to a question nobody received.
+- **Status write failure.** The command reports it as an error, as described
+  under Write failures. Nothing retries it.
 - **Refresh failure during a run.** Treat it as label mode treats a failed
   `viewIssue` today: the run attempt stops with `needsInfo` and the error as
   summary. Append `needsInfo` and post nothing.
@@ -412,13 +459,18 @@ guess._
 - No new runtime dependency. JSON and JSONL files with the existing file
   utilities.
 - Write issue files and the cursor atomically (write a temporary file, then
-  rename). Append each status change with a single write.
-- Label mode stays the default and keeps working. It changes in three ways:
+  rename). Append each status change with a single write, under a short lock on
+  the status file.
+- Label mode stays the default and keeps working. It changes in four ways:
   - One label swap rule: every status change leaves exactly one workflow label,
     so `triage --issue N` on an in-progress issue now removes `in-progress`.
   - Triage comments use the shared kernel comment format, which adds the
     `Issue #N: <label>` line.
   - Console guidance is no longer posted as an issue comment.
+  - On failure paths only: a failed label swap no longer posts the stop comment;
+    a question is posted before the labels change, so a failed question leaves
+    the labels as they were; and a failed triage comment after a successful swap
+    now counts the issue as triaged, with a warning.
 - Skills keep their current rules. They already never change labels or post
   issue comments. Envelopes in local mode omit the "Labels" line or show
   upstream labels only, never workflow state.
@@ -429,6 +481,7 @@ guess._
 - How `run-once.ts`, `triage.ts`, `publish.ts`, `review-wait.ts`,
   `interactive-loop.ts`, and `release` are changed to use it.
 - Host additions needed for sync (listing all issues and all comments since a
-  time) and for posting a comment that returns its URL, for GitHub and Forgejo.
+  time), and `commentIssue` returning the new comment's URL, for GitHub and
+  Forgejo.
 - Wording of question comments without the kernel marker.
 - Status output layout.
