@@ -309,8 +309,12 @@ export class GitHubHost implements Host, RepositorySetupHost {
       ],
       { stdin: JSON.stringify({ body }) },
     );
-    return (parseJson(result.stdout, "gh api comment") as { html_url: string })
-      .html_url;
+    const raw = parseJson(result.stdout, "gh api comment") as {
+      html_url?: unknown;
+    } | null;
+    if (typeof raw?.html_url !== "string" || !raw.html_url.trim())
+      throw new Error("gh api comment returned no html_url");
+    return raw.html_url;
   }
   async updatePullRequestBody(n: number, body: string): Promise<void> {
     await this.ghOk(["pr", "edit", String(n), "--body-file", "-"], {

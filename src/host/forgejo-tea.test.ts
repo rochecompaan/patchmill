@@ -201,7 +201,15 @@ test("factory constructs Forgejo", () => {
 
 for (const login of ["name", ""]) {
   test(`repository operations carry repo context and login ${JSON.stringify(login)}`, async () => {
-    const { runner, host } = fixture("[]", login);
+    const runner = recordingRunner([
+      { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+      {
+        match: /tea api .*\/comments --method POST/,
+        result: { stdout: '{"html_url":"https://host/3#comment"}' },
+      },
+      { match: /^tea /, result: { stdout: "[]" } },
+    ]);
+    const host = new ForgejoHost({ runner, repoRoot: "/repo", login });
     await host.listOpenIssues();
     await host.listLabels();
     await host.createLabel(label);
@@ -713,4 +721,30 @@ test("forgejo commentIssue returns the comment url", async () => {
     "--repo",
     "owner/repo",
   ]);
+});
+
+// Rejecting these replies prevents publication from succeeding without its reference.
+for (const stdout of [
+  "{}",
+  '{"html_url":42}',
+  '{"html_url":null}',
+  '{"html_url":""}',
+  '{"html_url":"   "}',
+  "null",
+]) {
+  test(`forgejo commentIssue rejects a missing or invalid URL: ${stdout}`, async () => {
+    const { host } = fixture(stdout);
+    await assert.rejects(
+      host.commentIssue(7, "Question?"),
+      /tea api comment returned no html_url/,
+    );
+  });
+}
+
+test("forgejo commentIssue rejects malformed JSON", async () => {
+  const { host } = fixture("not JSON");
+  await assert.rejects(
+    host.commentIssue(7, "Question?"),
+    /tea returned invalid JSON/,
+  );
 });

@@ -303,7 +303,10 @@ export class ForgejoHost implements Host, RepositorySetupHost {
       "-d",
       JSON.stringify({ body }),
     ]);
-    return json<{ html_url: string }>(result.stdout).html_url;
+    const raw = json<{ html_url?: unknown } | null>(result.stdout);
+    if (typeof raw?.html_url !== "string" || !raw.html_url.trim())
+      throw new Error("tea api comment returned no html_url");
+    return raw.html_url;
   }
   async updatePullRequestBody(n: number, body: string): Promise<void> {
     await this.scoped([

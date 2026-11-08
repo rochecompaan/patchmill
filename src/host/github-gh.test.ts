@@ -646,3 +646,35 @@ test("github comment sync rejects invalid issue URLs", async () => {
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
   await assert.rejects(host.listCommentsSince(), /invalid comment/);
 });
+
+// Rejecting these replies prevents publication from succeeding without its reference.
+for (const stdout of [
+  "{}",
+  '{"html_url":42}',
+  '{"html_url":null}',
+  '{"html_url":""}',
+  '{"html_url":"   "}',
+  "null",
+]) {
+  test(`github commentIssue rejects a missing or invalid URL: ${stdout}`, async () => {
+    const runner = recordingRunner([
+      { match: /gh api --method POST/, result: { stdout } },
+    ]);
+    const host = new GitHubHost({ runner, repoRoot: "/repo" });
+    await assert.rejects(
+      host.commentIssue(7, "Question?"),
+      /gh api comment returned no html_url/,
+    );
+  });
+}
+
+test("github commentIssue rejects malformed JSON", async () => {
+  const runner = recordingRunner([
+    { match: /gh api --method POST/, result: { stdout: "not JSON" } },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  await assert.rejects(
+    host.commentIssue(7, "Question?"),
+    /gh api comment returned invalid JSON/,
+  );
+});
