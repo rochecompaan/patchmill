@@ -23,6 +23,7 @@ export type PatchmillConfig = {
   skills: { triage: string; planning: string; implementation: string };
   pi: { agentDir: string; timeoutMinutes: number };
   workflow: {
+    stateTracking: "labels" | "local";
     specApproval: { required: boolean };
     planApproval: { required: boolean };
   };
@@ -50,6 +51,7 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
   },
   pi: { agentDir: ".patchmill/pi-agent", timeoutMinutes: 90 },
   workflow: {
+    stateTracking: "labels",
     specApproval: { required: false },
     planApproval: { required: false },
   },
@@ -76,6 +78,7 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "skills.implementation", kind: "string" },
   { path: "pi.agentDir", kind: "string" },
   { path: "pi.timeoutMinutes", kind: "number" },
+  { path: "workflow.stateTracking", kind: "string" },
   { path: "workflow.specApproval.required", kind: "boolean" },
   { path: "workflow.planApproval.required", kind: "boolean" },
 ];
@@ -125,6 +128,13 @@ export function parseConfig(raw: unknown): PatchmillConfig {
           path === "host.provider" &&
           value !== "github-gh" &&
           value !== "forgejo-tea"
+        ) {
+          throw new ConfigError(`Invalid value for ${path}`);
+        }
+        if (
+          path === "workflow.stateTracking" &&
+          value !== "labels" &&
+          value !== "local"
         ) {
           throw new ConfigError(`Invalid value for ${path}`);
         }

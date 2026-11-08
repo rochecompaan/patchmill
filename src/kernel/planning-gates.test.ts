@@ -154,6 +154,7 @@ test("omitted gates continue planning and implementation without a planning PR",
 
 test("legacy workflow settings parse, default off, and reject mistyped plan gates", () => {
   assert.deepEqual(parseConfig({}).workflow, {
+    stateTracking: "labels",
     specApproval: { required: false },
     planApproval: { required: false },
   });
@@ -164,7 +165,11 @@ test("legacy workflow settings parse, default off, and reject mistyped plan gate
         planApproval: { required: true },
       },
     }).workflow,
-    { specApproval: { required: true }, planApproval: { required: true } },
+    {
+      stateTracking: "labels",
+      specApproval: { required: true },
+      planApproval: { required: true },
+    },
   );
   assert.throws(
     () => parseConfig({ workflow: { planApproval: { required: "yes" } } }),

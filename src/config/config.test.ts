@@ -20,6 +20,21 @@ test("retired blocked configuration is accepted as a string but never retained",
   assert.throws(() => parseConfig({ labels: { blocked: false } }), ConfigError);
 });
 
+test("stateTracking defaults to labels and accepts local", () => {
+  assert.equal(parseConfig({}).workflow.stateTracking, "labels");
+  assert.equal(
+    parseConfig({ workflow: { stateTracking: "local" } }).workflow
+      .stateTracking,
+    "local",
+  );
+});
+test("stateTracking rejects other values", () => {
+  assert.throws(
+    () => parseConfig({ workflow: { stateTracking: "remote" } }),
+    /Invalid value for workflow.stateTracking/,
+  );
+});
+
 test("parseConfig fills an empty config with defaults", () => {
   assert.deepEqual(parseConfig({}), DEFAULT_CONFIG);
 });
