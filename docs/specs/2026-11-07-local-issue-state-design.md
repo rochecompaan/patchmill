@@ -251,8 +251,8 @@ type StatusUpdate = {
   summary?: string;
   cost?: string;
   warnings?: string[];
-  /** The summary is a question for a human. */
-  ask?: boolean;
+  /** Text to ask a human before recording the status. */
+  question?: string;
 };
 
 interface WorkflowState {
@@ -261,7 +261,9 @@ interface WorkflowState {
   issue(n: number): Promise<TrackedIssue>;
   /**
    * Rejects when the status was not recorded. Resolves to warnings about
-   * optional comments that failed after the status was recorded.
+   * optional comments that failed after the status was recorded. When question
+   * is set, posting is required before recording; a posting failure rejects
+   * and leaves the status unchanged.
    */
   setStatus(n: number, update: StatusUpdate): Promise<string[]>;
 }
@@ -279,13 +281,13 @@ provider from `host.provider`.
 
 The backends answer only storage questions:
 
-| Question        | Label backend                                              | Local backend                                                 |
-| --------------- | ---------------------------------------------------------- | ------------------------------------------------------------- |
-| `sync`          | Does nothing                                               | Syncs `issues/`                                               |
-| `status`        | The workflow label on the issue, or `untriaged`            | The last status line, or `untriaged`                          |
-| `statusSince`   | Not set                                                    | The last line's `at`                                          |
-| `fromPatchmill` | The comment contains the kernel marker                     | The comment's URL is a `questionUrl` in the status file       |
-| `setStatus`     | Ensures labels exist, swaps labels, posts a kernel comment | Posts the summary as a question if `ask`, then appends a line |
+| Question        | Label backend                                              | Local backend                                           |
+| --------------- | ---------------------------------------------------------- | ------------------------------------------------------- |
+| `sync`          | Does nothing                                               | Syncs `issues/`                                         |
+| `status`        | The workflow label on the issue, or `untriaged`            | The last status line, or `untriaged`                    |
+| `statusSince`   | Not set                                                    | The last line's `at`                                    |
+| `fromPatchmill` | The comment contains the kernel marker                     | The comment's URL is a `questionUrl` in the status file |
+| `setStatus`     | Ensures labels exist, swaps labels, posts a kernel comment | Posts non-blank `question` text, then appends a line    |
 
 The label backend's swap adds the new status's label and removes the other four
 workflow labels, so an issue carries exactly one. It posts a kernel comment
@@ -319,14 +321,16 @@ write today:
 
 Questions and comments:
 
-- **With `ask`, the question is required.** Both backends post it before they
-  change the status. If posting fails, `setStatus` rejects and the status is
-  unchanged, so a later triage or run asks again. If the question was posted but
-  the status write fails, the error includes the comment URL.
-- **Without `ask`, the label backend's kernel comment is optional.** The label
-  backend swaps labels first. A failed swap rejects, and no comment is posted. A
-  failed comment after a successful swap is returned as a warning.
-- The local backend posts nothing without `ask`, so it returns no warnings.
+- **With `question`, the question is required.** Both backends post it before
+  they change the status. If posting fails, `setStatus` rejects and the status
+  is unchanged, so a later triage or run asks again. If the question was posted
+  but the status write fails, the error includes the comment URL.
+- **Without `question`, the label backend's kernel comment is optional.** The
+  label backend swaps labels first. A failed swap rejects, and no comment is
+  posted. A failed comment after a successful swap is returned as a warning.
+- The local backend posts nothing without `question` or when it is only
+  whitespace, so it returns no warnings. It posts non-blank question text
+  exactly as given and keeps the full summary in the status line.
 
 `host.commentIssue` returns the new comment's URL. The local backend records it
 as `questionUrl`. Other callers ignore it.
@@ -363,9 +367,9 @@ These stay outside `WorkflowState` because they are not workflow status:
 - `--issue N` triages issue N regardless of status, as today.
 - Patchmill adds missing dependency links upstream as today.
 - Triage sets the outcome status with the comment as `summary`, and with
-  `ask: true` for a `needsInfo` outcome with a non-empty comment. In local mode
-  that posts the question without the kernel marker and records `questionUrl`.
-  For `ready` and `unsuitable`, nothing is posted.
+  `question: comment` for a `needsInfo` outcome with a non-empty comment. In
+  local mode that posts the question without the kernel marker and records
+  `questionUrl`. For `ready` and `unsuitable`, nothing is posted.
 - If the dependency write fails, append nothing and warn, as label mode skips
   the label today.
 - Dry run syncs, calls Pi, and previews. It appends nothing and writes nothing
@@ -388,9 +392,10 @@ the dry run should see current issues._
 - Planning gate waits, completion, stops, and review wait outcomes each set the
   status with the summary, cost, and warnings. The cost report still goes in the
   pull request body.
-- A run sets `ask: true` only when it stops with `needsInfo` because the worker
-  returned `needs-input` and no maintainer is at the console. In a console run
-  the maintainer already sees the worker's question. So in local mode, errors,
+- A run sets `question` to the worker's summary only when it stops with
+  `needsInfo` because the worker returned `needs-input`, no maintainer is at the
+  console, and the session neither aborted nor timed out. In a console run the
+  maintainer already sees the worker's question. So in local mode, errors,
   failed verification, gate waits, and completion post nothing.
 
 ### Release
@@ -483,5 +488,6 @@ guess._
 - Host additions needed for sync (listing all issues and all comments since a
   time), and `commentIssue` returning the new comment's URL, for GitHub and
   Forgejo.
-- Wording of question comments without the kernel marker.
+- Local mode posts only the question text without the kernel marker and keeps
+  the full stop summary locally.
 - Status output layout.
