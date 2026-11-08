@@ -71,7 +71,7 @@ test("local mode posts no status comments and changes no labels", async (t) => {
   assert.equal((await c.records()).result.sessions.length, 1);
 });
 
-// Only a successful needs-input result may publish the unmarked stop summary.
+// Only a successful needs-input result may publish the worker's question.
 test("unattended needs-input posts one question", async (t) => {
   const c = await setup(t, [
     { result: { status: "needs-input", summary: "Which login provider?" } },
