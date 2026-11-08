@@ -269,7 +269,12 @@ test("viewIssue maps labels, authors, comments, and state", async () => {
           author: { login: "octocat" },
           createdAt: "today",
           comments: [
-            { author: { login: "reviewer" }, body: "yes", createdAt: "later" },
+            {
+              author: { login: "reviewer" },
+              body: "yes",
+              createdAt: "later",
+              url: "https://example/3#c1",
+            },
           ],
         }),
       },
@@ -285,7 +290,14 @@ test("viewIssue maps labels, authors, comments, and state", async () => {
     url: "https://example/3",
     author: "octocat",
     createdAt: "today",
-    comments: [{ author: "reviewer", body: "yes", createdAt: "later" }],
+    comments: [
+      {
+        author: "reviewer",
+        body: "yes",
+        createdAt: "later",
+        url: "https://example/3#c1",
+      },
+    ],
   });
   assert.deepEqual(runner.calls, [
     [
@@ -334,14 +346,34 @@ test("checkCli reports the trimmed authenticated login", async () => {
   ]);
 });
 
-test("commentIssue sends the body through stdin", async () => {
-  const runner = recordingRunner([{ match: /gh issue comment/, result: {} }]);
-  const host = new GitHubHost({ runner, repoRoot: "/repo" });
-  await host.commentIssue(3, "hello");
-  assert.deepEqual(runner.calls, [
-    ["gh", "issue", "comment", "3", "--body-file", "-"],
+test("github commentIssue returns the comment url", async () => {
+  const runner = recordingRunner([
+    {
+      match: /gh api --method POST/,
+      result: {
+        stdout: '{"html_url":"https://github.com/o/r/issues/7#issuecomment-9"}',
+      },
+    },
   ]);
-  assert.deepEqual(runner.options, [{ cwd: "/repo", stdin: "hello" }]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.equal(
+    await host.commentIssue(7, "Question?"),
+    "https://github.com/o/r/issues/7#issuecomment-9",
+  );
+  assert.deepEqual(runner.calls, [
+    [
+      "gh",
+      "api",
+      "--method",
+      "POST",
+      "repos/{owner}/{repo}/issues/7/comments",
+      "--input",
+      "-",
+    ],
+  ]);
+  assert.deepEqual(runner.options, [
+    { cwd: "/repo", stdin: '{"body":"Question?"}' },
+  ]);
 });
 
 test("listOpenIssues throws CommandFailedError for gh failure", async () => {
@@ -509,4 +541,108 @@ test("enumerates all GitHub issue pages, excluding PRs, so oldest selection and 
     201,
   );
   assert.equal(issues[200]!.author, "alice");
+});
+
+test("github issue sync lists all states, drops pull requests, and passes since", async () => {
+  const raw = {
+    number: 12,
+    title: "Fix",
+    body: "Details",
+    labels: [{ name: "bug" }],
+    state: "closed",
+    html_url: "https://host/12",
+    user: { login: "author" },
+    created_at: "today",
+  };
+  const runner = recordingRunner([
+    {
+      match: /gh api/,
+      result: {
+        stdout: JSON.stringify([
+          [raw],
+          [
+            { ...raw, number: 13, state: "open" },
+            { ...raw, pull_request: {} },
+          ],
+        ]),
+      },
+    },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  for (const since of ["2026-11-07T10:00:00.000Z", undefined]) {
+    const issues = await host.listIssuesSince(since);
+    assert.equal(issues.length, 2);
+    assert.deepEqual(issues[0], {
+      ...raw,
+      number: 12,
+      title: "Fix",
+      body: "Details",
+      labels: ["bug"],
+      state: "closed",
+      url: "https://host/12",
+      author: "author",
+      createdAt: "today",
+      comments: [],
+    });
+    assert.equal(issues.at(-1)?.state, "open");
+    const endpoint =
+      "repos/{owner}/{repo}/issues?state=all&per_page=100" +
+      (since ? "&since=2026-11-07T10%3A00%3A00.000Z" : "");
+    assert.deepEqual(runner.calls.filter((c) => c[0] === "gh").at(-1), [
+      "gh",
+      "api",
+      "--paginate",
+      "--slurp",
+      endpoint,
+    ]);
+  }
+});
+
+test("github comment sync maps issue number and url", async () => {
+  const raw = {
+    issue_url: "https://api.github.com/repos/o/r/issues/12",
+    html_url: "https://github.com/o/r/issues/12#issuecomment-5",
+    user: { login: "author" },
+    body: "Reply",
+    created_at: "today",
+  };
+  const runner = recordingRunner([
+    { match: /gh api/, result: { stdout: JSON.stringify([[raw], [raw]]) } },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  const expected = {
+    issue: 12,
+    url: "https://github.com/o/r/issues/12#issuecomment-5",
+    author: "author",
+    body: "Reply",
+    createdAt: "today",
+  };
+  for (const since of ["2026-11-07T10:00:00.000Z", undefined]) {
+    assert.deepEqual(await host.listCommentsSince(since), [expected, expected]);
+    const endpoint =
+      "repos/{owner}/{repo}/issues/comments?per_page=100" +
+      (since ? "&since=2026-11-07T10%3A00%3A00.000Z" : "");
+    assert.deepEqual(runner.calls.at(-1), [
+      "gh",
+      "api",
+      "--paginate",
+      "--slurp",
+      endpoint,
+    ]);
+  }
+});
+
+test("github comment sync rejects invalid issue URLs", async () => {
+  const raw = {
+    issue_url: "https://host/pulls/12",
+    html_url: "https://host/comment",
+    user: { login: "a" },
+    body: "b",
+    created_at: "today",
+  };
+  const runner = recordingRunner([
+    { match: /gh api/, result: { stdout: JSON.stringify([[raw]]) } },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  await assert.rejects(host.listCommentsSince(), /invalid comment/);
 });

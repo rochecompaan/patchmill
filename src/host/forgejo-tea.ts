@@ -10,6 +10,7 @@ import type {
   PullRequest,
   RepositorySetupHost,
   RepositoryTarget,
+  SyncedComment,
 } from "./types.ts";
 import { originRepository } from "./origin.ts";
 
@@ -24,7 +25,13 @@ type RawIssue = {
   labels: { name: string }[];
   pull_request?: unknown;
 };
-type RawComment = { user: { login: string }; body: string; created_at: string };
+type RawComment = {
+  html_url: string;
+  issue_url: string;
+  user: { login: string };
+  body: string;
+  created_at: string;
+};
 type RawPull = {
   number: number;
   html_url: string;
@@ -159,6 +166,33 @@ export class ForgejoHost implements Host, RepositorySetupHost {
       .filter((raw) => !raw.pull_request)
       .map((raw) => mapIssue(raw));
   }
+  async listIssuesSince(since?: string): Promise<Issue[]> {
+    return (
+      await this.pages<RawIssue>(
+        "/repos/{owner}/{repo}/issues?state=all&type=issues" +
+          (since ? `&since=${encodeURIComponent(since)}` : ""),
+      )
+    )
+      .filter((raw) => !raw.pull_request)
+      .map((raw) => mapIssue(raw));
+  }
+  async listCommentsSince(since?: string): Promise<SyncedComment[]> {
+    const comments = await this.pages<RawComment>(
+      "/repos/{owner}/{repo}/issues/comments" +
+        (since ? `?since=${encodeURIComponent(since)}` : ""),
+    );
+    return comments.map((raw) => {
+      const match = raw.issue_url.match(/\/issues\/(\d+)$/);
+      if (!match) throw new Error("invalid comment");
+      return {
+        issue: Number(match[1]),
+        url: raw.html_url,
+        author: raw.user.login,
+        body: raw.body,
+        createdAt: raw.created_at,
+      };
+    });
+  }
   async viewIssue(n: number): Promise<Issue> {
     const raw = await this.api<RawIssue>(`/repos/{owner}/{repo}/issues/${n}`);
     const comments = await this.pages<RawComment>(
@@ -170,6 +204,7 @@ export class ForgejoHost implements Host, RepositorySetupHost {
         author: comment.user.login,
         body: comment.body,
         createdAt: comment.created_at,
+        url: comment.html_url,
       })),
     );
   }
@@ -259,20 +294,16 @@ export class ForgejoHost implements Host, RepositorySetupHost {
       );
     }
   }
-  async commentIssue(n: number, body: string): Promise<void> {
-    // Keep context before -- so tea does not interpret it as comment text.
-    await this.run(
-      [
-        "comment",
-        String(n),
-        "--repo",
-        await this.slug(),
-        ...(this.login ? ["--login", this.login] : []),
-        "--",
-        body,
-      ],
-      false,
-    );
+  async commentIssue(n: number, body: string): Promise<string> {
+    const result = await this.scoped([
+      "api",
+      `/repos/{owner}/{repo}/issues/${n}/comments`,
+      "--method",
+      "POST",
+      "-d",
+      JSON.stringify({ body }),
+    ]);
+    return json<{ html_url: string }>(result.stdout).html_url;
   }
   async updatePullRequestBody(n: number, body: string): Promise<void> {
     await this.scoped([

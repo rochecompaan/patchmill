@@ -14,6 +14,7 @@ import type {
   Repository,
   RepositorySetupHost,
   RepositoryTarget,
+  SyncedComment,
 } from "./types.ts";
 import { originRepository } from "./origin.ts";
 
@@ -21,7 +22,12 @@ type RawIssue = Omit<Issue, "labels" | "author" | "comments" | "state"> & {
   labels: { name: string }[];
   author: { login: string };
   state: string;
-  comments?: { author: { login: string }; body: string; createdAt: string }[];
+  comments?: {
+    author: { login: string };
+    body: string;
+    createdAt: string;
+    url?: string;
+  }[];
 };
 type RawPullRequest = Pick<PullRequest, "number" | "url" | "body"> & {
   isDraft: boolean;
@@ -54,6 +60,26 @@ const mapIssue = (raw: RawIssue): Issue => ({
     author: comment.author.login,
   })),
 });
+type ApiIssue = Omit<RawIssue, "comments"> & {
+  user: { login: string };
+  html_url: string;
+  created_at: string;
+  pull_request?: unknown;
+};
+function mapApiIssues(stdout: string): Issue[] {
+  return (parseJson(stdout, "gh api issues") as ApiIssue[][])
+    .flat()
+    .filter((raw) => !raw.pull_request)
+    .map((raw) =>
+      mapIssue({
+        ...raw,
+        author: raw.user,
+        comments: [],
+        url: raw.html_url,
+        createdAt: raw.created_at,
+      }),
+    );
+}
 const mapPullRequest = (raw: RawPullRequest): PullRequest => ({
   number: raw.number,
   url: raw.url,
@@ -124,24 +150,46 @@ export class GitHubHost implements Host, RepositorySetupHost {
       "--slurp",
       "repos/{owner}/{repo}/issues?state=open&per_page=100",
     ]);
-    type ApiIssue = Omit<RawIssue, "comments"> & {
-      user: { login: string };
+    return mapApiIssues(result.stdout);
+  }
+
+  async listIssuesSince(since?: string): Promise<Issue[]> {
+    const result = await this.ghOk([
+      "api",
+      "--paginate",
+      "--slurp",
+      "repos/{owner}/{repo}/issues?state=all&per_page=100" +
+        (since ? `&since=${encodeURIComponent(since)}` : ""),
+    ]);
+    return mapApiIssues(result.stdout);
+  }
+
+  async listCommentsSince(since?: string): Promise<SyncedComment[]> {
+    const result = await this.ghOk([
+      "api",
+      "--paginate",
+      "--slurp",
+      "repos/{owner}/{repo}/issues/comments?per_page=100" +
+        (since ? `&since=${encodeURIComponent(since)}` : ""),
+    ]);
+    const pages = parseJson(result.stdout, "gh api comments") as {
+      issue_url: string;
       html_url: string;
+      user: { login: string };
+      body: string;
       created_at: string;
-      pull_request?: unknown;
-    };
-    return (parseJson(result.stdout, "gh api issues") as ApiIssue[][])
-      .flat()
-      .filter((raw) => !raw.pull_request)
-      .map((raw) =>
-        mapIssue({
-          ...raw,
-          author: raw.user,
-          comments: [],
-          url: raw.html_url,
-          createdAt: raw.created_at,
-        }),
-      );
+    }[][];
+    return pages.flat().map((raw) => {
+      const match = raw.issue_url.match(/\/issues\/(\d+)$/);
+      if (!match) throw new Error("invalid comment");
+      return {
+        issue: Number(match[1]),
+        url: raw.html_url,
+        author: raw.user.login,
+        body: raw.body,
+        createdAt: raw.created_at,
+      };
+    });
   }
 
   async viewIssue(n: number): Promise<Issue> {
@@ -249,10 +297,20 @@ export class GitHubHost implements Host, RepositorySetupHost {
       ...(remove.length ? ["--remove-label", remove.join(",")] : []),
     ]);
   }
-  async commentIssue(n: number, body: string): Promise<void> {
-    await this.ghOk(["issue", "comment", String(n), "--body-file", "-"], {
-      stdin: body,
-    });
+  async commentIssue(n: number, body: string): Promise<string> {
+    const result = await this.ghOk(
+      [
+        "api",
+        "--method",
+        "POST",
+        `repos/{owner}/{repo}/issues/${n}/comments`,
+        "--input",
+        "-",
+      ],
+      { stdin: JSON.stringify({ body }) },
+    );
+    return (parseJson(result.stdout, "gh api comment") as { html_url: string })
+      .html_url;
   }
   async updatePullRequestBody(n: number, body: string): Promise<void> {
     await this.ghOk(["pr", "edit", String(n), "--body-file", "-"], {

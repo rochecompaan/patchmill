@@ -26,7 +26,7 @@ export async function publishStop(
   stop: StopPublication,
 ): Promise<string[]> {
   const publicationErrors: string[] = [];
-  const publish = async (failure: string, effect: () => Promise<void>) => {
+  const publish = async (failure: string, effect: () => Promise<unknown>) => {
     try {
       await effect();
     } catch (error) {
