@@ -143,6 +143,18 @@ test("doctor checks state instead of labels in local mode", async (t) => {
   }
 });
 
+test("doctor rejects a regular file at the state directory path", async (t) => {
+  const f = await fixture(t);
+  f.config.workflow.stateTracking = "local";
+  const statePath = join(f.repoRoot, ".patchmill/state");
+  await writeFile(statePath, "not a directory");
+  const checks = await runDoctorChecks(f.deps);
+  const stateCheck = checks.find((c) => c.name === "state")!;
+  assert.equal(stateCheck.status, "fail");
+  assert.ok(stateCheck.message.includes(statePath));
+  assert.equal(await readFile(statePath, "utf8"), "not a directory");
+});
+
 test("missing resources fail or warn without preventing later probes", async (t) => {
   const f = await fixture(t);
   writeFakeHostState(join(f.repoRoot, "host.json"), {

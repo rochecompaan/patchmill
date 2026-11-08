@@ -74,7 +74,8 @@ export async function runDoctorChecks(deps: {
       let writablePath = statePath;
       for (;;) {
         try {
-          await stat(writablePath);
+          if (!(await stat(writablePath)).isDirectory())
+            return `Not a directory: ${writablePath}`;
           break;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -86,9 +87,7 @@ export async function runDoctorChecks(deps: {
       } catch {
         return `Not writable: ${writablePath}`;
       }
-      const cursor = await new StateStore(statePath)
-        .readCursor()
-        .catch(() => undefined);
+      const cursor = await new StateStore(statePath).readCursor();
       return {
         message: cursor
           ? `Synced up to ${cursor.syncedUpTo}`
