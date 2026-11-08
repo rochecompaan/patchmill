@@ -149,6 +149,27 @@ export function parseConfig(raw: unknown): PatchmillConfig {
     }
   }
   walk(raw, config, "");
+  if (config.workflow.stateTracking === "local") {
+    const keys: (keyof LabelsConfig)[] = [
+      "ready",
+      "inProgress",
+      "needsInfo",
+      "done",
+      "unsuitable",
+    ];
+    for (const [index, first] of keys.entries()) {
+      for (const second of keys.slice(index + 1)) {
+        if (
+          config.labels[first].toLowerCase() ===
+          config.labels[second].toLowerCase()
+        ) {
+          throw new ConfigError(
+            `workflow.stateTracking "local" requires distinct label names: labels.${first} and labels.${second} are both "${config.labels[first]}".`,
+          );
+        }
+      }
+    }
+  }
   return config;
 }
 
