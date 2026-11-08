@@ -6,6 +6,7 @@ import { test, type TestContext } from "node:test";
 import { FakeHost, writeFakeHostState } from "../../test-support/fake-host.ts";
 import { parseConfig } from "../config/config.ts";
 import type { Issue } from "../host/types.ts";
+import { createTriagePi } from "../../test-support/triage-fixture.ts";
 import { LabelWorkflowState } from "./label-workflow.ts";
 import {
   hasReply,
@@ -82,12 +83,7 @@ async function setup(t: TestContext, outputs: string[], issues = [issue(9)]) {
   const state = join(root, "host.json");
   writeFakeHostState(state, { issues });
   const host = new FakeHost(state);
-  const script = join(root, "pi.mjs");
-  // Local child exercises the actual supervisor and records its launch boundary.
-  await fs.writeFile(
-    script,
-    `import fs from 'node:fs';\nconst root=${JSON.stringify(root)};\nfs.appendFileSync(root+'/launches', JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2),agentDir:process.env.PI_CODING_AGENT_DIR})+'\\n');\nconst outputs=${JSON.stringify(outputs)};\nconst count=fs.readFileSync(root+'/launches','utf8').trim().split('\\n').length;\nconsole.log(outputs[count-1]);`,
-  );
+  const piCommand = await createTriagePi(root, outputs);
   const stdout: string[] = [],
     stderr: string[] = [];
   t.mock.method(
@@ -112,7 +108,7 @@ async function setup(t: TestContext, outputs: string[], issues = [issue(9)]) {
   const deps = {
     host,
     repoRoot: root,
-    piCommand: { command: process.execPath, argsPrefix: [script] },
+    piCommand,
     now: () => new Date(2026, 9, 15, 12),
     output: {
       stdout: (s: string) => stdout.push(s),

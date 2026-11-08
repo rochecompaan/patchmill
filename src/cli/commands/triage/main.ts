@@ -1,5 +1,6 @@
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
+import { createWorkflowState } from "../../../kernel/workflow-factory.ts";
 import { runTriage, type TriageOptions } from "../../../kernel/triage.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
@@ -57,11 +58,20 @@ export async function main(
     const host = createHost(config, options.runner ?? runCommand, repoRoot);
     const check = await host.checkCli();
     if (!check.ok) throw new Error(check.message);
+    const now = () => new Date();
+    const workflow = createWorkflowState(
+      config,
+      host,
+      repoRoot,
+      now,
+      (message) => output.stderr(`Warning: ${message}`),
+    );
     const deps = {
       host,
+      workflow,
       piCommand: resolveBundledPiCommand(),
       repoRoot,
-      now: () => new Date(),
+      now,
       output,
     };
     const reporter = createTriageProgressReporter({

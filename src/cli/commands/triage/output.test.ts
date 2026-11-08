@@ -10,6 +10,7 @@ import {
 import { CONFIG_FILE } from "../../../config/config.ts";
 import type { Issue } from "../../../host/types.ts";
 import { runTriage } from "../../../kernel/triage.ts";
+import { createWorkflowState } from "../../../kernel/workflow-factory.ts";
 import { main } from "./main.ts";
 
 function issue(number: number, labels: string[] = []): Issue {
@@ -85,6 +86,13 @@ console.log(${JSON.stringify(responses)}[index]);
             {
               ...deps,
               host,
+              workflow: createWorkflowState(
+                config,
+                host,
+                deps.repoRoot,
+                deps.now,
+                (message) => deps.output.stderr(`Warning: ${message}`),
+              ),
               piCommand: { command: process.execPath, argsPrefix: [script] },
             },
             options,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -232,4 +233,32 @@ test("help returns before configuration or host access", async (t) => {
   assert.equal(await h.run(["--help"]), 0);
   assert.deepEqual(h.stderr, []);
   assert.deepEqual(h.calls, []);
+});
+
+// Choosing labels instead of local state would incorrectly report a successful release.
+test("local release fails when the status write fails", async (t) => {
+  if (process.getuid?.() === 0) return t.skip("needs non-root");
+  const h = await harness(t);
+  await writeFile(
+    join(h.root, CONFIG_FILE),
+    JSON.stringify({
+      workflow: { stateTracking: "local" },
+      labels: { ready: "queue", inProgress: "working" },
+      paths: { runsDir: "owned-runs" },
+    }),
+  );
+  const statusPath = join(h.root, ".patchmill/state/status/9.jsonl");
+  await mkdir(dirname(statusPath), { recursive: true });
+  const original = '{"at":"2026-10-15T00:00:00Z","status":"inProgress"}\n';
+  await writeFile(statusPath, original);
+  await chmod(statusPath, 0o444);
+  assert.equal(await h.run(), 1);
+  assert.match(h.stderr.join("\n"), /Status update failed/);
+  assert.equal(await readFile(statusPath, "utf8"), original);
+  assert.deepEqual(h.stdout, []);
+  assert.deepEqual(h.labels(), ["working", "spec-approved", "unrelated"]);
+  assert.equal(
+    h.calls.some((args) => args[0] === "label" || args[1] === "edit"),
+    false,
+  );
 });

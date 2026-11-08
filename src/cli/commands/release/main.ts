@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
-import { LabelWorkflowState } from "../../../kernel/label-workflow.ts";
+import { createWorkflowState } from "../../../kernel/workflow-factory.ts";
 import { acquireLock, LockHeldError } from "../../../kernel/lock.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
@@ -46,7 +46,13 @@ export async function main(
     );
     try {
       const host = createHost(config, options.runner ?? runCommand, repoRoot);
-      const workflow = new LabelWorkflowState(host, config.labels);
+      const workflow = createWorkflowState(
+        config,
+        host,
+        repoRoot,
+        () => new Date(),
+        (message) => output.stderr(`Warning: ${message}`),
+      );
       const issue = await workflow.issue(issueNumber);
       const { ready, inProgress } = config.labels;
       if (issue.status !== "inProgress") {

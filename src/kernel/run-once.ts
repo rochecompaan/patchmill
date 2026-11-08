@@ -83,6 +83,7 @@ export async function runOneIssue(
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
   const workflow = deps.workflow ?? new LabelWorkflowState(host, config.labels);
+  await workflow.sync(options.issue);
   const selection = await selectRunIssue({
     host,
     workflow,

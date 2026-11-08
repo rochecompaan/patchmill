@@ -118,6 +118,7 @@ export async function runTriage(
 ): Promise<Array<{ issue: number; label: string; applied: boolean }>> {
   const { host, repoRoot, output } = deps;
   const workflow = deps.workflow ?? new LabelWorkflowState(host, config.labels);
+  await workflow.sync(options.issue);
   const trusted = trustedAuthors(config, (await host.checkCli()).login);
   const warn = (issue: number, message: string) =>
     output.stderr(`Warning: Issue #${issue}: ${message}`);
