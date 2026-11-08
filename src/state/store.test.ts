@@ -63,13 +63,23 @@ test("issues and cursor round-trip", async (t) => {
   await store.writeIssue({ ...issue, number: 2 });
   assert.deepEqual(await store.readCursor(), cursor);
   assert.deepEqual(await store.readIssue(12), issue);
-  await fs.writeFile(join(root, "4.json.123.tmp"), "{");
+  const issuesPath = join(root, "issues");
+  assert.deepEqual(await fs.readdir(root), ["issues"]);
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(join(issuesPath, "sync.json"), "utf8")),
+    cursor,
+  );
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(join(issuesPath, "12.json"), "utf8")),
+    issue,
+  );
+  await fs.writeFile(join(issuesPath, "4.json.123.tmp"), "{");
   assert.deepEqual(await store.listIssues(), {
     issues: [{ ...issue, number: 2 }, issue],
     damaged: [],
   });
-  await fs.unlink(join(root, "4.json.123.tmp"));
-  assert.deepEqual((await fs.readdir(root)).sort(), [
+  await fs.unlink(join(issuesPath, "4.json.123.tmp"));
+  assert.deepEqual((await fs.readdir(issuesPath)).sort(), [
     "12.json",
     "2.json",
     "sync.json",
@@ -78,14 +88,17 @@ test("issues and cursor round-trip", async (t) => {
 
 test("corrupt issue and cursor files read as missing", async (t) => {
   const { root, store } = await fixture(t);
-  await fs.mkdir(root, { recursive: true });
-  await fs.writeFile(join(root, "12.json"), "{");
-  await fs.writeFile(join(root, "sync.json"), "{");
+  const issuesPath = join(root, "issues");
+  await fs.mkdir(issuesPath, { recursive: true });
+  await fs.writeFile(join(issuesPath, "12.json"), "{");
+  await fs.writeFile(join(issuesPath, "sync.json"), "{");
   assert.equal(await store.readIssue(12), undefined);
   assert.equal(await store.readCursor(), undefined);
   assert.deepEqual(await store.listIssues(), { issues: [], damaged: [12] });
   await store.removeIssue(12);
-  await assert.rejects(fs.stat(join(root, "12.json")), { code: "ENOENT" });
+  await assert.rejects(fs.stat(join(issuesPath, "12.json")), {
+    code: "ENOENT",
+  });
 });
 
 test("status lines append in order", async (t) => {

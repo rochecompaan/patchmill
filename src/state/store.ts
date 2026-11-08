@@ -31,33 +31,35 @@ const appends = new Map<string, Promise<void>>();
 
 export class StateStore {
   private readonly root: string;
+  private readonly issuesPath: string;
   private readonly warn: (message: string) => void;
 
   constructor(root: string, warn: (message: string) => void = () => {}) {
     this.root = root;
+    this.issuesPath = join(root, "issues");
     this.warn = warn;
   }
 
   readCursor(): Promise<SyncCursor | undefined> {
-    return this.readJson(join(this.root, "sync.json"));
+    return this.readJson(join(this.issuesPath, "sync.json"));
   }
 
   writeCursor(cursor: SyncCursor): Promise<void> {
-    return this.writeJson(join(this.root, "sync.json"), cursor);
+    return this.writeJson(join(this.issuesPath, "sync.json"), cursor);
   }
 
   readIssue(n: number): Promise<Issue | undefined> {
-    return this.readJson(join(this.root, `${n}.json`));
+    return this.readJson(join(this.issuesPath, `${n}.json`));
   }
 
   writeIssue(issue: Issue): Promise<void> {
-    return this.writeJson(join(this.root, `${issue.number}.json`), issue);
+    return this.writeJson(join(this.issuesPath, `${issue.number}.json`), issue);
   }
 
   async listIssues(): Promise<{ issues: Issue[]; damaged: number[] }> {
     let names: string[];
     try {
-      names = await fs.readdir(this.root);
+      names = await fs.readdir(this.issuesPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return { issues: [], damaged: [] };
@@ -69,7 +71,7 @@ export class StateStore {
     for (const name of names) {
       if (!/^\d+\.json$/.test(name)) continue;
       const n = Number(name.slice(0, -5));
-      const issue = await this.readJson<Issue>(join(this.root, name));
+      const issue = await this.readJson<Issue>(join(this.issuesPath, name));
       if (issue === undefined) damaged.push(n);
       else issues.push(issue);
     }
@@ -79,7 +81,7 @@ export class StateStore {
   }
 
   async removeIssue(n: number): Promise<void> {
-    await fs.rm(join(this.root, `${n}.json`), { force: true });
+    await fs.rm(join(this.issuesPath, `${n}.json`), { force: true });
   }
 
   async readStatus(n: number): Promise<StatusChange[]> {
@@ -176,7 +178,7 @@ export class StateStore {
     path: string,
     value: Issue | SyncCursor,
   ): Promise<void> {
-    await fs.mkdir(this.root, { recursive: true });
+    await fs.mkdir(this.issuesPath, { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
     await fs.writeFile(temporary, JSON.stringify(value));
     await fs.rename(temporary, path);
