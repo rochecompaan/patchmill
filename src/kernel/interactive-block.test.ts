@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   setupRun,
@@ -48,11 +50,12 @@ test("a blocked worker gets guidance and continues in the same attempt", async (
     "resume:Use OAuth",
     "wait:review",
   ]);
+  assert.equal(kernelComments(c).length, 1);
+  assert.match(kernelComments(c)[0]!.body, /pull request was verified/);
   assert.equal(
-    kernelComments(c)[0]!.body,
-    "<!-- patchmill:kernel-comment -->\n\nMaintainer guidance from the console:\n\nUse OAuth",
+    await fs.readFile(join((await c.records()).dir, "guidance.md"), "utf8"),
+    "Use OAuth\n\n",
   );
-  assert.match(kernelComments(c)[1]!.body, /pull request was verified/);
   assert.equal((await c.records()).result.sessions.length, 3);
   assert.deepEqual(
     snapshots
@@ -91,6 +94,10 @@ test("repeated blocks reset the human-free session budget", async (t) => {
   });
   assert.equal((await c.run({ issue: 9 }, { human })).status, "completed");
   assert.equal((await c.records()).result.sessions.length, 5);
+  assert.equal(
+    await fs.readFile(join((await c.records()).dir, "guidance.md"), "utf8"),
+    "Use OAuth\n\n".repeat(4),
+  );
 });
 
 for (const failure of ["aborted", "timedOut", "failed", "invalid"] as const) {

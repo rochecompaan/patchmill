@@ -6,7 +6,9 @@ import { test, type TestContext } from "node:test";
 import { FakeHost, writeFakeHostState } from "../../test-support/fake-host.ts";
 import { parseConfig } from "../config/config.ts";
 import type { Issue } from "../host/types.ts";
+import { LabelWorkflowState } from "./label-workflow.ts";
 import {
+  hasReply,
   runTriage,
   selectTriageCandidates,
   type TriageOptions,
@@ -30,7 +32,7 @@ function comment(author: string, createdAt: string) {
   return { author, createdAt, body: "Clarification" };
 }
 // Wrong eligibility, stale comment trust, or hardcoded labels break this selection.
-test("selects open unclassified issues and needs-info with the latest trusted reply", () => {
+test("selects open unclassified issues and needs-info with the latest trusted reply", async (t) => {
   const labels = parseConfig({}).labels;
   const issues = [
     issue(1),
@@ -48,14 +50,26 @@ test("selects open unclassified issues and needs-info with the latest trusted re
     comment("outsider", "2026-10-04"),
   ];
   issues.push(trusted, untrusted, issue(23, ["bug"]));
+  const root = await fs.mkdtemp(join(tmpdir(), "patchmill-triage-selection-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const state = join(root, "host.json");
+  writeFakeHostState(state, { issues });
+  const workflow = new LabelWorkflowState(new FakeHost(state), labels);
   assert.deepEqual(
-    selectTriageCandidates(issues, labels, ["owner"]).map((i) => i.number),
+    selectTriageCandidates(await workflow.openIssues(), ["owner"]).map(
+      (i) => i.number,
+    ),
     [1, 21, 23],
   );
+  writeFakeHostState(state, {
+    issues: [issue(1, ["queue"]), issue(2, ["agent-ready"])],
+  });
   assert.deepEqual(
     selectTriageCandidates(
-      [issue(1, ["queue"]), issue(2, ["agent-ready"])],
-      { ...labels, ready: "queue" },
+      await new LabelWorkflowState(new FakeHost(state), {
+        ...labels,
+        ready: "queue",
+      }).openIssues(),
       [],
     ).map((i) => i.number),
     [2],
@@ -299,7 +313,10 @@ test("applies a validated result and launches isolated Pi with the configured en
     { issue: 9, label: "agent-ready", applied: true },
   ]);
   assert.deepEqual(f.host.state().issues[0]!.labels, ["agent-ready"]);
-  assert.match(f.host.state().issues[0]!.comments[0]!.body, /Looks clear\.$/);
+  assert.equal(
+    f.host.state().issues[0]!.comments[0]!.body,
+    "<!-- patchmill:kernel-comment -->\n\nIssue #9: agent-ready\n\nLooks clear.",
+  );
   const launch = JSON.parse(
     (await fs.readFile(join(f.root, "launches"), "utf8")).trim(),
   );
@@ -407,7 +424,7 @@ test("dry-run still invokes Pi and reports label and comment without Host writes
   assert.deepEqual(f.host.state().issues, before);
   const preview = progress.find((event) => event.type === "triaged");
   assert.ok(preview);
-  assert.deepEqual(preview.finalLabels, ["agent-ready"]);
+  assert.equal(preview.finalStatus, "ready");
   assert.equal(preview.comment, "Looks clear.");
   assert.equal(preview.applied, false);
   assert.equal(
@@ -473,7 +490,12 @@ test("explicit closed issue bypasses selection; configured needsInfo is not also
   const set = f.host.setLabels.bind(f.host);
   f.host.setLabels = async (n, add, remove) => {
     assert.deepEqual(add, ["question"]);
-    assert.deepEqual(remove.sort(), ["nope", "queue"]);
+    assert.deepEqual(remove.sort(), [
+      "agent-done",
+      "in-progress",
+      "nope",
+      "queue",
+    ]);
     await set(n, add, remove);
   };
   assert.deepEqual(await f.run({ issue: 9 }), [
@@ -483,7 +505,6 @@ test("explicit closed issue bypasses selection; configured needsInfo is not also
     "question",
     "wait",
     "bug",
-    "agent-done",
   ]);
   assert.deepEqual(f.host.state().issues[0]!.comments, []);
 });
@@ -664,4 +685,38 @@ test("GitHub runtime triage retains configured identity alongside authenticated 
     (await f.run()).map((o) => o.issue),
     [1, 2, 3],
   );
+});
+
+// Stale, untrusted, and Patchmill comments must not reopen needsInfo work.
+test("hasReply needs a trusted, non-Patchmill comment after the status", () => {
+  const tracked = {
+    ...issue(9),
+    status: "needsInfo" as const,
+    comments: [{ ...comment("owner", "2026-10-03"), fromPatchmill: true }],
+  };
+  assert.equal(hasReply(tracked, ["owner"]), false);
+  tracked.comments[0]!.fromPatchmill = false;
+  assert.equal(hasReply(tracked, ["other"]), false);
+  assert.equal(hasReply(tracked, ["owner"]), true);
+  assert.equal(
+    hasReply({ ...tracked, statusSince: "2026-10-04" }, ["owner"]),
+    false,
+  );
+  assert.equal(
+    hasReply({ ...tracked, statusSince: "2026-10-03" }, ["owner"]),
+    false,
+  );
+  assert.equal(hasReply({ ...tracked, comments: [] }, ["owner"]), false);
+});
+
+test("a failed triage comment after the swap warns and counts", async (t) => {
+  const f = await setup(t, [block()]);
+  f.host.commentIssue = async () => {
+    throw new Error("comment denied");
+  };
+  assert.deepEqual(await f.run(), [
+    { issue: 9, label: "agent-ready", applied: true },
+  ]);
+  assert.deepEqual(f.host.state().issues[0]!.labels, ["agent-ready"]);
+  assert.match(f.stderr.join("\n"), /Comment failed: comment denied/);
 });

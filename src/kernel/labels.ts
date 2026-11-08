@@ -1,6 +1,5 @@
 import type { LabelsConfig } from "../config/config.ts";
 import type { Host, LabelDefinition } from "../host/types.ts";
-import type { OutcomeLabel } from "./verify.ts";
 
 export function labelCatalog(labels: LabelsConfig): LabelDefinition[] {
   return [
@@ -46,24 +45,4 @@ export async function ensureLabels(
     created.push(label.name);
   }
   return created;
-}
-
-export function claimSwap(labels: LabelsConfig): {
-  add: string[];
-  remove: string[];
-} {
-  return {
-    add: [labels.inProgress],
-    remove: [labels.ready, labels.needsInfo],
-  };
-}
-
-export function releaseSwap(
-  labels: LabelsConfig,
-  outcome: OutcomeLabel,
-): { add: string[]; remove: string[] } {
-  return {
-    add: [labels[outcome]],
-    remove: outcome === "inProgress" ? [] : [labels.inProgress],
-  };
 }

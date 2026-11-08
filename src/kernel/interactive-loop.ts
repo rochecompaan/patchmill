@@ -16,7 +16,7 @@ import {
 import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
 import { planningBranchName } from "./names.ts";
-import { guidanceComment, planningGateComment } from "./comments.ts";
+import { planningGateComment } from "./comments.ts";
 
 export async function continueGate(
   facts: Facts,
@@ -188,11 +188,10 @@ export async function workerGuidance(
   phase: Phase,
   run: PhaseRun,
   verified: Outcome,
-  deps: Pick<RunOnceDeps, "human" | "host">,
-  issue: number,
+  deps: Pick<RunOnceDeps, "human">,
   onBlocked: () => void,
 ): Promise<string | undefined> {
-  const { human, host } = deps;
+  const { human } = deps;
   if (
     !human ||
     phase !== "implementation" ||
@@ -206,6 +205,5 @@ export async function workerGuidance(
   onBlocked();
   const answer = await human.awaitGuidance(run.result.result.summary);
   if (answer.kind === "quit") return undefined;
-  await host.commentIssue(issue, guidanceComment(answer.text));
   return answer.text;
 }

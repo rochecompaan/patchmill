@@ -1,3 +1,4 @@
+import { LabelWorkflowState } from "../../../kernel/label-workflow.ts";
 import { selectRunIssue } from "../../../kernel/issue-selection.ts";
 import { formatRunResult } from "../../../kernel/console.ts";
 import { startConsole } from "../../../console/start.ts";
@@ -84,7 +85,7 @@ export async function main(
     if (runOptions.interactive) {
       const selection = await selectRunIssue({
         host: deps.host,
-        labels: config.labels,
+        workflow: new LabelWorkflowState(deps.host, config.labels),
         ...(runOptions.issue !== undefined ? { issue: runOptions.issue } : {}),
         warn: (issue, message) =>
           output.stderr(`Warning: Issue #${issue}: ${message}`),

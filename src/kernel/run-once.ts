@@ -8,7 +8,8 @@ import type { KernelGit } from "./git.ts";
 import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
-import { claimSwap } from "./labels.ts";
+import type { WorkflowState } from "./workflow-state.ts";
+import { LabelWorkflowState } from "./label-workflow.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
   preparePhasePrompt,
@@ -33,7 +34,6 @@ import { verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { selectRunIssue } from "./issue-selection.ts";
-export { selectIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
@@ -45,6 +45,7 @@ export type RunOnceOptions = {
 };
 export type RunOnceDeps = {
   human?: HumanChannel;
+  workflow?: WorkflowState;
   observe?: (snapshot: RunSnapshot) => void;
   host: Host;
   runner: CommandRunner;
@@ -81,9 +82,10 @@ export async function runOneIssue(
   options: RunOnceOptions,
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
+  const workflow = deps.workflow ?? new LabelWorkflowState(host, config.labels);
   const selection = await selectRunIssue({
     host,
-    labels: config.labels,
+    workflow,
     ...(options.issue !== undefined ? { issue: options.issue } : {}),
     warn: (issue, message) =>
       output.stderr(`Warning: Issue #${issue}: ${message}`),
@@ -160,17 +162,18 @@ export async function runOneIssue(
   let displayFacts: Facts | undefined;
   let totalOutputTokens = 0;
   let published = false;
+  let ask = false;
   const publicationErrors: string[] = [];
-  const publish = async (remove?: string[]) => {
+  const publish = async () => {
     publicationErrors.push(
       ...(await publishAttemptStop({
         host,
-        labels: config.labels,
+        workflow,
         issue: issueNumber,
         issueDir,
         current: { runId, sessions },
         ...(displayFacts ? { facts: displayFacts } : {}),
-        stop: { label, summary, warnings, ...(remove ? { remove } : {}) },
+        stop: { label, summary, warnings, ask },
       })),
     );
   };
@@ -180,11 +183,11 @@ export async function runOneIssue(
       facts,
       issue: issueNumber,
       ...deps,
-      labels: config.labels,
+      workflow,
       human: deps.human!,
       restart,
       publish,
-      refresh: () => collectReviewFacts(host, issueNumber, facts, collect),
+      refresh: () => collectReviewFacts(workflow, issueNumber, facts, collect),
       update: (facts, nextLabel, nextSummary) => {
         published = true;
         displayFacts = facts;
@@ -196,13 +199,9 @@ export async function runOneIssue(
   };
   try {
     try {
-      const claim = claimSwap(config.labels);
-      await host.setLabels(issueNumber, claim.add, claim.remove);
-      let issue = await host.viewIssue(issueNumber);
-      if (
-        issue.state !== "open" ||
-        !issue.labels.includes(config.labels.inProgress)
-      )
+      await workflow.setStatus(issueNumber, { status: "inProgress", runId });
+      let issue = await workflow.issue(issueNumber);
+      if (issue.state !== "open" || issue.status !== "inProgress")
         return { status: "claimed-elsewhere", issue: issueNumber };
       await fs.mkdir(runDir, { recursive: true });
       output.stderr(formatRunStart(issue));
@@ -212,7 +211,7 @@ export async function runOneIssue(
       let resume: { facts: Facts; text: string } | undefined;
       while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
         snapshot.deriving();
-        issue = await host.viewIssue(issueNumber);
+        issue = await workflow.issue(issueNumber);
         const before = resume
           ? { kind: "facts" as const, facts: resume.facts }
           : await provisionWorkspace({ ...deps, config }, issue);
@@ -300,7 +299,7 @@ export async function runOneIssue(
             : {}),
         });
         await snapshot.session();
-        const after = await collect(await host.viewIssue(issueNumber), facts);
+        const after = await collect(await workflow.issue(issueNumber), facts);
         if (after.kind === "ambiguous-branches") {
           summary = `Several issue branches exist: ${after.branches.join(", ")}`;
           break;
@@ -332,15 +331,12 @@ export async function runOneIssue(
           verified.kind === "advance"
         )
           continue;
-        const guidance = await workerGuidance(
-          phase,
-          run,
-          verified,
-          deps,
-          issueNumber,
-          () => snapshot.wait("blocked"),
+        const guidance = await workerGuidance(phase, run, verified, deps, () =>
+          snapshot.wait("blocked"),
         );
         if (guidance !== undefined) {
+          await fs.mkdir(runDir, { recursive: true });
+          await fs.appendFile(join(runDir, "guidance.md"), guidance + "\n\n");
           resume = { facts: after.facts, text: guidance };
           sinceHuman = 0;
           continue;
@@ -349,6 +345,13 @@ export async function runOneIssue(
           label = verified.label;
           summary = verified.comment;
           warnings = verified.warnings;
+          ask =
+            label === "needsInfo" &&
+            !deps.human &&
+            !session.aborted &&
+            !session.timedOut &&
+            result.ok &&
+            result.result.status === "needs-input";
           if (phase === "planning")
             summary = planningStopSummary(summary, facts, after.facts);
           if (
@@ -378,7 +381,7 @@ export async function runOneIssue(
     } catch (error) {
       label = "needsInfo";
       summary = error instanceof Error ? error.message : String(error);
-      if (published) await publish([config.labels.done]);
+      if (published) await publish();
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);

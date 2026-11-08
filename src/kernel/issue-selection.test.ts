@@ -6,6 +6,7 @@ import { test, type TestContext } from "node:test";
 import { FakeHost, writeFakeHostState } from "../../test-support/fake-host.ts";
 import { DEFAULT_CONFIG } from "../config/config.ts";
 import type { Issue, IssueDependency } from "../host/types.ts";
+import { LabelWorkflowState } from "./label-workflow.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 
 function issue(number: number, labels = ["agent-ready"]): Issue {
@@ -38,7 +39,7 @@ async function setup(t: TestContext, dependencies: IssueDependency[] = []) {
     select: (n?: number) =>
       selectRunIssue({
         host,
-        labels: DEFAULT_CONFIG.labels,
+        workflow: new LabelWorkflowState(host, DEFAULT_CONFIG.labels),
         ...(n === undefined ? {} : { issue: n }),
         warn: (n, reason) => warnings.push(`#${n}: ${reason}`),
       }),

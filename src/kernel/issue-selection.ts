@@ -1,37 +1,24 @@
-import type { LabelsConfig } from "../config/config.ts";
-import type { Host, Issue } from "../host/types.ts";
-
-export function selectIssue(
-  issues: Issue[],
-  labels: LabelsConfig,
-  explicit?: number,
-): Issue | undefined {
-  const eligible = issues.filter((i) => i.state === "open");
-  if (explicit !== undefined)
-    return eligible.find((i) => i.number === explicit);
-  return eligible
-    .filter(
-      (i) =>
-        i.labels.includes(labels.ready) || i.labels.includes(labels.inProgress),
-    )
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
-}
+import type { TrackedIssue, WorkflowState } from "./workflow-state.ts";
+import type { Host } from "../host/types.ts";
 
 export type RunIssueSelection =
-  | { kind: "selected"; issue: Issue }
+  | { kind: "selected"; issue: TrackedIssue }
   | { kind: "none" }
   | { kind: "refused"; issue: number; reason: string };
 
 export async function selectRunIssue(input: {
   host: Host;
-  labels: LabelsConfig;
+  workflow: WorkflowState;
   issue?: number;
   warn: (issue: number, message: string) => void;
 }): Promise<RunIssueSelection> {
-  const { host, labels, issue: explicit, warn } = input;
-  let issues: Issue[];
+  const { host, workflow, issue: explicit, warn } = input;
+  let issues: TrackedIssue[];
   try {
-    issues = await listRunIssues(host, explicit);
+    issues =
+      explicit === undefined
+        ? await workflow.openIssues()
+        : [await workflow.issue(explicit)];
   } catch (error) {
     if (explicit === undefined) throw error;
     return { kind: "refused", issue: explicit, reason: String(error) };
@@ -39,10 +26,14 @@ export async function selectRunIssue(input: {
   const candidates =
     explicit === undefined
       ? issues
-          .filter((issue) => selectIssue([issue], labels) !== undefined)
+          .filter(
+            (issue) =>
+              issue.state === "open" &&
+              (issue.status === "ready" || issue.status === "inProgress"),
+          )
           .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
-      : [selectIssue(issues, labels, explicit)].filter(
-          (issue) => issue !== undefined,
+      : issues.filter(
+          (issue) => issue.state === "open" && issue.number === explicit,
         );
   for (const issue of candidates) {
     let reason: string;
@@ -66,13 +57,4 @@ export async function selectRunIssue(input: {
         issue: explicit,
         reason: "Issue is missing or closed.",
       };
-}
-
-export async function listRunIssues(
-  host: Host,
-  issue?: number,
-): Promise<Issue[]> {
-  return issue === undefined
-    ? host.listOpenIssues()
-    : [await host.viewIssue(issue)];
 }

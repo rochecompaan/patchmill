@@ -3,10 +3,6 @@ import type { TriageProgressEvent } from "../../../kernel/triage.ts";
 const DIVIDER =
   "──────────────────────────────────────────────────────────────────────────────";
 
-function formatLabels(labels: string[]): string {
-  return labels.length > 0 ? labels.join(", ") : "(none)";
-}
-
 export function createTriageProgressReporter(options: {
   command: string;
   dryRun: boolean;
@@ -28,9 +24,7 @@ export function createTriageProgressReporter(options: {
         if (event.issue.url) write(`  link: ${event.issue.url}`);
         write(`  log: ${event.logPath}`);
       } else {
-        write(
-          `  labels: ${formatLabels(event.previousLabels)} -> ${formatLabels(event.finalLabels)}`,
-        );
+        write(`  status: ${event.previousStatus} -> ${event.finalStatus}`);
         if (event.blockedBy.length) {
           write(
             `  dependencies ${event.applied ? "added" : "to add"}: ${event.blockedBy.map((n) => `#${n}`).join(", ")}`,

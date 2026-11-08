@@ -2,12 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_CONFIG, type LabelsConfig } from "../config/config.ts";
 import type { Host, LabelDefinition } from "../host/types.ts";
-import {
-  claimSwap,
-  ensureLabels,
-  labelCatalog,
-  releaseSwap,
-} from "./labels.ts";
+import { ensureLabels, labelCatalog } from "./labels.ts";
 
 const labels: LabelsConfig = {
   ready: "queue",
@@ -107,26 +102,6 @@ test("ensureLabels propagates list and create errors without continuing", async 
   );
   assert.equal(attempts, 1);
 });
-
-test("claimSwap changes only the claim labels", () => {
-  assert.deepEqual(claimSwap(labels), {
-    add: ["working"],
-    remove: ["queue", "question"],
-  });
-});
-
-for (const [outcome, name] of [
-  ["done", "finished"],
-  ["needsInfo", "question"],
-  ["inProgress", "working"],
-] as const) {
-  test(`releaseSwap maps ${outcome} and removes only inProgress`, () => {
-    assert.deepEqual(releaseSwap(labels, outcome), {
-      add: [name],
-      remove: outcome === "inProgress" ? [] : ["working"],
-    });
-  });
-}
 
 test("two roles sharing a missing label create and return that name once", async () => {
   const shared = { ...labels, ready: "shared", unsuitable: "shared" };

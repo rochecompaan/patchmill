@@ -520,22 +520,33 @@ test("enumerates all GitHub issue pages, excluding PRs, so oldest selection and 
     code: 0,
     stderr: "",
     stdout: JSON.stringify(
-      args.includes("--paginate") && args.includes("--slurp")
-        ? pages
-        : pages[0],
+      args.some((arg) => arg.includes("/dependencies/"))
+        ? [[]]
+        : args.includes("--paginate") && args.includes("--slurp")
+          ? pages
+          : pages[0],
     ),
   });
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
   const issues = await host.listOpenIssues();
   assert.equal(issues.length, 201);
-  const { selectIssue } = await import("../kernel/run-once.ts");
+  const { selectRunIssue } = await import("../kernel/issue-selection.ts");
+  const { LabelWorkflowState } = await import("../kernel/label-workflow.ts");
   const { selectTriageCandidates } = await import("../kernel/triage.ts");
   const { DEFAULT_CONFIG } = await import("../config/config.ts");
-  assert.equal(selectIssue(issues, DEFAULT_CONFIG.labels)?.number, 201);
+  const workflow = new LabelWorkflowState(host, DEFAULT_CONFIG.labels);
+  const selection = await selectRunIssue({ host, workflow, warn: () => {} });
+  assert.equal(
+    selection.kind === "selected" ? selection.issue.number : undefined,
+    201,
+  );
   assert.equal(
     selectTriageCandidates(
-      issues.map((i) => ({ ...i, labels: [] })),
-      DEFAULT_CONFIG.labels,
+      (await workflow.openIssues()).map((i) => ({
+        ...i,
+        labels: [],
+        status: "untriaged",
+      })),
       [],
     ).length,
     201,

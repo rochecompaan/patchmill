@@ -39,6 +39,18 @@ async function harness(t: TestContext) {
     if (args[0] === "--version" || args.join(" ") === "auth status")
       return ok();
     if (args.join(" ") === "api user --jq .login") return ok("fake-user");
+    if (args.join(" ") === "label list --limit 200 --json name")
+      return ok(
+        JSON.stringify(
+          [
+            "queue",
+            "working",
+            "needs-info",
+            "agent-done",
+            "agent-unsuitable",
+          ].map((name) => ({ name })),
+        ),
+      );
     if (args[0] === "issue" && ["view", "edit"].includes(args[1]!)) {
       // Reading and resetting labels must both run inside the critical section.
       await assert.rejects(acquireLock(lockPath), LockHeldError);
@@ -67,9 +79,20 @@ async function harness(t: TestContext) {
         "--add-label",
         "queue",
         "--remove-label",
-        "working",
+        "working,needs-info,agent-done,agent-unsuitable",
       ]);
-      labels = [...labels.filter((label) => label !== "working"), "queue"];
+      labels = [
+        ...labels.filter(
+          (label) =>
+            ![
+              "working",
+              "needs-info",
+              "agent-done",
+              "agent-unsuitable",
+            ].includes(label),
+        ),
+        "queue",
+      ];
       return ok();
     }
     throw new Error(`Unexpected operation: ${args.join(" ")}`);

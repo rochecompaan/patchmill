@@ -1,5 +1,5 @@
 import type { Host, Issue, Repository } from "../host/types.ts";
-import type { LabelsConfig } from "../config/config.ts";
+import type { WorkflowState } from "./workflow-state.ts";
 import type { Facts, FactsResult } from "./facts.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import { derivePhase } from "./phase.ts";
@@ -30,18 +30,18 @@ export async function reviewWait(input: {
   facts: Facts;
   issue: number;
   host: Host;
-  labels: LabelsConfig;
+  workflow: WorkflowState;
   human: HumanChannel;
   runner: CommandRunner;
   repoRoot: string;
   restart: boolean;
   refresh: () => Promise<Facts>;
-  publish: (remove?: string[]) => Promise<void>;
+  publish: () => Promise<void>;
   update: (facts: Facts, label: "done" | "needsInfo", summary: string) => void;
 }): Promise<void> {
-  const { issue, host, labels, human } = input;
+  const { issue, host, workflow, human } = input;
   let facts = input.facts;
-  if (input.restart) await host.setLabels(issue, [], [labels.inProgress]);
+  if (input.restart) await workflow.setStatus(issue, { status: "done" });
   else await input.publish();
   input.update(facts, "done", "The pull request was verified.");
   while (
@@ -69,19 +69,19 @@ export async function reviewWait(input: {
       "needsInfo",
       `The pull request no longer proves implementation completion for issue #${issue}.`,
     );
-    await input.publish([labels.done]);
+    await input.publish();
     return;
   }
 }
 
 /** Re-observe the same implementation branch while the lock remains held. */
 export async function collectReviewFacts(
-  host: Host,
+  workflow: WorkflowState,
   issue: number,
   facts: Facts,
   collect: (issue: Issue, workspace: Facts) => Promise<FactsResult>,
 ): Promise<Facts> {
-  const result = await collect(await host.viewIssue(issue), facts);
+  const result = await collect(await workflow.issue(issue), facts);
   if (result.kind !== "facts") throw new Error("Several issue branches exist.");
   return result.facts;
 }
