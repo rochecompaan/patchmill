@@ -1,24 +1,22 @@
 import { resolve } from "node:path";
 import { loadConfig } from "../../../config/config.ts";
-import {
-  STATE_DIR,
-  StateStore,
-  type WorkflowStatus,
-} from "../../../state/store.ts";
+import { STATE_DIR, StateStore } from "../../../state/store.ts";
+import { createHost } from "../../../host/factory.ts";
+import { runCommand } from "../../../process/command.ts";
+import { readBlockers, type BlockerHost } from "./blockers.ts";
+import { formatter, type StatusRow } from "./format.ts";
 import type { CliOutput } from "../../main.ts";
 
 const HELP = `Usage: patchmill status [--all | --issue N]
-Show local workflow state without syncing. Closed issues are hidden unless --all is passed.`;
+Show local workflow state. Blockers of ready and in-progress issues are read live from the issue tracker. Closed issues are hidden unless --all is passed.`;
 
-const GROUP_ORDER: WorkflowStatus[] = [
-  "inProgress",
-  "needsInfo",
-  "ready",
-  "done",
-  "unsuitable",
-];
-
-type Options = { repoRoot?: string; output?: CliOutput };
+type Options = {
+  repoRoot?: string;
+  output?: CliOutput;
+  host?: BlockerHost;
+  color?: boolean;
+  timeZone?: string;
+};
 
 export async function main(
   args: string[] = process.argv.slice(2),
@@ -57,6 +55,18 @@ export async function main(
     const store = new StateStore(resolve(repoRoot, STATE_DIR), (message) =>
       output.stderr(`Warning: ${message}`),
     );
+    const format = formatter(
+      options.color ??
+        (Boolean(process.stdout.isTTY) && !("NO_COLOR" in process.env)),
+      options.timeZone,
+    );
+    const blockersFor = (candidates: number[]) =>
+      readBlockers(
+        candidates,
+        () => options.host ?? createHost(config, runCommand, repoRoot),
+        store,
+        (message) => output.stderr(`Warning: ${message}`),
+      );
     if (showIssue) {
       const n = Number(args[1]);
       const issue = await store.readIssue(n);
@@ -67,47 +77,35 @@ export async function main(
         return 1;
       }
       const changes = await store.readStatus(n);
-      output.stdout(`#${n} ${issue.title}`);
-      output.stdout(`State: ${issue.state}`);
-      output.stdout(`Status: ${changes.at(-1)?.status ?? "untriaged"}`);
-      if (changes.length === 0) output.stdout("No status changes.");
-      for (const change of changes) {
-        output.stdout(`${change.at} ${change.status}`);
-        if (change.runId !== undefined) output.stdout(`  run: ${change.runId}`);
-        if (change.summary !== undefined)
-          output.stdout(`  summary: ${change.summary}`);
-        if (change.cost !== undefined) output.stdout(`  cost: ${change.cost}`);
-        for (const warning of change.warnings ?? [])
-          output.stdout(`  warning: ${warning}`);
-        if (change.questionUrl !== undefined)
-          output.stdout(`  question: ${change.questionUrl}`);
-      }
+      const blockers = await blockersFor(issue.state === "open" ? [n] : []);
+      for (const line of format.issue(issue, changes, blockers))
+        output.stdout(line);
       return 0;
     }
     const cursor = await store.readCursor();
     output.stdout(
-      cursor ? `Synced up to ${cursor.syncedUpTo}` : "Not synced yet.",
+      cursor ? format.synced(cursor.syncedUpTo) : "Not synced yet.",
     );
     const { issues, damaged } = await store.listIssues();
     for (const n of damaged)
       output.stderr(`Warning: damaged issue copy ${store.issuePath(n)}`);
-    const groups = new Map<WorkflowStatus, string[]>();
+    const rows: StatusRow[] = [];
     for (const issue of issues) {
       if (!showAll && issue.state === "closed") continue;
       const last = (await store.readStatus(issue.number)).at(-1);
       if (!last) continue;
-      const rows = groups.get(last.status) ?? [];
-      rows.push(`  #${issue.number} ${issue.title} (${last.at})`);
-      groups.set(last.status, rows);
+      rows.push({ issue, change: last });
     }
-    if (groups.size === 0)
-      output.stdout("No issues with local workflow state.");
-    for (const status of GROUP_ORDER) {
-      const rows = groups.get(status);
-      if (!rows) continue;
-      output.stdout(status);
-      for (const row of rows) output.stdout(row);
-    }
+    const candidates = rows
+      .filter(
+        ({ issue, change }) =>
+          issue.state === "open" &&
+          (change.status === "ready" || change.status === "inProgress"),
+      )
+      .map(({ issue }) => issue.number);
+    const blockers = await blockersFor(candidates);
+    output.stdout("");
+    for (const line of format.list(rows, blockers)) output.stdout(line);
     return 0;
   } catch (error) {
     output.stderr(error instanceof Error ? error.message : String(error));

@@ -4,7 +4,7 @@ import { STATE_DIR, type StateStore, type SyncCursor } from "./store.ts";
 export const SYNC_OVERLAP_MS = 5 * 60_000;
 
 export async function checkStateRepository(
-  host: Host,
+  host: Pick<Host, "repository">,
   store: StateStore,
 ): Promise<{ cursor: SyncCursor | undefined; repository: string | undefined }> {
   const cursor = await store.readCursor();
