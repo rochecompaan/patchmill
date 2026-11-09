@@ -150,22 +150,20 @@ export function parseConfig(raw: unknown): PatchmillConfig {
     }
   }
   walk(raw, config, "");
-  if (config.workflow.stateTracking === "local") {
-    // Preserve diagnostic priority independently of status display order.
-    const labelKeys = Object.keys(DEFAULT_CONFIG.labels);
-    const keys = [...WORKFLOW_STATUSES].sort(
-      (a, b) => labelKeys.indexOf(a) - labelKeys.indexOf(b),
-    );
-    for (const [index, first] of keys.entries()) {
-      for (const second of keys.slice(index + 1)) {
-        if (
-          config.labels[first].toLowerCase() ===
-          config.labels[second].toLowerCase()
-        ) {
-          throw new ConfigError(
-            `workflow.stateTracking "local" requires distinct label names: labels.${first} and labels.${second} are both "${config.labels[first]}".`,
-          );
-        }
+  // Preserve diagnostic priority independently of status display order.
+  const labelKeys = Object.keys(DEFAULT_CONFIG.labels);
+  const keys = [...WORKFLOW_STATUSES].sort(
+    (a, b) => labelKeys.indexOf(a) - labelKeys.indexOf(b),
+  );
+  for (const [index, first] of keys.entries()) {
+    for (const second of keys.slice(index + 1)) {
+      if (
+        config.labels[first].toLowerCase() ===
+        config.labels[second].toLowerCase()
+      ) {
+        throw new ConfigError(
+          `Workflow labels must be distinct: labels.${first} and labels.${second} are both "${config.labels[first]}".`,
+        );
       }
     }
   }

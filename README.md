@@ -176,6 +176,10 @@ keys fail by name. `git.baseBranch: null` uses the remote default branch.
 }
 ```
 
+Workflow label names must be distinct in every state-tracking mode. The check is
+case-insensitive. Local mode still uses these names to interpret agent triage
+results, but does not write labels upstream.
+
 `init` leaves valid existing configuration unchanged and rejects invalid
 configuration. Retired spec/plan review-label settings and string-valued
 `labels.blocked` are accepted but ignored. New configuration omits them. Other

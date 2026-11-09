@@ -35,27 +35,27 @@ test("stateTracking rejects other values", () => {
   );
 });
 
-// Ambiguous label outcomes must not suppress a local needsInfo question.
-for (const needsInfo of ["shared", "SHARED"]) {
-  test(`local state rejects duplicate label names (${needsInfo}) but labels mode accepts them`, () => {
-    const labels = {
-      needsInfo,
-      ready: "shared",
-      done: "other",
-      inProgress: "other",
-    };
-    assert.throws(
-      () => parseConfig({ workflow: { stateTracking: "local" }, labels }),
-      new ConfigError(
-        'workflow.stateTracking "local" requires distinct label names: labels.ready and labels.needsInfo are both "shared".',
-      ),
-    );
-    assert.equal(
-      parseConfig({ workflow: { stateTracking: "labels" }, labels }).labels
-        .needsInfo,
-      needsInfo,
-    );
-  });
+// Ambiguous outcomes must be rejected regardless of the state backend.
+for (const mode of ["local", "labels"] as const) {
+  for (const needsInfo of ["shared", "SHARED"]) {
+    test(`${mode} rejects duplicate workflow labels (${needsInfo})`, () => {
+      assert.throws(
+        () =>
+          parseConfig({
+            workflow: { stateTracking: mode },
+            labels: {
+              needsInfo,
+              ready: "shared",
+              done: "other",
+              inProgress: "other",
+            },
+          }),
+        new ConfigError(
+          'Workflow labels must be distinct: labels.ready and labels.needsInfo are both "shared".',
+        ),
+      );
+    });
+  }
 }
 
 test("parseConfig fills an empty config with defaults", () => {
