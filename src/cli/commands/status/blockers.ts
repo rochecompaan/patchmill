@@ -1,4 +1,5 @@
 import type { Host } from "../../../host/types.ts";
+import { blockerNote } from "../../../kernel/workflow-state.ts";
 import { cleanValue } from "../../../kernel/terminal-layout.ts";
 import type { StateStore } from "../../../state/store.ts";
 import { checkStateRepository } from "../../../state/sync.ts";
@@ -30,13 +31,23 @@ export async function readBlockers(
         const n = candidates[next++]!;
         try {
           const dependencies = await host.listIssueDependencies(n);
-          const open = dependencies
-            .filter((d) => d.state === "open")
-            .map((d) =>
-              d.repository.toLowerCase() === repository.toLowerCase()
-                ? `#${d.number}`
-                : `${cleanValue(d.repository)}#${d.number}`,
-            );
+          const open = await Promise.all(
+            dependencies
+              .filter((d) => d.state === "open")
+              .map(async (d) => {
+                if (d.repository.toLowerCase() !== repository.toLowerCase())
+                  return `${cleanValue(d.repository)}#${d.number}`;
+                let note = "";
+                try {
+                  note = blockerNote(
+                    (await store.readStatus(d.number)).at(-1)?.status,
+                  );
+                } catch {
+                  // Status is best effort; the dependency still blocks work.
+                }
+                return `#${d.number}${note}`;
+              }),
+          );
           if (open.length) results.set(n, `Blocked by ${open.join(", ")}`);
         } catch (error) {
           results.set(n, "Blockers unknown");

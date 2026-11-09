@@ -36,6 +36,12 @@ export interface WorkflowState {
   setStatus(n: number, update: StatusUpdate): Promise<string[]>;
 }
 
+export function blockerNote(status: string | undefined): string {
+  if (status === "done") return " (Done, PR not merged)";
+  if (!WORKFLOW_STATUSES.some((known) => known === status)) return "";
+  return ` (${WORKFLOW_STATUS_TITLES[status as WorkflowStatus]})`;
+}
+
 export const WORKFLOW_STATUS_TITLES: Record<WorkflowStatus, string> = {
   inProgress: "In Progress",
   needsInfo: "Needs Info",

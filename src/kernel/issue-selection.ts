@@ -1,4 +1,8 @@
-import type { TrackedIssue, WorkflowState } from "./workflow-state.ts";
+import {
+  blockerNote,
+  type TrackedIssue,
+  type WorkflowState,
+} from "./workflow-state.ts";
 import type { Host } from "../host/types.ts";
 
 export type RunIssueSelection =
@@ -42,7 +46,31 @@ export async function selectRunIssue(input: {
         (dependency) => dependency.state === "open",
       );
       if (!open.length) return { kind: "selected", issue };
-      reason = `Issue #${issue.number} is blocked by: ${open.map((dependency) => `${dependency.repository}#${dependency.number}`).join(", ")}.`;
+      let repository: string | undefined;
+      if (explicit !== undefined) {
+        try {
+          const { owner, repo } = await host.repository();
+          repository = `${owner}/${repo}`.toLowerCase();
+        } catch {
+          // Repository lookup is best effort; still refuse blocked work.
+        }
+      }
+      const blockers = await Promise.all(
+        open.map(async (dependency) => {
+          let note = "";
+          if (repository === dependency.repository.toLowerCase()) {
+            try {
+              note = blockerNote(
+                (await workflow.issue(dependency.number)).status,
+              );
+            } catch {
+              // Status lookup must not hide the blocker or prevent refusal.
+            }
+          }
+          return `${dependency.repository}#${dependency.number}${note}`;
+        }),
+      );
+      reason = `Issue #${issue.number} is blocked by: ${blockers.join(", ")}.`;
     } catch (error) {
       reason = `Cannot read dependencies for issue #${issue.number}: ${error instanceof Error ? error.message : String(error)}`;
       warn(issue.number, reason);

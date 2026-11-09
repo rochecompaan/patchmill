@@ -300,7 +300,7 @@ test("ready and in-progress issues show open blockers aligned with sanitized tit
     "",
     "In Progress (1)",
     "  #12  API    3 Sep 2026, 19:05",
-    "       Blocked by #3",
+    "       Blocked by #3 (Ready)",
     "",
     "Ready (1)",
     "  #3   Login  3 Sep 2026, 19:05",
@@ -308,6 +308,47 @@ test("ready and in-progress issues show open blockers aligned with sanitized tit
   ]);
   assert.equal(h.calls.filter((c) => c === "repository").length, 1);
   assert.ok(h.stdout.every((line) => !line.includes("\u001b")));
+});
+
+test("status annotates same-repository blockers with their last workflow status", async (t) => {
+  const h = await readyIssues(t);
+  for (const [n, status] of [
+    [4, "done"],
+    [5, "inProgress"],
+    [7, "done"],
+  ] as const) {
+    await h.store.appendStatus(n, {
+      at: "2026-09-03T19:05:00Z",
+      status: "ready",
+    });
+    await h.store.appendStatus(n, { at: "2026-09-03T19:06:00Z", status });
+  }
+  h.dependencies.set(3, [
+    { repository: "OWNER/REPO", number: 4, state: "open" },
+    { repository: "owner/repo", number: 5, state: "open" },
+    { repository: "other/project", number: 7, state: "open" },
+    { repository: "owner/repo", number: 8, state: "open" },
+  ]);
+  const blockers =
+    "Blocked by #4 (Done, PR not merged), #5 (In Progress), other/project#7, #8";
+  assert.equal(await h.run(), 0);
+  assert.ok(h.stdout.includes(`       ${blockers}`));
+  assert.equal(await h.run(["--issue", "3"]), 0);
+  assert.ok(h.stdout.includes(blockers));
+});
+
+test("status keeps a blocker with corrupt middle status records unannotated", async (t) => {
+  const h = await readyIssues(t);
+  await h.store.appendStatus(4, { at: "2026-09-03T19:05:00Z", status: "done" });
+  const path = join(h.stateRoot, "status/4.jsonl");
+  const record = await readFile(path, "utf8");
+  await writeFile(path, record + "{broken\n" + record);
+  h.dependencies.set(3, [
+    { repository: "owner/repo", number: 4, state: "open" },
+  ]);
+  assert.equal(await h.run(), 0);
+  assert.ok(h.stdout.includes("       Blocked by #4"));
+  assert.deepEqual(h.stderr, []);
 });
 
 test("status stays offline without selectable shown issues", async (t) => {
