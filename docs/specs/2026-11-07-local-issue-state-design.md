@@ -460,11 +460,12 @@ guess._
 - **Missing issue file.** If `sync.json` exists but `issues/<n>.json` is missing
   for an issue Patchmill needs, refresh that issue from upstream.
 - **Corrupt issue file or cursor.** Reads check JSON syntax and record fields.
-  Cursor fields must be non-empty strings. Issue fields must have the expected
-  types, an open or closed state, and a positive safe issue number matching the
-  file name. Reads treat invalid records as missing. The next sync is a full
-  sync, which rebuilds `issues/` before any work is selected (see Damaged copies
-  under Sync).
+  The cursor's repository must be a non-empty string, and its two timestamps
+  must parse as dates. GitHub's empty issue description (`null`) is stored as an
+  empty body. Issue fields must have the expected types, an open or closed
+  state, and a positive safe issue number matching the file name. Reads treat
+  invalid records as missing. The next sync is a full sync, which rebuilds
+  `issues/` before any work is selected (see Damaged copies under Sync).
 - **Corrupt status file.** Complete records are never repaired or rewritten. If
   the last line has no trailing newline, it is a write cut off by a crash: reads
   ignore it and warn with the file path, and the next append discards it. Any

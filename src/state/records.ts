@@ -14,8 +14,12 @@ function strings(value: unknown): value is string[] {
 export function isCursor(value: unknown): value is SyncCursor {
   return (
     record(value) &&
-    ["repository", "fullSyncAt", "syncedUpTo"].every(
-      (key) => typeof value[key] === "string" && value[key].length > 0,
+    typeof value.repository === "string" &&
+    value.repository.length > 0 &&
+    // Sync computes the next incremental boundary from these timestamps.
+    ["fullSyncAt", "syncedUpTo"].every(
+      (key) =>
+        typeof value[key] === "string" && !Number.isNaN(Date.parse(value[key])),
     )
   );
 }

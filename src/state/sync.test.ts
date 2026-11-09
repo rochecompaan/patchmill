@@ -337,6 +337,27 @@ test("invalid cursor fields trigger full sync and a valid replacement", async (t
   );
 });
 
+// A cursor with unusable timestamps cannot bound an incremental sync, so it must rebuild.
+test("invalid cursor timestamps trigger full sync and a valid replacement", async (t) => {
+  const f = await fixture(t);
+  await f.sync();
+  await fs.writeFile(
+    join(f.root, "issues/sync.json"),
+    JSON.stringify({
+      repository: "fixture/repo",
+      fullSyncAt: "not-a-date",
+      syncedUpTo: "not-a-date",
+    }),
+  );
+  f.setTime(later);
+  await f.sync();
+  assert.deepEqual(await f.store.readCursor(), {
+    repository: "fixture/repo",
+    fullSyncAt: later,
+    syncedUpTo: later,
+  });
+});
+
 test("invalid issue fields are damaged and restored by full sync", async (t) => {
   const f = await fixture(t);
   await f.sync();

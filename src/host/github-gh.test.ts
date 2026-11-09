@@ -609,6 +609,29 @@ test("github issue sync lists all states, drops pull requests, and passes since"
   }
 });
 
+// GitHub REST returns null for an empty description; a null body would make the cached copy damaged.
+test("github issue sync maps an empty description to an empty body", async () => {
+  const raw = {
+    number: 12,
+    title: "Fix",
+    body: null,
+    labels: [],
+    state: "open",
+    html_url: "https://host/12",
+    user: { login: "author" },
+    created_at: "2026-11-01T00:00:00Z",
+  };
+  const runner = recordingRunner([
+    { match: /gh api/, result: { stdout: JSON.stringify([[raw]]) } },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  for (const issues of [
+    await host.listIssuesSince(),
+    await host.listOpenIssues(),
+  ])
+    assert.equal(issues[0]!.body, "");
+});
+
 test("github comment sync maps issue number and url", async () => {
   const raw = {
     issue_url: "https://api.github.com/repos/o/r/issues/12",

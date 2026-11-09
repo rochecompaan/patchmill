@@ -60,7 +60,8 @@ const mapIssue = (raw: RawIssue): Issue => ({
     author: comment.author.login,
   })),
 });
-type ApiIssue = Omit<RawIssue, "comments"> & {
+type ApiIssue = Omit<RawIssue, "comments" | "body"> & {
+  body: string | null;
   user: { login: string };
   html_url: string;
   created_at: string;
@@ -73,6 +74,8 @@ function mapApiIssues(stdout: string): Issue[] {
     .map((raw) =>
       mapIssue({
         ...raw,
+        // GitHub REST returns null for an empty description.
+        body: raw.body ?? "",
         author: raw.user,
         comments: [],
         url: raw.html_url,

@@ -344,8 +344,8 @@ test("repository mismatch warns once and skips dependency reads", async (t) => {
   const h = await readyIssues(t);
   await h.store.writeCursor({
     repository: "wrong/repo",
-    fullSyncAt: "x",
-    syncedUpTo: "x",
+    fullSyncAt: "2026-09-03T19:05:00Z",
+    syncedUpTo: "2026-09-03T19:05:00Z",
   });
   assert.equal(await h.run(), 0);
   assert.equal(
