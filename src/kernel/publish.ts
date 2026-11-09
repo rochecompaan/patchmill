@@ -16,27 +16,6 @@ export type StopPublication = {
   question?: string;
 };
 
-/** Record the stop, returning required-write errors and optional-comment warnings. */
-export async function publishStop(
-  workflow: WorkflowState,
-  issue: number,
-  runId: string,
-  stop: StopPublication,
-): Promise<string[]> {
-  try {
-    return await workflow.setStatus(issue, {
-      status: stop.label,
-      runId,
-      summary: stop.summary,
-      cost: stop.cost,
-      warnings: stop.warnings,
-      ...(stop.question !== undefined ? { question: stop.question } : {}),
-    });
-  } catch (error) {
-    return [errorMessage(error)];
-  }
-}
-
 /** Publish the current attempt's cost before its stop, including before review. */
 export async function publishAttemptStop(input: {
   host: Host;
@@ -64,5 +43,16 @@ export async function publishAttemptStop(input: {
       stop.warnings.push(`PR cost report unavailable: ${errorMessage(error)}`);
     }
   }
-  return publishStop(workflow, issue, current.runId, { ...stop, cost });
+  try {
+    return await workflow.setStatus(issue, {
+      status: stop.label,
+      runId: current.runId,
+      summary: stop.summary,
+      cost,
+      warnings: stop.warnings,
+      ...(stop.question !== undefined ? { question: stop.question } : {}),
+    });
+  } catch (error) {
+    return [errorMessage(error)];
+  }
 }

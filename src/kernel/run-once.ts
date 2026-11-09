@@ -19,9 +19,10 @@ import {
   workerGuidance,
   phaseDecision,
   planningStopSummary,
+  workerQuestion,
 } from "./interactive-loop.ts";
 import { isReviewWait, reviewWait, collectReviewFacts } from "./review-wait.ts";
-import { publishAttemptStop } from "./publish.ts";
+import { publishAttemptStop, type StopPublication } from "./publish.ts";
 import {
   formatRunResult,
   formatRunStart,
@@ -156,13 +157,14 @@ export async function runOneIssue(
     status: string;
     planningApproval?: "pr" | "no-pr";
   }[] = [];
-  let label: OutcomeLabel = "needsInfo";
-  let summary = "The session limit was reached.";
-  let warnings: string[] = [];
+  let stop: Omit<StopPublication, "cost"> = {
+    label: "needsInfo",
+    summary: "The session limit was reached.",
+    warnings: [],
+  };
   let displayFacts: Facts | undefined;
   let totalOutputTokens = 0;
   let published = false;
-  let question: string | undefined;
   const publicationErrors: string[] = [];
   const publish = async () => {
     publicationErrors.push(
@@ -173,12 +175,7 @@ export async function runOneIssue(
         issueDir,
         current: { runId, sessions },
         ...(displayFacts ? { facts: displayFacts } : {}),
-        stop: {
-          label,
-          summary,
-          warnings,
-          ...(question !== undefined ? { question } : {}),
-        },
+        stop,
       })),
     );
   };
@@ -197,8 +194,7 @@ export async function runOneIssue(
         published = true;
         displayFacts = facts;
         snapshot.facts(facts);
-        label = nextLabel;
-        summary = nextSummary;
+        stop = { ...stop, label: nextLabel, summary: nextSummary };
       },
     });
   };
@@ -221,7 +217,7 @@ export async function runOneIssue(
           ? { kind: "facts" as const, facts: resume.facts }
           : await provisionWorkspace({ ...deps, config }, issue);
         if (before.kind === "ambiguous-branches") {
-          summary = `Several issue branches exist: ${before.branches.join(", ")}`;
+          stop.summary = `Several issue branches exist: ${before.branches.join(", ")}`;
           break;
         }
         const facts = before.facts;
@@ -229,14 +225,17 @@ export async function runOneIssue(
         snapshot.facts(facts);
         const decision = phaseDecision(facts, feedback, !!resume);
         if (decision.kind === "stop") {
-          ({ label, summary } = derivedStop(
-            facts,
-            issueNumber,
-            await host.repository(),
-            decision.label,
-          ));
+          stop = {
+            ...stop,
+            ...derivedStop(
+              facts,
+              issueNumber,
+              await host.repository(),
+              decision.label,
+            ),
+          };
           if (
-            label === "inProgress" &&
+            stop.label === "inProgress" &&
             (await continueGate(facts, deps.human, () =>
               snapshot.wait("gate-wait"),
             ))
@@ -257,7 +256,7 @@ export async function runOneIssue(
         }
         const phase = decision.phase;
         if (options.planOnly && phase === "implementation") {
-          summary = "planning complete";
+          stop.summary = "planning complete";
           break;
         }
         const { launch, launcher } = await preparePhasePrompt(
@@ -306,7 +305,7 @@ export async function runOneIssue(
         await snapshot.session();
         const after = await collect(await workflow.issue(issueNumber), facts);
         if (after.kind === "ambiguous-branches") {
-          summary = `Several issue branches exist: ${after.branches.join(", ")}`;
+          stop.summary = `Several issue branches exist: ${after.branches.join(", ")}`;
           break;
         }
         displayFacts = after.facts;
@@ -340,29 +339,29 @@ export async function runOneIssue(
           snapshot.wait("blocked"),
         );
         if (guidance !== undefined) {
-          await fs.mkdir(runDir, { recursive: true });
           await fs.appendFile(join(runDir, "guidance.md"), guidance + "\n\n");
           resume = { facts: after.facts, text: guidance };
           sinceHuman = 0;
           continue;
         }
         if (verified.kind === "stop") {
-          label = verified.label;
-          summary = verified.comment;
-          warnings = verified.warnings;
-          question =
-            label === "needsInfo" &&
-            !deps.human &&
-            !session.aborted &&
-            !session.timedOut &&
-            result.ok &&
-            result.result.status === "needs-input"
-              ? result.result.summary
-              : undefined;
-          if (phase === "planning")
-            summary = planningStopSummary(summary, facts, after.facts);
+          const question = workerQuestion({
+            status: verified.label,
+            human: !!deps.human,
+            session,
+            result,
+          });
+          stop = {
+            label: verified.label,
+            summary:
+              phase === "planning"
+                ? planningStopSummary(verified.comment, facts, after.facts)
+                : verified.comment,
+            warnings: verified.warnings,
+            ...(question !== undefined ? { question } : {}),
+          };
           if (
-            label === "inProgress" &&
+            stop.label === "inProgress" &&
             (await continueGate(after.facts, deps.human, () =>
               snapshot.wait("gate-wait"),
             ))
@@ -370,24 +369,24 @@ export async function runOneIssue(
             sinceHuman = 0;
             continue;
           }
-          if (deps.human && phase === "implementation" && label === "done")
+          if (deps.human && phase === "implementation" && stop.label === "done")
             await review(after.facts, false);
           break;
         }
         if (options.planOnly && phase === "planning") {
-          label = "needsInfo";
-          summary = "planning complete";
+          stop.label = "needsInfo";
+          stop.summary = "planning complete";
           break;
         }
         const next = derivePhase(after.facts);
         if (next.kind === "phase" && next.phase === phase) {
-          summary = `The phase did not advance. Expected artifact: ${phase === "planning" ? after.facts.expectedPlanPath : after.facts.expectedSpecPath}`;
+          stop.summary = `The phase did not advance. Expected artifact: ${phase === "planning" ? after.facts.expectedPlanPath : after.facts.expectedSpecPath}`;
           break;
         }
       }
     } catch (error) {
-      label = "needsInfo";
-      summary = error instanceof Error ? error.message : String(error);
+      stop.label = "needsInfo";
+      stop.summary = error instanceof Error ? error.message : String(error);
       if (published) await publish();
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
@@ -395,13 +394,13 @@ export async function runOneIssue(
     if (!published) await publish();
     const publication = publicationErrors.length ? { publicationErrors } : {};
     const outcome: RunOnceOutcome =
-      label === "done"
+      stop.label === "done"
         ? { status: "completed", issue: issueNumber, ...publication }
         : {
             status: "stopped",
             issue: issueNumber,
-            label,
-            summary,
+            label: stop.label,
+            summary: stop.summary,
             ...publication,
           };
     await fs.mkdir(runDir, { recursive: true });
@@ -427,7 +426,7 @@ export async function runOneIssue(
             ? displayFacts?.pullRequest?.state === "merged"
               ? "Already merged"
               : "PR ready"
-            : label === "inProgress"
+            : stop.label === "inProgress"
               ? "Planning PR merge required"
               : "Stopped",
         severity:
@@ -436,9 +435,9 @@ export async function runOneIssue(
             : "warning",
         issue: selected,
         ...(displayFacts ? { facts: displayFacts } : {}),
-        summary,
-        warnings: [...warnings, ...publicationErrors],
-        outcomeLabel: config.labels[label],
+        summary: stop.summary,
+        warnings: [...stop.warnings, ...publicationErrors],
+        outcomeLabel: config.labels[stop.label],
         logPath: join(runDir, "pi.log"),
         sessionPath: join(runDir, "sessions"),
         cost,
@@ -446,7 +445,7 @@ export async function runOneIssue(
         elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
       }),
     );
-    snapshot.ended(summary);
+    snapshot.ended(stop.summary);
     return outcome;
   } finally {
     await lock.release();

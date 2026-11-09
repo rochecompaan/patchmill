@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { trustedAuthors, type PatchmillConfig } from "../config/config.ts";
+import type { ParsedResult } from "./result.ts";
+import type { PiSession } from "./pi-supervisor.ts";
 import type { Issue } from "../host/types.ts";
 import type { RunOnceDeps } from "./run-once.ts";
 import { derivePhase, type Phase } from "./phase.ts";
@@ -112,6 +114,24 @@ export function derivedStop(
     summary = `The planning pull request would close issue #${issue}. Replace its closing reference with Refs #${issue} before merging it.`;
   }
   return { label, summary };
+}
+
+/** Only a successful unattended needs-input stop requires an upstream question. */
+export function workerQuestion(input: {
+  status: OutcomeLabel;
+  human: boolean;
+  session: Pick<PiSession, "aborted" | "timedOut">;
+  result: ParsedResult;
+}): string | undefined {
+  const { status, human, session, result } = input;
+  return status === "needsInfo" &&
+    !human &&
+    !session.aborted &&
+    !session.timedOut &&
+    result.ok &&
+    result.result.status === "needs-input"
+    ? result.result.summary
+    : undefined;
 }
 
 /** Prepare the on-disk prompt shared by interactive and print launchers. */
