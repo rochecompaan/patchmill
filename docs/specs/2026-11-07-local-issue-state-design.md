@@ -105,6 +105,7 @@ entries `patchmill init` manages.
 
 ```text
 .patchmill/state/
+  issues/.lock            cache lock
   issues/sync.json        sync cursor
   issues/<n>.json         one issue with its comments
   status/<n>.jsonl     status changes for issue <n>, appended only
@@ -186,7 +187,10 @@ the write cannot interleave with another append.
 ## Sync
 
 A sync module reads upstream and writes `issues/`. It is used only in local
-mode.
+mode. Each sync holds an exclusive lock on `issues/.lock` from the repository
+check through writing the cursor and removing damaged copies. A standalone issue
+refresh takes the same lock. Concurrent commands on one machine therefore update
+the cache one at a time.
 
 - **First sync:** if `issues/sync.json` is missing or unreadable, fetch every
   issue in every state and all issue comments. Write one file per issue and then
@@ -201,7 +205,8 @@ mode.
   Write the cursor only after all issue files are written. A failed sync leaves
   the old cursor, so the next sync repeats the work.
 - **Damaged copies:** before a later sync, look for issue files that do not
-  parse. An unchanged issue never appears in an incremental response, so a
+  parse or have invalid fields, including an issue number that differs from the
+  file name. An unchanged issue never appears in an incremental response, so a
   damaged copy would hide it from selection. If any file is damaged, run a full
   sync instead, which rewrites every issue file. Then remove damaged files for
   issues the host did not return, with a warning. The cursor moves only after
@@ -278,7 +283,8 @@ every status change and every issue read. Kernel code no longer calls
 `host.setLabels`, `host.createLabel`, `host.listOpenIssues`, `host.viewIssue`,
 or `host.commentIssue` directly. A factory picks the backend from
 `workflow.stateTracking` once per command, the same way `createHost` picks the
-provider from `host.provider`.
+provider from `host.provider`. Triage and run dependencies require an explicit
+`WorkflowState`; they never select a backend themselves.
 
 The backends answer only storage questions:
 
@@ -453,14 +459,19 @@ guess._
   tells the user to move `.patchmill/state/` aside. Do not sync or write.
 - **Missing issue file.** If `sync.json` exists but `issues/<n>.json` is missing
   for an issue Patchmill needs, refresh that issue from upstream.
-- **Corrupt issue file or cursor.** Reads treat it as missing. The next sync is
-  a full sync, which rebuilds `issues/` before any work is selected (see Damaged
-  copies under Sync).
+- **Corrupt issue file or cursor.** Reads check JSON syntax and record fields.
+  Cursor fields must be non-empty strings. Issue fields must have the expected
+  types, an open or closed state, and a positive safe issue number matching the
+  file name. Reads treat invalid records as missing. The next sync is a full
+  sync, which rebuilds `issues/` before any work is selected (see Damaged copies
+  under Sync).
 - **Corrupt status file.** Complete records are never repaired or rewritten. If
   the last line has no trailing newline, it is a write cut off by a crash: reads
   ignore it and warn with the file path, and the next append discards it. Any
-  complete line that does not parse stops the command with the file path and
-  line number.
+  complete line that does not parse or has invalid fields stops the command with
+  the file path and line number. Status must be one of the five workflow
+  statuses; the timestamp and optional text fields must be strings, and warnings
+  must be a string array.
 - **Question comment, then status change.** Post the upstream question first,
   then append the line with its `questionUrl`. If posting fails, the status is
   unchanged and the command reports the failure. If the append fails, report the
