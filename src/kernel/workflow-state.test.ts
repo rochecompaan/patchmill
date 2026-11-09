@@ -46,14 +46,14 @@ for (const mode of ["labels", "local"] as const) {
       });
       if (outcome === "success") assert.deepEqual(await result, []);
       else
-        await assert.rejects(
-          result,
-          outcome === "post fails"
-            ? /^Error: Comment failed:/
-            : new RegExp(
-                `${mode === "labels" ? "Label" : "Status"} update failed: denied \\(.* posted at https://example.invalid/question\\)`,
-              ),
-        );
+        await assert.rejects(result, {
+          message:
+            outcome === "post fails"
+              ? "Comment failed: denied"
+              : mode === "labels"
+                ? "Label update failed: denied (comment posted at https://example.invalid/question)"
+                : "Status update failed: denied (question posted at https://example.invalid/question)",
+        });
       assert.deepEqual(
         calls,
         outcome === "post fails" ? ["post"] : ["post", "record"],
