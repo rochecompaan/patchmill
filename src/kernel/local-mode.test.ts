@@ -46,7 +46,7 @@ test("local mode posts no status comments and changes no labels", async (t) => {
   const c = await setup(t, [implement]);
   await c.seed({ [spec]: "spec", [plan]: "plan" });
   assert.deepEqual(await c.triage(), [
-    { issue: 9, label: "agent-ready", applied: true },
+    { issue: 9, status: "ready", applied: true },
   ]);
   assert.equal((await c.run({}, { workflow: c.workflow })).status, "completed");
   const state = c.host.state();

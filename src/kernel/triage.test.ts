@@ -195,7 +195,7 @@ test("triage adds only missing local links before labels and includes current de
   const progress: TriageProgressEvent[] = [];
   assert.deepEqual(
     await f.run({ onProgress: (event) => progress.push(event) }),
-    [{ issue: 9, label: "agent-ready", applied: true }],
+    [{ issue: 9, status: "ready", applied: true }],
   );
   const state = f.host.state();
   assert.deepEqual(
@@ -242,7 +242,7 @@ test("partial dependency writes warn, preserve added links, and retry only missi
     await add(n, blocker);
   };
   assert.deepEqual(await f.run(), [
-    { issue: 10, label: "agent-ready", applied: true },
+    { issue: 10, status: "ready", applied: true },
   ]);
   assert.equal(f.host.state().calls.includes("setLabels:9"), false);
   assert.equal(f.host.state().calls.includes("commentIssue:9"), false);
@@ -253,7 +253,7 @@ test("partial dependency writes warn, preserve added links, and retry only missi
   assert.match(f.stderr.join("\n"), /#9.*#2.*write refused/);
   fail = false;
   assert.deepEqual(await f.run(), [
-    { issue: 9, label: "agent-ready", applied: true },
+    { issue: 9, status: "ready", applied: true },
   ]);
   assert.deepEqual(
     f.host
@@ -270,7 +270,7 @@ test("unreadable dependency context skips Pi for that issue and continues indepe
     return [];
   };
   assert.deepEqual(await f.run(), [
-    { issue: 10, label: "agent-ready", applied: true },
+    { issue: 10, status: "ready", applied: true },
   ]);
   assert.match(f.stderr.join("\n"), /9.*read denied/);
   assert.equal(
@@ -307,7 +307,7 @@ test("dependency dry-run previews missing links without any host writes", async 
 test("applies a validated result and launches isolated Pi with the configured envelope", async (t) => {
   const f = await setup(t, [block()]);
   assert.deepEqual(await f.run(), [
-    { issue: 9, label: "agent-ready", applied: true },
+    { issue: 9, status: "ready", applied: true },
   ]);
   assert.deepEqual(f.host.state().issues[0]!.labels, ["agent-ready"]);
   assert.equal(
@@ -380,8 +380,8 @@ test("creates missing configured workflow labels once before applying triage res
     await set(n, add, remove);
   };
   assert.deepEqual(await f.run(), [
-    { issue: 9, label: "queue", applied: true },
-    { issue: 10, label: "needs-info", applied: true },
+    { issue: 9, status: "ready", applied: true },
+    { issue: 10, status: "needsInfo", applied: true },
   ]);
   assert.deepEqual(
     f.host.state().issues.map((i) => i.labels),
@@ -416,7 +416,7 @@ test("dry-run still invokes Pi and reports label and comment without Host writes
   const progress: TriageProgressEvent[] = [];
   assert.deepEqual(
     await f.run({ dryRun: true, onProgress: (event) => progress.push(event) }),
-    [{ issue: 9, label: "agent-ready", applied: false }],
+    [{ issue: 9, status: "ready", applied: false }],
   );
   assert.deepEqual(f.host.state().issues, before);
   const preview = progress.find((event) => event.type === "triaged");
@@ -459,7 +459,7 @@ for (const invalid of [
   test(`invalid result skips without writes and continues: ${invalid}`, async (t) => {
     const f = await setup(t, [invalid, block()], [issue(9), issue(10)]);
     assert.deepEqual(await f.run(), [
-      { issue: 10, label: "agent-ready", applied: true },
+      { issue: 10, status: "ready", applied: true },
     ]);
     assert.deepEqual(f.host.state().issues[0]!.labels, []);
     assert.deepEqual(f.host.state().issues[0]!.comments, []);
@@ -497,7 +497,7 @@ test("explicit closed issue bypasses selection; configured needsInfo is not also
     await set(n, add, remove);
   };
   assert.deepEqual(await f.run({ issue: 9 }), [
-    { issue: 9, label: "question", applied: true },
+    { issue: 9, status: "needsInfo", applied: true },
   ]);
   assert.deepEqual(f.host.state().issues[0]!.labels, [
     "question",
@@ -522,7 +522,7 @@ test("last JSON block wins and trailing prose is ignored; configured wontfix is 
     block("bad") + "\n" + block("wontfix", "") + "\ntrailing",
   ]);
   f.config.labels.unsuitable = "wontfix";
-  assert.equal((await f.run())[0]?.label, "wontfix");
+  assert.equal((await f.run())[0]?.status, "unsuitable");
 });
 
 test("pre-cancelled batch starts no session and mutates nothing", async (t) => {
@@ -542,7 +542,7 @@ test("issue read failures warn and do not prevent independent candidates", async
     return view(n);
   };
   assert.deepEqual(await f.run(), [
-    { issue: 10, label: "agent-ready", applied: true },
+    { issue: 10, status: "ready", applied: true },
   ]);
   assert.match(f.stderr.join("\n"), /9.*read failed/);
 });
@@ -713,7 +713,7 @@ test("a failed triage comment after the swap warns and counts", async (t) => {
     throw new Error("comment denied");
   };
   assert.deepEqual(await f.run(), [
-    { issue: 9, label: "agent-ready", applied: true },
+    { issue: 9, status: "ready", applied: true },
   ]);
   assert.deepEqual(f.host.state().issues[0]!.labels, ["agent-ready"]);
   assert.match(f.stderr.join("\n"), /Comment failed: comment denied/);

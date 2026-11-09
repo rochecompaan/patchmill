@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { trustedAuthors, type PatchmillConfig } from "../config/config.ts";
+import {
+  trustedAuthors,
+  type LabelsConfig,
+  type PatchmillConfig,
+} from "../config/config.ts";
 import type { Issue } from "../host/types.ts";
 import type { RunOnceDeps } from "./run-once.ts";
 import { renderTriageEnvelope } from "./envelope.ts";
@@ -11,7 +15,7 @@ import type { TrackedIssue } from "./workflow-state.ts";
 import type { WorkflowStatus } from "./workflow-state.ts";
 
 export type TriageResult = {
-  label: string;
+  status: WorkflowStatus;
   comment: string;
   blockedBy: number[];
 };
@@ -77,9 +81,8 @@ export function selectTriageCandidates(
 
 function validateResult(
   value: unknown,
-  allowed: string[],
+  labels: LabelsConfig,
   issue: number,
-  ready: string,
 ): TriageResult | string {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     return "result must be an object";
@@ -90,8 +93,10 @@ function validateResult(
     )
   )
     return "unexpected result field";
-  if (typeof result.label !== "string" || !allowed.includes(result.label))
-    return "label must be a configured triage outcome";
+  const status = (["ready", "unsuitable", "needsInfo"] as const).find(
+    (status) => labels[status] === result.label,
+  );
+  if (status === undefined) return "label must be a configured triage outcome";
   if (typeof result.comment !== "string") return "comment must be a string";
   if (
     !Array.isArray(result.blockedBy) ||
@@ -102,10 +107,10 @@ function validateResult(
     new Set(result.blockedBy).size !== result.blockedBy.length
   )
     return "blockedBy must contain distinct positive issue numbers other than the target";
-  if (result.blockedBy.length && result.label !== ready)
+  if (result.blockedBy.length && status !== "ready")
     return "only a ready result can propose blockers";
   return {
-    label: result.label,
+    status,
     comment: result.comment,
     blockedBy: result.blockedBy,
   };
@@ -115,7 +120,7 @@ export async function runTriage(
   config: PatchmillConfig,
   deps: TriageDeps,
   options: TriageOptions,
-): Promise<Array<{ issue: number; label: string; applied: boolean }>> {
+): Promise<Array<{ issue: number; status: WorkflowStatus; applied: boolean }>> {
   const { host, repoRoot, output } = deps;
   const workflow = deps.workflow;
   await workflow.sync(options.issue);
@@ -144,13 +149,11 @@ export async function runTriage(
     }
   }
   options.onProgress?.({ type: "selected", total: candidates.length });
-  const allowed = [
-    config.labels.ready,
-    config.labels.unsuitable,
-    config.labels.needsInfo,
-  ];
-  const outcomes: Array<{ issue: number; label: string; applied: boolean }> =
-    [];
+  const outcomes: Array<{
+    issue: number;
+    status: WorkflowStatus;
+    applied: boolean;
+  }> = [];
   for (const number of candidates.sort((a, b) => a - b)) {
     if (options.signal?.aborted) break;
     try {
@@ -214,13 +217,13 @@ export async function runTriage(
         continue;
       }
       const parsed = parseJsonBlock(session.stdout, (value) =>
-        validateResult(value, allowed, number, config.labels.ready),
+        validateResult(value, config.labels, number),
       );
       if (!parsed.ok) {
         warn(number, `${parsed.reason}; skipping.`);
         continue;
       }
-      const { label, comment } = parsed.value;
+      const { status, comment } = parsed.value;
       const slug = `${repository.owner}/${repository.repo}`.toLowerCase();
       const blockedBy = parsed.value.blockedBy.filter(
         (blocker) =>
@@ -230,9 +233,6 @@ export async function runTriage(
               dependency.repository.toLowerCase() === slug,
           ),
       );
-      const status = (
-        ["ready", "unsuitable", "needsInfo"] as WorkflowStatus[]
-      ).find((status) => config.labels[status] === label)!;
       const asked = status === "needsInfo" && comment !== "";
       if (!options.dryRun) {
         for (const [index, blocker] of blockedBy.entries()) {
@@ -257,7 +257,7 @@ export async function runTriage(
         });
         for (const warning of warnings) warn(number, warning);
       }
-      outcomes.push({ issue: number, label, applied: !options.dryRun });
+      outcomes.push({ issue: number, status, applied: !options.dryRun });
       options.onProgress?.({
         type: "triaged",
         previousStatus: issue.status,
