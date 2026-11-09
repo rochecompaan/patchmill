@@ -70,6 +70,7 @@ export class LocalWorkflowState implements WorkflowState {
   }
 
   async openIssues(): Promise<TrackedIssue[]> {
+    await this.checkRepository();
     const { issues, damaged } = await this.store.listIssues();
     if (damaged.length > 0) {
       throw new Error(`Damaged issue copies: ${damaged.join(", ")}`);

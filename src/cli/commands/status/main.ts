@@ -63,7 +63,7 @@ export async function main(
     const blockersFor = (candidates: number[]) =>
       readBlockers(
         candidates,
-        () => options.host ?? createHost(config, runCommand, repoRoot),
+        options.host ?? createHost(config, runCommand, repoRoot),
         store,
         (message) => output.stderr(`Warning: ${message}`),
       );

@@ -9,23 +9,15 @@ const message = (error: unknown) =>
 
 export async function readBlockers(
   candidates: number[],
-  getHost: () => BlockerHost,
+  host: BlockerHost,
   store: StateStore,
   warn: (message: string) => void,
 ): Promise<Map<number, string>> {
   const results = new Map<number, string>();
   if (!candidates.length) return results;
-  let host: BlockerHost;
   let repository: string;
   try {
-    host = getHost();
-    const checked = await checkStateRepository(host, store);
-    // Without a cursor nothing was checked, so ask the host for its name.
-    if (checked.repository !== undefined) repository = checked.repository;
-    else {
-      const { owner, repo } = await host.repository();
-      repository = `${owner}/${repo}`;
-    }
+    ({ repository } = await checkStateRepository(host, store));
   } catch (error) {
     warn(`Cannot read blockers: ${message(error)}`);
     for (const n of candidates) results.set(n, "Blockers unknown");

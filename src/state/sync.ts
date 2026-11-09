@@ -6,12 +6,11 @@ export const SYNC_OVERLAP_MS = 5 * 60_000;
 export async function checkStateRepository(
   host: Pick<Host, "repository">,
   store: StateStore,
-): Promise<{ cursor: SyncCursor | undefined; repository: string | undefined }> {
+): Promise<{ cursor: SyncCursor | undefined; repository: string }> {
   const cursor = await store.readCursor();
-  if (!cursor) return { cursor, repository: undefined };
   const { owner, repo } = await host.repository();
   const repository = `${owner}/${repo}`;
-  if (cursor.repository.toLowerCase() !== repository.toLowerCase()) {
+  if (cursor && cursor.repository.toLowerCase() !== repository.toLowerCase()) {
     throw new Error(
       `Local state in ${STATE_DIR} belongs to ${cursor.repository}, not ${repository}. Move ${STATE_DIR} aside to start again.`,
     );
@@ -34,13 +33,7 @@ async function syncIssuesUnlocked(
   input: Parameters<typeof syncIssues>[0],
 ): Promise<SyncCursor> {
   const { host, store, now, issue, warn } = input;
-  const checked = await checkStateRepository(host, store);
-  const { cursor } = checked;
-  let repository = checked.repository;
-  if (repository === undefined) {
-    const { owner, repo } = await host.repository();
-    repository = `${owner}/${repo}`;
-  }
+  const { cursor, repository } = await checkStateRepository(host, store);
   const started = now().toISOString();
   const { issues, damaged } = await store.listIssues();
   const full = !cursor || damaged.length > 0;

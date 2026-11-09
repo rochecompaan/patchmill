@@ -55,7 +55,7 @@ async function setup(t: TestContext) {
 }
 
 // Missing ownership checks would overwrite another repository's issue or history.
-for (const operation of ["issue", "setStatus"] as const) {
+for (const operation of ["issue", "setStatus", "openIssues"] as const) {
   test(`${operation} refuses foreign state without writing`, async (t) => {
     const { root, host, store, workflow } = await setup(t);
     await store.writeCursor({
@@ -71,13 +71,15 @@ for (const operation of ["issue", "setStatus"] as const) {
     const paths = [store.issuePath(9), join(root, "status/9.jsonl")];
     const before = await Promise.all(paths.map((path) => fs.readFile(path)));
     await assert.rejects(
-      operation === "issue"
-        ? workflow.issue(9)
-        : workflow.setStatus(9, {
-            status: "needsInfo",
-            summary: "Q?",
-            question: "Q?",
-          }),
+      operation === "openIssues"
+        ? workflow.openIssues()
+        : operation === "issue"
+          ? workflow.issue(9)
+          : workflow.setStatus(9, {
+              status: "needsInfo",
+              summary: "Q?",
+              question: "Q?",
+            }),
       {
         message:
           "Local state in .patchmill/state belongs to other/project, not fixture/repo. Move .patchmill/state aside to start again.",
