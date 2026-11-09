@@ -1,12 +1,14 @@
 import type { WorkflowStatus } from "../kernel/workflow-state.ts";
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
-import { join } from "node:path";
-import fsExt from "fs-ext";
+import { join, resolve } from "node:path";
+import { flock } from "../process/flock.ts";
 import type { Issue } from "../host/types.ts";
 import { isCursor, isIssue, isStatusChange } from "./records.ts";
 
 export const STATE_DIR = ".patchmill/state";
+export const stateDir = (repoRoot: string): string =>
+  resolve(repoRoot, STATE_DIR);
 export type StatusChange = {
   at: string;
   status: WorkflowStatus;
@@ -38,12 +40,6 @@ function serialize<T>(path: string, fn: () => Promise<T>): Promise<T> {
     if (operations.get(path) === settled) operations.delete(path);
   });
   return result;
-}
-
-function flock(fd: number, operation: "ex" | "un"): Promise<void> {
-  return new Promise((resolve, reject) => {
-    fsExt.flock(fd, operation, (error) => (error ? reject(error) : resolve()));
-  });
 }
 
 export class StateStore {
@@ -168,11 +164,7 @@ export class StateStore {
     await fs.mkdir(join(this.root, "status"), { recursive: true });
     const handle = await fs.open(path, constants.O_CREAT | constants.O_RDWR);
     try {
-      await new Promise<void>((resolve, reject) => {
-        fsExt.flock(handle.fd, "ex", (error) =>
-          error ? reject(error) : resolve(),
-        );
-      });
+      await flock(handle.fd, "ex");
       const bytes = await handle.readFile();
       let end = bytes.length;
       if (end > 0 && bytes[end - 1] !== 10) {
@@ -213,10 +205,7 @@ export class StateStore {
     }
   }
 
-  private async writeJson(
-    path: string,
-    value: Issue | SyncCursor,
-  ): Promise<void> {
+  private async writeJson(path: string, value: unknown): Promise<void> {
     await fs.mkdir(this.issuesPath, { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
     await fs.writeFile(temporary, JSON.stringify(value));

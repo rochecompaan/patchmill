@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
 import { loadConfig } from "../../../config/config.ts";
-import { STATE_DIR, StateStore } from "../../../state/store.ts";
+import { stateDir, StateStore } from "../../../state/store.ts";
 import { createHost } from "../../../host/factory.ts";
 import { runCommand } from "../../../process/command.ts";
 import { readBlockers, type BlockerHost } from "./blockers.ts";
@@ -52,7 +51,7 @@ export async function main(
       );
       return 1;
     }
-    const store = new StateStore(resolve(repoRoot, STATE_DIR), (message) =>
+    const store = new StateStore(stateDir(repoRoot), (message) =>
       output.stderr(`Warning: ${message}`),
     );
     const format = formatter(
@@ -96,7 +95,7 @@ export async function main(
       listed.map(async (issue) => {
         // Buffer each issue's warnings so parallel reads retain listing order.
         const warnings: string[] = [];
-        const reader = new StateStore(resolve(repoRoot, STATE_DIR), (message) =>
+        const reader = new StateStore(stateDir(repoRoot), (message) =>
           warnings.push(message),
         );
         try {

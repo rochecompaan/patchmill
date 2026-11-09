@@ -47,13 +47,13 @@ export async function main(
     );
     try {
       const host = createHost(config, options.runner ?? runCommand, repoRoot);
-      const workflow = createWorkflowState(
+      const workflow = createWorkflowState({
         config,
         host,
         repoRoot,
-        () => new Date(),
-        (message) => output.stderr(`Warning: ${message}`),
-      );
+        now: () => new Date(),
+        warn: (message) => output.stderr(`Warning: ${message}`),
+      });
       const issue = await workflow.issue(issueNumber);
       const { ready, inProgress } =
         config.workflow.stateTracking === "local"

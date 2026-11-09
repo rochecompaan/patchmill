@@ -59,13 +59,13 @@ export async function main(
     const check = await host.checkCli();
     if (!check.ok) throw new Error(check.message);
     const now = () => new Date();
-    const workflow = createWorkflowState(
+    const workflow = createWorkflowState({
       config,
       host,
       repoRoot,
       now,
-      (message) => output.stderr(`Warning: ${message}`),
-    );
+      warn: (message) => output.stderr(`Warning: ${message}`),
+    });
     const deps = {
       host,
       workflow,

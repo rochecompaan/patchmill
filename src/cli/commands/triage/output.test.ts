@@ -86,13 +86,13 @@ console.log(${JSON.stringify(responses)}[index]);
             {
               ...deps,
               host,
-              workflow: createWorkflowState(
+              workflow: createWorkflowState({
                 config,
                 host,
-                deps.repoRoot,
-                deps.now,
-                (message) => deps.output.stderr(`Warning: ${message}`),
-              ),
+                repoRoot: deps.repoRoot,
+                now: deps.now,
+                warn: (message) => deps.output.stderr(`Warning: ${message}`),
+              }),
               piCommand: { command: process.execPath, argsPrefix: [script] },
             },
             options,

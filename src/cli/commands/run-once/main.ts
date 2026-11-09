@@ -74,13 +74,13 @@ export async function main(
     const runner = options.runner ?? runCommand;
     const host = createHost(config, runner, repoRoot);
     const now = () => new Date();
-    const workflow = createWorkflowState(
+    const workflow = createWorkflowState({
       config,
       host,
       repoRoot,
       now,
-      (message) => output.stderr(`Warning: ${message}`),
-    );
+      warn: (message) => output.stderr(`Warning: ${message}`),
+    });
     const deps = {
       host,
       workflow,
