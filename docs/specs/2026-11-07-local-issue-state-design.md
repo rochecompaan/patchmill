@@ -447,7 +447,13 @@ groups. It first prints the last sync time. Dates use local time, for example
 Blockers of shown open ready and in-progress issues are read live from the
 tracker by default, after checking the local state's repository. Up to eight
 lookups run at once. Only open dependencies appear, below the issue title;
-dependencies in other repositories include their owner and repository. A failed
+dependencies in other repositories include their owner and repository.
+Same-repository blockers show the title of their latest local workflow status,
+such as `(Ready)` or `(In Progress)`. Done shows `(Done, PR not merged)` because
+opening a PR marks work Done while the upstream issue remains open and blocks
+its dependents until it closes after merge. Untriaged, unknown, or unreadable
+statuses have no note; cross-repository blockers are never annotated. Reading a
+blocker's local status is best effort and makes no tracker calls. A failed
 lookup prints a warning and `Blockers unknown` for that issue. A repository
 check failure prints one warning, marks all candidates' blockers unknown, and
 skips dependency lookups. These failures do not hide local rows or fail the

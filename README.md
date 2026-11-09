@@ -249,9 +249,14 @@ Questions are its only upstream issue comments in this mode.
 
 `patchmill status` reads local state without syncing and shows when it last
 synced. It reads blockers of ready and in-progress issues live from the tracker.
-Add `--all` to include closed issues, or `--issue N` to see one issue's full
-status history and, if open, its live blockers. `patchmill labels setup` refuses
-in local mode; `patchmill doctor` checks the state folder instead of labels.
+Same-repository blockers include their local workflow status, such as `(Ready)`
+or `(In Progress)`. Done blockers show `(Done, PR not merged)`: opening a PR
+marks work Done, but the issue still blocks dependencies until it closes after
+merge. Untriaged, unknown, or unreadable statuses and cross-repository blockers
+have no status note. Add `--all` to include closed issues, or `--issue N` to see
+one issue's full status history and, if open, its live blockers.
+`patchmill labels setup` refuses in local mode; `patchmill doctor` checks the
+state folder instead of labels.
 
 Local state mode is for one user on one machine. Switching modes does not
 migrate state.
