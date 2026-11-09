@@ -4,16 +4,10 @@ import { cleanValue } from "../../../kernel/terminal-layout.ts";
 import type { StatusChange } from "../../../state/store.ts";
 import {
   WORKFLOW_STATUSES,
+  WORKFLOW_STATUS_TITLES as TITLES,
   type WorkflowStatus,
 } from "../../../kernel/workflow-state.ts";
 
-const TITLES: Record<WorkflowStatus, string> = {
-  inProgress: "In Progress",
-  needsInfo: "Needs Info",
-  ready: "Ready",
-  done: "Done",
-  unsuitable: "Unsuitable",
-};
 const SGR = {
   reset: "\u001b[0m",
   bold: "\u001b[1m",

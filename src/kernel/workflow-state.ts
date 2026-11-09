@@ -35,3 +35,11 @@ export interface WorkflowState {
    */
   setStatus(n: number, update: StatusUpdate): Promise<string[]>;
 }
+
+export const WORKFLOW_STATUS_TITLES: Record<WorkflowStatus, string> = {
+  inProgress: "In Progress",
+  needsInfo: "Needs Info",
+  ready: "Ready",
+  done: "Done",
+  unsuitable: "Unsuitable",
+};

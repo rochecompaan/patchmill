@@ -35,7 +35,7 @@ export type TriageProgressEvent =
       previousStatus: TrackedIssue["status"];
       finalStatus: TrackedIssue["status"];
       comment: string;
-      asked: boolean;
+      commentKind: "preview" | "posted" | "recorded" | "asked";
       blockedBy: number[];
       applied: boolean;
       completed: number;
@@ -263,7 +263,13 @@ export async function runTriage(
         previousStatus: issue.status,
         finalStatus: status,
         comment,
-        asked,
+        commentKind: options.dryRun
+          ? "preview"
+          : config.workflow.stateTracking !== "local"
+            ? "posted"
+            : asked
+              ? "asked"
+              : "recorded",
         blockedBy,
         applied: !options.dryRun,
         completed: outcomes.length,

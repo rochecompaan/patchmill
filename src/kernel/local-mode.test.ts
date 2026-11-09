@@ -12,7 +12,11 @@ import { createTriagePi } from "../../test-support/triage-fixture.ts";
 import { STATE_DIR, StateStore } from "../state/store.ts";
 import { KERNEL_COMMENT } from "./comments.ts";
 import { LocalWorkflowState } from "./local-workflow.ts";
-import { runTriage } from "./triage.ts";
+import {
+  runTriage,
+  type TriageOptions,
+  type TriageProgressEvent,
+} from "./triage.ts";
 
 const block = (label = "agent-ready", comment = "Looks clear.") =>
   `\`\`\`json\n${JSON.stringify({ label, comment, blockedBy: [] })}\n\`\`\``;
@@ -32,11 +36,11 @@ async function setup(t: TestContext, steps: unknown[] = []) {
     warn: c.deps.output.stderr,
   });
   const statusPath = join(c.repoRoot, STATE_DIR, "status/9.jsonl");
-  const triage = async (result = block()) => {
+  const triage = async (result = block(), options: TriageOptions = {}) => {
     const root = join(c.dir, "triage-pi");
     await fs.mkdir(root, { recursive: true });
     const piCommand = await createTriagePi(root, [result]);
-    return runTriage(c.config, { ...c.deps, workflow, piCommand }, {});
+    return runTriage(c.config, { ...c.deps, workflow, piCommand }, options);
   };
   return { ...c, store, workflow, statusPath, triage };
 }
@@ -49,6 +53,8 @@ test("local mode posts no status comments and changes no labels", async (t) => {
     { issue: 9, status: "ready", applied: true },
   ]);
   assert.equal((await c.run({}, { workflow: c.workflow })).status, "completed");
+  assert.match(c.output.join("\n"), /Outcome:\s+Done/);
+  assert.doesNotMatch(c.output.join("\n"), /Outcome:\s+agent-done/);
   const state = c.host.state();
   assert.deepEqual(state.issues[0]!.labels, []);
   assert.deepEqual(state.labels, ["bug"]);
@@ -153,3 +159,17 @@ test("sync failure stops triage before writing", async (t) => {
     { code: "ENOENT" },
   );
 });
+
+for (const [label, commentKind] of [
+  ["agent-ready", "recorded"],
+  ["needs-info", "asked"],
+] as const) {
+  test(`local triage emits ${commentKind} comment kind`, async (t) => {
+    const c = await setup(t);
+    const events: TriageProgressEvent[] = [];
+    await c.triage(block(label), { onProgress: (event) => events.push(event) });
+    const event = events.find((event) => event.type === "triaged");
+    assert.ok(event);
+    assert.equal(event.commentKind, commentKind);
+  });
+}

@@ -210,6 +210,7 @@ test("triage adds only missing local links before labels and includes current de
   const event = progress.find((event) => event.type === "triaged");
   assert.ok(event && event.type === "triaged");
   assert.deepEqual(event.blockedBy, [2]);
+  assert.equal(event.commentKind, "posted");
   const launch = JSON.parse(
     (await fs.readFile(join(f.root, "launches"), "utf8")).trim(),
   );
@@ -424,6 +425,7 @@ test("dry-run still invokes Pi and reports label and comment without Host writes
   assert.equal(preview.finalStatus, "ready");
   assert.equal(preview.comment, "Looks clear.");
   assert.equal(preview.applied, false);
+  assert.equal(preview.commentKind, "preview");
   assert.equal(
     f.host
       .state()

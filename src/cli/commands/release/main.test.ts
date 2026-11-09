@@ -312,3 +312,24 @@ test("local release fails when the status write fails", async (t) => {
     false,
   );
 });
+
+// Local workflow output must not expose unused label configuration.
+test("local release prints status titles instead of configured labels", async (t) => {
+  const h = await harness(t);
+  await writeFile(
+    join(h.root, CONFIG_FILE),
+    JSON.stringify({
+      workflow: { stateTracking: "local" },
+      labels: { ready: "queue", inProgress: "working" },
+      paths: { runsDir: "owned-runs" },
+    }),
+  );
+  const path = join(h.root, ".patchmill/state/status/9.jsonl");
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    '{"at":"2026-10-15T00:00:00Z","status":"inProgress"}\n',
+  );
+  assert.equal(await h.run(), 0);
+  assert.deepEqual(h.stdout, ["Issue #9: In Progress -> Ready."]);
+});

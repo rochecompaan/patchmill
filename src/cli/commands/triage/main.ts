@@ -77,7 +77,6 @@ export async function main(
     const reporter = createTriageProgressReporter({
       command: ["patchmill", "triage", ...args].join(" "),
       dryRun: runOptions.dryRun ?? false,
-      localState: config.workflow.stateTracking === "local",
       writeLine: output.stdout,
     });
     process.on("SIGINT", abort);
