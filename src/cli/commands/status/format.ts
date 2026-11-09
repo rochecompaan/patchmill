@@ -1,7 +1,11 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { Issue } from "../../../host/types.ts";
 import { cleanValue } from "../../../kernel/terminal-layout.ts";
-import type { StatusChange, WorkflowStatus } from "../../../state/store.ts";
+import type { StatusChange } from "../../../state/store.ts";
+import {
+  WORKFLOW_STATUSES,
+  type WorkflowStatus,
+} from "../../../kernel/workflow-state.ts";
 
 const TITLES: Record<WorkflowStatus, string> = {
   inProgress: "In Progress",
@@ -76,7 +80,7 @@ export function formatter(color: boolean, timeZone?: string) {
         Math.max(...rows.map((r) => visibleWidth(cleanValue(r.issue.title)))),
       );
       const lines: string[] = [];
-      for (const status of Object.keys(TITLES) as WorkflowStatus[]) {
+      for (const status of WORKFLOW_STATUSES) {
         const group = rows.filter((r) => r.change.status === status);
         if (!group.length) continue;
         if (lines.length) lines.push("");

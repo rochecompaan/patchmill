@@ -8,7 +8,7 @@ import { newRunId } from "./names.ts";
 import { supervisePi } from "./pi-supervisor.ts";
 import { parseJsonBlock } from "./result.ts";
 import type { TrackedIssue } from "./workflow-state.ts";
-import type { WorkflowStatus } from "../state/store.ts";
+import type { WorkflowStatus } from "./workflow-state.ts";
 
 export type TriageResult = {
   label: string;

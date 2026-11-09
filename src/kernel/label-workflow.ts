@@ -1,6 +1,6 @@
 import type { LabelsConfig } from "../config/config.ts";
 import type { Host, Issue } from "../host/types.ts";
-import type { WorkflowStatus } from "../state/store.ts";
+import type { WorkflowStatus } from "./workflow-state.ts";
 import { KERNEL_COMMENT, kernelComment } from "./comments.ts";
 import { ensureLabels } from "./labels.ts";
 import type {
@@ -9,6 +9,7 @@ import type {
   WorkflowState,
 } from "./workflow-state.ts";
 
+// Label conflict precedence deliberately differs from status display order.
 const precedence: WorkflowStatus[] = [
   "inProgress",
   "ready",

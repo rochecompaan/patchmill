@@ -1,3 +1,4 @@
+import type { WorkflowStatus } from "../kernel/workflow-state.ts";
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
@@ -6,12 +7,6 @@ import type { Issue } from "../host/types.ts";
 import { isCursor, isIssue, isStatusChange } from "./records.ts";
 
 export const STATE_DIR = ".patchmill/state";
-export type WorkflowStatus =
-  | "ready"
-  | "inProgress"
-  | "needsInfo"
-  | "done"
-  | "unsuitable";
 export type StatusChange = {
   at: string;
   status: WorkflowStatus;

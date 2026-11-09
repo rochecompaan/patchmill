@@ -1,5 +1,12 @@
 import type { Issue, IssueComment } from "../host/types.ts";
-import type { WorkflowStatus } from "../state/store.ts";
+export const WORKFLOW_STATUSES = [
+  "inProgress",
+  "needsInfo",
+  "ready",
+  "done",
+  "unsuitable",
+] as const;
+export type WorkflowStatus = (typeof WORKFLOW_STATUSES)[number];
 
 export type TrackedComment = IssueComment & { fromPatchmill: boolean };
 export type TrackedIssue = Omit<Issue, "comments"> & {

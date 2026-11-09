@@ -1,3 +1,4 @@
+import { WORKFLOW_STATUSES } from "../kernel/workflow-state.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { HostProviderId } from "../host/types.ts";
@@ -150,13 +151,11 @@ export function parseConfig(raw: unknown): PatchmillConfig {
   }
   walk(raw, config, "");
   if (config.workflow.stateTracking === "local") {
-    const keys: (keyof LabelsConfig)[] = [
-      "ready",
-      "inProgress",
-      "needsInfo",
-      "done",
-      "unsuitable",
-    ];
+    // Preserve diagnostic priority independently of status display order.
+    const labelKeys = Object.keys(DEFAULT_CONFIG.labels);
+    const keys = [...WORKFLOW_STATUSES].sort(
+      (a, b) => labelKeys.indexOf(a) - labelKeys.indexOf(b),
+    );
     for (const [index, first] of keys.entries()) {
       for (const second of keys.slice(index + 1)) {
         if (

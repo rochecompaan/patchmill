@@ -1,3 +1,7 @@
+import {
+  WORKFLOW_STATUSES,
+  type WorkflowStatus,
+} from "../kernel/workflow-state.ts";
 import type { Issue } from "../host/types.ts";
 import type { StatusChange, SyncCursor } from "./store.ts";
 
@@ -52,9 +56,7 @@ export function isStatusChange(value: unknown): value is StatusChange {
   return (
     record(value) &&
     typeof value.at === "string" &&
-    ["ready", "inProgress", "needsInfo", "done", "unsuitable"].includes(
-      value.status as string,
-    ) &&
+    WORKFLOW_STATUSES.includes(value.status as WorkflowStatus) &&
     ["runId", "summary", "cost", "questionUrl"].every(
       (key) => value[key] === undefined || typeof value[key] === "string",
     ) &&
