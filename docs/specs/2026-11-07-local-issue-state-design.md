@@ -68,8 +68,11 @@ Add one key:
 - `"labels"` (default): today's behaviour.
 - `"local"`: local state mode.
 
-The config reader rejects any other value. In local mode the `labels.*` keys are
-accepted and ignored.
+The config reader rejects any other value. Workflow label names must be distinct
+in **both modes**, compared case-insensitively. Duplicate names fail with
+`Workflow labels must be distinct: labels.<a> and labels.<b> are both "<value>".`
+In local mode, `labels.*` names still interpret the agent-facing triage result;
+they are not used to store workflow state or write labels upstream.
 
 _Builder's call taken here: key name and location. `workflow` already holds
 run-behaviour settings._
@@ -154,7 +157,11 @@ skills. Patchmill never derives workflow state from them in local mode.
 
 Each line of `status/<n>.jsonl` is one `StatusChange`. It stands for one label
 change in label mode, plus the content of the comment that label mode would post
-with it. The five statuses are the five configured labels:
+with it. `src/kernel/workflow-state.ts` owns the five-status vocabulary and the
+shared display titles. Its `WORKFLOW_STATUSES` order is the status display
+order: `inProgress`, `needsInfo`, `ready`, `done`, `unsuitable`. Label conflict
+precedence is deliberately different: `inProgress`, `ready`, `done`,
+`unsuitable`, `needsInfo`. The statuses map to configured labels in label mode:
 
 | Status       | Label mode         |
 | ------------ | ------------------ |
@@ -372,6 +379,12 @@ These stay outside `WorkflowState` because they are not workflow status:
 - Candidates: open `untriaged` issues, plus `needsInfo` issues with a reply,
   using the shared reply rule.
 - `--issue N` triages issue N regardless of status, as today.
+- The agent-facing envelope and result still use configured labels. Validation
+  maps the allowed label to a status once; returned outcomes contain
+  `{ issue, status, applied }`.
+- The kernel's triaged progress event carries `commentKind`: `preview`,
+  `posted`, `recorded`, or `asked`. The CLI renders these as `comment:`,
+  `comment added:`, `summary recorded:`, or `question posted:` respectively.
 - Patchmill adds missing dependency links upstream as today.
 - Triage sets the outcome status with the comment as `summary`, and with
   `question: comment` for a `needsInfo` outcome with a non-empty comment. In
@@ -409,7 +422,9 @@ the dry run should see current issues._
 
 `patchmill release --issue N` sets `ready` if the current status is
 `inProgress`, otherwise prints "nothing to release". It works the same in both
-modes.
+modes. Local mode prints `In Progress -> Ready`; label mode prints the
+configured label names. The final run's `Outcome` likewise uses a status title
+in local mode and a configured label name in label mode.
 
 ### Labels and doctor
 
@@ -454,9 +469,13 @@ list needs no network when no shown open issue is ready or in progress._
 _All of this section is the builder's call, settled here so the plan does not
 guess._
 
-- **Wrong repository.** Before syncing, compare `sync.json` `repository` with
-  the host repository. If they differ, stop with an error that names both and
-  tells the user to move `.patchmill/state/` aside. Do not sync or write.
+- **Wrong repository.** Repository checks always resolve the host repository,
+  even without a cursor. Before syncing or directly reading or updating local
+  workflow state, compare any `sync.json` `repository` with the host repository.
+  If they differ, stop with an error that names both and tells the user to move
+  `.patchmill/state/` aside. Do not sync or write. The status command remains
+  offline when there are no blocker candidates; its check runs only before
+  blocker calls.
 - **Missing issue file.** If `sync.json` exists but `issues/<n>.json` is missing
   for an issue Patchmill needs, refresh that issue from upstream.
 - **Corrupt issue file or cursor.** Reads check JSON syntax and record fields.
@@ -493,7 +512,9 @@ guess._
 - Write issue files and the cursor atomically (write a temporary file, then
   rename). Append each status change with a single write, under a short lock on
   the status file.
-- Label mode stays the default and keeps working. It changes in four ways:
+- Label mode stays the default and keeps working. It changes in five ways:
+  - Workflow label names must be distinct, compared case-insensitively, in both
+    state-tracking modes.
   - One label swap rule: every status change leaves exactly one workflow label,
     so `triage --issue N` on an in-progress issue now removes `in-progress`.
   - Triage comments use the shared kernel comment format, which adds the
