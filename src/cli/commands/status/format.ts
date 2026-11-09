@@ -43,18 +43,19 @@ export type StatusRow = { issue: Issue; change: StatusChange };
 export function formatter(color: boolean, timeZone?: string) {
   const style = (text: string, sgr: string) =>
     color ? `${sgr}${text}${SGR.reset}` : text;
+  const dateFormat = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
   const date = (timestamp: string) => {
     const parsed = new Date(timestamp);
     if (Number.isNaN(parsed.getTime())) return timestamp;
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone,
-      day: "numeric",
-      month: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(parsed);
+    const parts = dateFormat.formatToParts(parsed);
     const part = (type: Intl.DateTimeFormatPartTypes) =>
       parts.find((p) => p.type === type)!.value;
     return `${Number(part("day"))} ${MONTHS[Number(part("month")) - 1]} ${part("year")}, ${part("hour")}:${part("minute")}`;
@@ -121,7 +122,7 @@ export function formatter(color: boolean, timeZone?: string) {
             .split(/\r\n?|\n/u)
             .forEach((line, index) =>
               lines.push(
-                `${index === 0 ? "  Summary: " : "           "}${cleanValue(line)}`,
+                `${index === 0 ? "  Summary: " : " ".repeat("  Summary: ".length)}${cleanValue(line)}`,
               ),
             );
         if (change.cost !== undefined)

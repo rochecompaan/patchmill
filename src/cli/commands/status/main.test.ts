@@ -433,3 +433,23 @@ test("status cleans control sequences from every printed value", async (t) => {
     h.stderr.every((line) => !/[\u0000-\u001f\u007f-\u009f]/u.test(line)),
   );
 });
+
+// Parallel reads must not reorder warnings or hide warnings before a read failure.
+test("status retains issue warning order before a corrupt status error", async (t) => {
+  const h = await harness(t);
+  for (const n of [1, 2, 3]) {
+    await h.issue(n, `Issue ${n}`);
+    await h.store.appendStatus(n, {
+      at: "2026-11-07T12:00:00Z",
+      status: "done",
+    });
+    const path = join(h.stateRoot, `status/${n}.jsonl`);
+    const original = await readFile(path, "utf8");
+    await writeFile(path, original + (n === 2 ? "{}\n" : "{"));
+  }
+  assert.equal(await h.run(), 1);
+  assert.deepEqual(h.stderr, [
+    `Warning: Ignoring unfinished status record in ${join(h.stateRoot, "status/1.jsonl")}`,
+    `Invalid status record in ${join(h.stateRoot, "status/2.jsonl")} at line 2`,
+  ]);
+});

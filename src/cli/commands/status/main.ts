@@ -89,12 +89,30 @@ export async function main(
     const { issues, damaged } = await store.listIssues();
     for (const n of damaged)
       output.stderr(`Warning: damaged issue copy ${store.issuePath(n)}`);
+    const listed = issues.filter(
+      (issue) => showAll || issue.state !== "closed",
+    );
+    const statuses = await Promise.all(
+      listed.map(async (issue) => {
+        // Buffer each issue's warnings so parallel reads retain listing order.
+        const warnings: string[] = [];
+        const reader = new StateStore(resolve(repoRoot, STATE_DIR), (message) =>
+          warnings.push(message),
+        );
+        try {
+          const last = (await reader.readStatus(issue.number)).at(-1);
+          return { issue, last, warnings };
+        } catch (error) {
+          return { issue, error, warnings };
+        }
+      }),
+    );
     const rows: StatusRow[] = [];
-    for (const issue of issues) {
-      if (!showAll && issue.state === "closed") continue;
-      const last = (await store.readStatus(issue.number)).at(-1);
-      if (!last) continue;
-      rows.push({ issue, change: last });
+    for (const entry of statuses) {
+      for (const warning of entry.warnings)
+        output.stderr(`Warning: ${warning}`);
+      if ("error" in entry) throw entry.error;
+      if (entry.last) rows.push({ issue: entry.issue, change: entry.last });
     }
     const candidates = rows
       .filter(
