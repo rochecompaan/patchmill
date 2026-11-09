@@ -9,7 +9,6 @@ import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
 import type { WorkflowState } from "./workflow-state.ts";
-import { LabelWorkflowState } from "./label-workflow.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
   preparePhasePrompt,
@@ -45,7 +44,7 @@ export type RunOnceOptions = {
 };
 export type RunOnceDeps = {
   human?: HumanChannel;
-  workflow?: WorkflowState;
+  workflow: WorkflowState;
   observe?: (snapshot: RunSnapshot) => void;
   host: Host;
   runner: CommandRunner;
@@ -82,7 +81,7 @@ export async function runOneIssue(
   options: RunOnceOptions,
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
-  const workflow = deps.workflow ?? new LabelWorkflowState(host, config.labels);
+  const workflow = deps.workflow;
   await workflow.sync(options.issue);
   const selection = await selectRunIssue({
     host,

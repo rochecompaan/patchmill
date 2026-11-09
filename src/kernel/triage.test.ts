@@ -107,6 +107,7 @@ async function setup(t: TestContext, outputs: string[], issues = [issue(9)]) {
   const config = parseConfig({ host: { login: "owner" } });
   const deps = {
     host,
+    workflow: new LabelWorkflowState(host, config.labels),
     repoRoot: root,
     piCommand,
     now: () => new Date(2026, 9, 15, 12),
@@ -483,6 +484,7 @@ test("explicit closed issue bypasses selection; configured needsInfo is not also
     needsInfo: "question",
     unsuitable: "nope",
   };
+  f.deps.workflow = new LabelWorkflowState(f.host, f.config.labels);
   const set = f.host.setLabels.bind(f.host);
   f.host.setLabels = async (n, add, remove) => {
     assert.deepEqual(add, ["question"]);

@@ -7,7 +7,6 @@ import { renderTriageEnvelope } from "./envelope.ts";
 import { newRunId } from "./names.ts";
 import { supervisePi } from "./pi-supervisor.ts";
 import { parseJsonBlock } from "./result.ts";
-import { LabelWorkflowState } from "./label-workflow.ts";
 import type { TrackedIssue } from "./workflow-state.ts";
 import type { WorkflowStatus } from "../state/store.ts";
 
@@ -118,7 +117,7 @@ export async function runTriage(
   options: TriageOptions,
 ): Promise<Array<{ issue: number; label: string; applied: boolean }>> {
   const { host, repoRoot, output } = deps;
-  const workflow = deps.workflow ?? new LabelWorkflowState(host, config.labels);
+  const workflow = deps.workflow;
   await workflow.sync(options.issue);
   const trusted = trustedAuthors(config, (await host.checkCli()).login);
   const warn = (issue: number, message: string) =>
