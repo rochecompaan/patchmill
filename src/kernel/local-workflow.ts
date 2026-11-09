@@ -1,3 +1,4 @@
+import { postQuestionThenRecord } from "./question.ts";
 import type { Host, Issue } from "../host/types.ts";
 import type { StateStore, StatusChange } from "../state/store.ts";
 import {
@@ -87,37 +88,26 @@ export class LocalWorkflowState implements WorkflowState {
 
   async setStatus(n: number, update: StatusUpdate): Promise<string[]> {
     await this.checkRepository();
-    let questionUrl: string | undefined;
-    if (update.question?.trim()) {
-      try {
-        questionUrl = await this.host.commentIssue(n, update.question);
-      } catch (error) {
-        throw new Error(`Comment failed: ${errorMessage(error)}`, {
-          cause: error,
-        });
-      }
-    }
-    try {
-      const change: StatusChange = {
-        at: this.now().toISOString(),
-        status: update.status,
-        ...(update.runId !== undefined ? { runId: update.runId } : {}),
-        ...(update.summary !== undefined ? { summary: update.summary } : {}),
-        ...(update.cost !== undefined ? { cost: update.cost } : {}),
-        ...(update.warnings !== undefined ? { warnings: update.warnings } : {}),
-        ...(questionUrl !== undefined ? { questionUrl } : {}),
-      };
-      await this.store.appendStatus(n, change);
-    } catch (error) {
-      throw new Error(
-        `Status update failed: ${errorMessage(error)}${questionUrl !== undefined ? ` (question posted at ${questionUrl})` : ""}`,
-        { cause: error },
-      );
-    }
+    await postQuestionThenRecord(
+      update.question?.trim()
+        ? () => this.host.commentIssue(n, update.question!)
+        : undefined,
+      async (questionUrl) => {
+        const change: StatusChange = {
+          at: this.now().toISOString(),
+          status: update.status,
+          ...(update.runId !== undefined ? { runId: update.runId } : {}),
+          ...(update.summary !== undefined ? { summary: update.summary } : {}),
+          ...(update.cost !== undefined ? { cost: update.cost } : {}),
+          ...(update.warnings !== undefined
+            ? { warnings: update.warnings }
+            : {}),
+          ...(questionUrl !== undefined ? { questionUrl } : {}),
+        };
+        await this.store.appendStatus(n, change);
+      },
+      { prefix: "Status update failed", noun: "question" },
+    );
     return [];
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

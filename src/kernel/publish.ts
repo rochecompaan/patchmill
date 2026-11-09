@@ -1,3 +1,4 @@
+import { errorMessage } from "./errors.ts";
 import { join } from "node:path";
 import type { Facts } from "./facts.ts";
 import type { CostRun } from "./issue-cost.ts";
@@ -34,10 +35,6 @@ export async function publishStop(
   } catch (error) {
     return [errorMessage(error)];
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** Publish the current attempt's cost before its stop, including before review. */

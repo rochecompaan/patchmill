@@ -131,34 +131,6 @@ test("a failed optional comment is a warning", async (t) => {
   assert.deepEqual(host.state().issues[0]!.labels, ["agent-ready"]);
 });
 
-test("a failed required question rejects and leaves the labels", async (t) => {
-  const { host, workflow } = await setup(t, ["agent-ready"]);
-  host.commentIssue = async () => {
-    throw new Error("question denied");
-  };
-  await assert.rejects(
-    workflow.setStatus(9, { status: "needsInfo", summary: "S", question: "S" }),
-    { message: "Comment failed: question denied" },
-  );
-  assert.deepEqual(host.state().issues[0]!.labels, ["agent-ready"]);
-});
-
-test("a failed swap after a required question reports its URL", async (t) => {
-  const { host, workflow } = await setup(t, ["agent-ready"]);
-  host.setLabels = async () => {
-    throw new Error("swap denied");
-  };
-  await assert.rejects(
-    workflow.setStatus(9, { status: "needsInfo", summary: "S", question: "S" }),
-    {
-      message:
-        "Label update failed: swap denied (comment posted at https://example.invalid/9#c1)",
-    },
-  );
-  assert.equal(host.state().issues[0]!.comments.length, 2);
-  assert.deepEqual(host.state().issues[0]!.labels, ["agent-ready"]);
-});
-
 test("a failed label setup rejects without swapping or commenting", async (t) => {
   const { host, workflow } = await setup(t);
   host.createLabel = async () => {

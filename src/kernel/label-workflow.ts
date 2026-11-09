@@ -1,3 +1,5 @@
+import { postQuestionThenRecord } from "./question.ts";
+import { errorMessage } from "./errors.ts";
 import type { LabelsConfig } from "../config/config.ts";
 import type { Host, Issue } from "../host/types.ts";
 import type { WorkflowStatus } from "./workflow-state.ts";
@@ -73,28 +75,17 @@ export class LabelWorkflowState implements WorkflowState {
           ...(update.warnings ? { warnings: update.warnings } : {}),
         }),
       );
-    let questionUrl: string | undefined;
-    if (update.question !== undefined && update.summary) {
-      try {
-        questionUrl = await comment();
-      } catch (error) {
-        throw new Error(`Comment failed: ${errorMessage(error)}`, {
-          cause: error,
-        });
-      }
-    }
-    try {
-      await this.host.setLabels(
-        n,
-        [label],
-        Object.values(this.labels).filter((other) => other !== label),
-      );
-    } catch (error) {
-      throw new Error(
-        `Label update failed: ${errorMessage(error)}${questionUrl !== undefined ? ` (comment posted at ${questionUrl})` : ""}`,
-        { cause: error },
-      );
-    }
+    await postQuestionThenRecord(
+      update.question !== undefined && update.summary ? comment : undefined,
+      async () => {
+        await this.host.setLabels(
+          n,
+          [label],
+          Object.values(this.labels).filter((other) => other !== label),
+        );
+      },
+      { prefix: "Label update failed", noun: "comment" },
+    );
     if (update.summary && update.question === undefined) {
       try {
         await comment();
@@ -104,8 +95,4 @@ export class LabelWorkflowState implements WorkflowState {
     }
     return [];
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

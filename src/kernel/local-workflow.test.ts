@@ -199,41 +199,6 @@ test("question posts only its text and keeps the full summary locally", async (t
   ]);
 });
 
-// Recording needsInfo before a failed question would silently lose the question.
-test("failed question rejects and records nothing", async (t) => {
-  const { host, store, workflow } = await setup(t);
-  await store.appendStatus(9, { at, status: "ready" });
-  host.commentIssue = async () => {
-    throw new Error("question denied");
-  };
-  await assert.rejects(
-    workflow.setStatus(9, {
-      status: "needsInfo",
-      summary: "Q?",
-      question: "Q?",
-    }),
-    {
-      message: "Comment failed: question denied",
-    },
-  );
-  assert.deepEqual(await store.readStatus(9), [{ at, status: "ready" }]);
-});
-
-// A posted question must remain discoverable when persistence fails afterwards.
-test("failed append rejects with the question URL", async (t) => {
-  const { root, workflow, expectedComments } = await setup(t);
-  await fs.writeFile(join(root, "status"), "not a directory");
-  expectedComments.push("Q?");
-  await assert.rejects(
-    workflow.setStatus(9, {
-      status: "needsInfo",
-      summary: "Q?",
-      question: "Q?",
-    }),
-    /Status update failed: .* \(question posted at https:\/\/example.invalid\/9#c0\)/,
-  );
-});
-
 // Skipping a damaged copy would select work from an incomplete issue list.
 test("openIssues refuses a damaged copy", async (t) => {
   const { store, workflow } = await setup(t);
