@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { join } from "node:path";
 import fsExt from "fs-ext";
 import type { Issue } from "../host/types.ts";
+import { isCursor, isIssue, isStatusChange } from "./records.ts";
 
 export const STATE_DIR = ".patchmill/state";
 export type WorkflowStatus =
@@ -41,7 +42,7 @@ export class StateStore {
   }
 
   readCursor(): Promise<SyncCursor | undefined> {
-    return this.readJson(join(this.issuesPath, "sync.json"));
+    return this.readJson(join(this.issuesPath, "sync.json"), isCursor);
   }
 
   writeCursor(cursor: SyncCursor): Promise<void> {
@@ -53,7 +54,9 @@ export class StateStore {
   }
 
   readIssue(n: number): Promise<Issue | undefined> {
-    return this.readJson(this.issuePath(n));
+    return this.readJson(this.issuePath(n), (value): value is Issue =>
+      isIssue(value, n),
+    );
   }
 
   writeIssue(issue: Issue): Promise<void> {
@@ -75,7 +78,10 @@ export class StateStore {
     for (const name of names) {
       if (!/^\d+\.json$/.test(name)) continue;
       const n = Number(name.slice(0, -5));
-      const issue = await this.readJson<Issue>(join(this.issuesPath, name));
+      const issue = await this.readJson(
+        join(this.issuesPath, name),
+        (value): value is Issue => isIssue(value, n),
+      );
       if (issue === undefined) damaged.push(n);
       else issues.push(issue);
     }
@@ -102,7 +108,9 @@ export class StateStore {
     if (tail) this.warn(`Ignoring unfinished status record in ${path}`);
     return lines.map((line, index) => {
       try {
-        return JSON.parse(line) as StatusChange;
+        const value: unknown = JSON.parse(line);
+        if (!isStatusChange(value)) throw new Error("Invalid fields");
+        return value;
       } catch (error) {
         throw new Error(
           `Invalid status record in ${path} at line ${index + 1}`,
@@ -164,9 +172,13 @@ export class StateStore {
     }
   }
 
-  private async readJson<T>(path: string): Promise<T | undefined> {
+  private async readJson<T>(
+    path: string,
+    valid: (value: unknown) => value is T,
+  ): Promise<T | undefined> {
     try {
-      return JSON.parse(await fs.readFile(path, "utf8")) as T;
+      const value: unknown = JSON.parse(await fs.readFile(path, "utf8"));
+      return valid(value) ? value : undefined;
     } catch (error) {
       if (
         error instanceof SyntaxError ||

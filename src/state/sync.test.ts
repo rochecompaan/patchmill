@@ -318,3 +318,39 @@ test("failed explicit refresh does not advance the cursor", async (t) => {
   await assert.rejects(f.sync(99), /Issue 99 was not found/);
   assert.deepEqual(await f.store.readCursor(), cursor);
 });
+
+test("invalid cursor fields trigger full sync and a valid replacement", async (t) => {
+  const f = await fixture(t);
+  await f.sync();
+  await fs.writeFile(join(f.root, "issues/sync.json"), "{}");
+  f.setTime(later);
+  await f.sync();
+  assert.deepEqual(await f.store.readCursor(), {
+    repository: "fixture/repo",
+    fullSyncAt: later,
+    syncedUpTo: later,
+  });
+  assert.equal(
+    f.host.state().calls.filter((c) => c === "listIssuesSince:").length,
+    2,
+  );
+});
+
+test("invalid issue fields are damaged and restored by full sync", async (t) => {
+  const f = await fixture(t);
+  await f.sync();
+  for (const invalid of [
+    { ...issue, state: "merged" },
+    { ...issue, number: 3 },
+  ]) {
+    await fs.writeFile(join(f.root, "issues/1.json"), JSON.stringify(invalid));
+    assert.equal(await f.store.readIssue(1), undefined);
+    assert.deepEqual((await f.store.listIssues()).damaged, [1]);
+    await f.sync();
+    assert.deepEqual(await f.store.readIssue(1), issue);
+  }
+  assert.equal(
+    f.host.state().calls.filter((c) => c === "listIssuesSince:").length,
+    3,
+  );
+});

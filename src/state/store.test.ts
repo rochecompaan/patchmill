@@ -194,3 +194,19 @@ test("concurrent appends stay whole across store instances", async (t) => {
     changes,
   );
 });
+
+test("invalid status fields reject complete lines with location", async (t) => {
+  const { root, store } = await fixture(t);
+  await fs.mkdir(join(root, "status"), { recursive: true });
+  const path = join(root, "status/12.jsonl");
+  await fs.writeFile(
+    path,
+    JSON.stringify(ready) +
+      "\n" +
+      JSON.stringify({ at: ready.at, status: "blocked" }) +
+      "\n",
+  );
+  await assert.rejects(store.readStatus(12), {
+    message: `Invalid status record in ${path} at line 2`,
+  });
+});
