@@ -28,7 +28,28 @@ export type SyncCursor = {
 };
 
 // Shared across instances so only one blocking flock per path reaches libuv.
-const appends = new Map<string, Promise<void>>();
+const operations = new Map<string, Promise<void>>();
+
+function serialize<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const previous = operations.get(path) ?? Promise.resolve();
+  const result = previous.then(fn);
+  // Rejections reach the caller, but must not poison subsequent operations.
+  const settled = result.then(
+    () => {},
+    () => {},
+  );
+  operations.set(path, settled);
+  void settled.then(() => {
+    if (operations.get(path) === settled) operations.delete(path);
+  });
+  return result;
+}
+
+function flock(fd: number, operation: "ex" | "un"): Promise<void> {
+  return new Promise((resolve, reject) => {
+    fsExt.flock(fd, operation, (error) => (error ? reject(error) : resolve()));
+  });
+}
 
 export class StateStore {
   private readonly root: string;
@@ -124,18 +145,25 @@ export class StateStore {
 
   appendStatus(n: number, change: StatusChange): Promise<void> {
     const path = join(this.root, "status", `${n}.jsonl`);
-    const previous = appends.get(path) ?? Promise.resolve();
-    const result = previous.then(() => this.appendLocked(path, change));
-    // Rejections reach the caller, but must not poison subsequent appends.
-    const settled = result.then(
-      () => {},
-      () => {},
-    );
-    appends.set(path, settled);
-    void settled.then(() => {
-      if (appends.get(path) === settled) appends.delete(path);
+    return serialize(path, () => this.appendLocked(path, change));
+  }
+
+  withCacheLock<T>(fn: () => Promise<T>): Promise<T> {
+    const path = join(this.issuesPath, ".lock");
+    return serialize(path, async () => {
+      await fs.mkdir(this.issuesPath, { recursive: true });
+      const handle = await fs.open(path, constants.O_CREAT | constants.O_RDWR);
+      try {
+        await flock(handle.fd, "ex");
+        return await fn();
+      } finally {
+        try {
+          await flock(handle.fd, "un");
+        } finally {
+          await handle.close();
+        }
+      }
     });
-    return result;
   }
 
   private async appendLocked(

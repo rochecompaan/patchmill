@@ -78,6 +78,7 @@ test("first sync stores every issue with its comments", async (t) => {
   assert.deepEqual(await store.readIssue(1), issue);
   assert.equal((await store.readIssue(2))?.state, "closed");
   assert.deepEqual((await fs.readdir(join(root, "issues"))).sort(), [
+    ".lock",
     "1.json",
     "2.json",
     "sync.json",
@@ -353,4 +354,69 @@ test("invalid issue fields are damaged and restored by full sync", async (t) => 
     f.host.state().calls.filter((c) => c === "listIssuesSince:").length,
     3,
   );
+});
+
+// Gates force overlap; the second operation must observe the first commit.
+test("concurrent syncs serialize cache work and preserve both updates", async (t) => {
+  const f = await fixture(t);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const list = f.host.listIssuesSince.bind(f.host);
+  let calls = 0;
+  f.host.listIssuesSince = async (sinceValue) => {
+    if (++calls === 1) {
+      entered.resolve();
+      await release.promise;
+      return [{ ...issue, title: "First update" }];
+    }
+    assert.equal((await f.store.readCursor())?.syncedUpTo, first);
+    assert.equal(sinceValue, since);
+    assert.equal((await f.store.readIssue(1))?.title, "First update");
+    return (await list(sinceValue)).filter((copy) => copy.number === 2);
+  };
+  const one = f.sync();
+  await entered.promise;
+  f.setTime(later);
+  const two = syncIssues({
+    host: f.host,
+    store: new StateStore(f.root),
+    now: () => new Date(later),
+    warn: () => {},
+  });
+  release.resolve();
+  await Promise.all([one, two]);
+  assert.equal(calls, 2);
+  assert.equal((await f.store.readIssue(1))?.title, "First update");
+  assert.equal((await f.store.readIssue(2))?.state, "closed");
+  assert.deepEqual(await f.store.readCursor(), {
+    repository: "fixture/repo",
+    fullSyncAt: first,
+    syncedUpTo: later,
+  });
+});
+
+test("refreshIssue waits for an active sync to commit", async (t) => {
+  const f = await fixture(t);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const list = f.host.listIssuesSince.bind(f.host);
+  f.host.listIssuesSince = async (sinceValue) => {
+    entered.resolve();
+    await release.promise;
+    return list(sinceValue);
+  };
+  f.host.viewIssue = async () => {
+    assert.equal((await f.store.readCursor())?.syncedUpTo, first);
+    return { ...issue, title: "Refreshed" };
+  };
+  const syncing = f.sync(2);
+  await entered.promise;
+  // Only the standalone refresh is intercepted; sync's explicit refresh also
+  // exercises the already-locked path without re-entering the cache lock.
+  const view = f.host.viewIssue;
+  f.host.viewIssue = async (n) => (n === 2 ? { ...issue, number: 2 } : view(n));
+  const refreshing = refreshIssue(f.host, f.store, 1);
+  release.resolve();
+  await Promise.all([syncing, refreshing]);
+  assert.equal((await f.store.readIssue(1))?.title, "Refreshed");
 });

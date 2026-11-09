@@ -27,6 +27,12 @@ export async function syncIssues(input: {
   issue?: number;
   warn: (message: string) => void;
 }): Promise<SyncCursor> {
+  return input.store.withCacheLock(() => syncIssuesUnlocked(input));
+}
+
+async function syncIssuesUnlocked(
+  input: Parameters<typeof syncIssues>[0],
+): Promise<SyncCursor> {
   const { host, store, now, issue, warn } = input;
   const checked = await checkStateRepository(host, store);
   const { cursor } = checked;
@@ -65,7 +71,7 @@ export async function syncIssues(input: {
   for (const n of changed) {
     await store.writeIssue(copies.get(n)!);
   }
-  if (issue !== undefined) await refreshIssue(host, store, issue);
+  if (issue !== undefined) await refreshIssueUnlocked(host, store, issue);
   if (full) {
     const returned = new Set(listed.map((copy) => copy.number));
     for (const n of damaged) {
@@ -84,6 +90,14 @@ export async function syncIssues(input: {
 }
 
 export async function refreshIssue(
+  host: Host,
+  store: StateStore,
+  n: number,
+): Promise<Issue> {
+  return store.withCacheLock(() => refreshIssueUnlocked(host, store, n));
+}
+
+async function refreshIssueUnlocked(
   host: Host,
   store: StateStore,
   n: number,
