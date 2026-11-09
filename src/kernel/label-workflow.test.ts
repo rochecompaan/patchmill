@@ -171,3 +171,21 @@ test("a failed label setup rejects without swapping or commenting", async (t) =>
   assert.deepEqual(host.state().issues[0]!.labels, []);
   assert.equal(host.state().issues[0]!.comments.length, 1);
 });
+
+test("label setup retries after failure and caches success", async (t) => {
+  const { host, workflow } = await setup(t);
+  const listLabels = host.listLabels.bind(host);
+  let attempts = 0;
+  host.listLabels = async () => {
+    if (++attempts === 1) throw new Error("setup unavailable");
+    return listLabels();
+  };
+  await assert.rejects(
+    workflow.setStatus(9, { status: "ready" }),
+    /setup unavailable/,
+  );
+  await workflow.setStatus(9, { status: "done" });
+  assert.deepEqual(host.state().issues[0]!.labels, ["agent-done"]);
+  await workflow.setStatus(9, { status: "ready" });
+  assert.equal(attempts, 2);
+});

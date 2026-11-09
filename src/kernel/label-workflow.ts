@@ -54,7 +54,12 @@ export class LabelWorkflowState implements WorkflowState {
   }
 
   async setStatus(n: number, update: StatusUpdate): Promise<string[]> {
-    await (this.labelsReady ??= ensureLabels(this.host, this.labels));
+    await (this.labelsReady ??= ensureLabels(this.host, this.labels).catch(
+      (error: unknown) => {
+        delete this.labelsReady;
+        throw error;
+      },
+    ));
     const label = this.labels[update.status];
     const comment = async () =>
       this.host.commentIssue(
