@@ -85,7 +85,7 @@ test("assembles checked Host and bundled Pi, forwards flags and output", async (
         assert.equal(options.signal?.aborted, false);
         options.onProgress?.({ type: "selected", total: 1 });
         deps.output.stdout("queue: Looks clear.");
-        return [{ issue: 9, label: "queue", applied: false }];
+        return [{ issue: 9, status: "ready", applied: false }];
       },
     }),
     0,

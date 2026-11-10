@@ -4,6 +4,7 @@ import { main as initMain } from "./commands/init/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
 import { main as releaseMain } from "./commands/release/main.ts";
+import { main as statusMain } from "./commands/status/main.ts";
 import { main as labelsMain } from "./commands/labels/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as skillsMain } from "./commands/skills/main.ts";
@@ -20,6 +21,7 @@ Commands:
   triage      Classify repository issues for agent readiness.
   run-once    Advance one issue.
   release     Reset an issue from in-progress to ready.
+  status      Show local workflow state (local state mode).
   skills      Update the managed project-local skill pack.
   version     Print the Patchmill CLI version.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
@@ -105,6 +107,7 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["triage", triageMain],
   ["run-once", runOnceMain],
   ["release", releaseMain],
+  ["status", statusMain],
   ["labels", labelsMain],
   ["skills", skillsMain],
   ["version", versionMain],

@@ -8,7 +8,10 @@ import type { KernelGit } from "./git.ts";
 import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
-import { claimSwap } from "./labels.ts";
+import {
+  WORKFLOW_STATUS_TITLES,
+  type WorkflowState,
+} from "./workflow-state.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
   preparePhasePrompt,
@@ -19,9 +22,10 @@ import {
   workerGuidance,
   phaseDecision,
   planningStopSummary,
+  workerQuestion,
 } from "./interactive-loop.ts";
 import { isReviewWait, reviewWait, collectReviewFacts } from "./review-wait.ts";
-import { publishAttemptStop } from "./publish.ts";
+import { publishAttemptStop, type StopPublication } from "./publish.ts";
 import {
   formatRunResult,
   formatRunStart,
@@ -33,7 +37,6 @@ import { verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { selectRunIssue } from "./issue-selection.ts";
-export { selectIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
@@ -45,6 +48,7 @@ export type RunOnceOptions = {
 };
 export type RunOnceDeps = {
   human?: HumanChannel;
+  workflow: WorkflowState;
   observe?: (snapshot: RunSnapshot) => void;
   host: Host;
   runner: CommandRunner;
@@ -81,9 +85,11 @@ export async function runOneIssue(
   options: RunOnceOptions,
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
+  const workflow = deps.workflow;
+  await workflow.sync(options.issue);
   const selection = await selectRunIssue({
     host,
-    labels: config.labels,
+    workflow,
     ...(options.issue !== undefined ? { issue: options.issue } : {}),
     warn: (issue, message) =>
       output.stderr(`Warning: Issue #${issue}: ${message}`),
@@ -154,23 +160,25 @@ export async function runOneIssue(
     status: string;
     planningApproval?: "pr" | "no-pr";
   }[] = [];
-  let label: OutcomeLabel = "needsInfo";
-  let summary = "The session limit was reached.";
-  let warnings: string[] = [];
+  let stop: Omit<StopPublication, "cost"> = {
+    label: "needsInfo",
+    summary: "The session limit was reached.",
+    warnings: [],
+  };
   let displayFacts: Facts | undefined;
   let totalOutputTokens = 0;
   let published = false;
   const publicationErrors: string[] = [];
-  const publish = async (remove?: string[]) => {
+  const publish = async () => {
     publicationErrors.push(
       ...(await publishAttemptStop({
         host,
-        labels: config.labels,
+        workflow,
         issue: issueNumber,
         issueDir,
         current: { runId, sessions },
         ...(displayFacts ? { facts: displayFacts } : {}),
-        stop: { label, summary, warnings, ...(remove ? { remove } : {}) },
+        stop,
       })),
     );
   };
@@ -180,29 +188,24 @@ export async function runOneIssue(
       facts,
       issue: issueNumber,
       ...deps,
-      labels: config.labels,
+      workflow,
       human: deps.human!,
       restart,
       publish,
-      refresh: () => collectReviewFacts(host, issueNumber, facts, collect),
+      refresh: () => collectReviewFacts(workflow, issueNumber, facts, collect),
       update: (facts, nextLabel, nextSummary) => {
         published = true;
         displayFacts = facts;
         snapshot.facts(facts);
-        label = nextLabel;
-        summary = nextSummary;
+        stop = { ...stop, label: nextLabel, summary: nextSummary };
       },
     });
   };
   try {
     try {
-      const claim = claimSwap(config.labels);
-      await host.setLabels(issueNumber, claim.add, claim.remove);
-      let issue = await host.viewIssue(issueNumber);
-      if (
-        issue.state !== "open" ||
-        !issue.labels.includes(config.labels.inProgress)
-      )
+      await workflow.setStatus(issueNumber, { status: "inProgress", runId });
+      let issue = await workflow.issue(issueNumber);
+      if (issue.state !== "open" || issue.status !== "inProgress")
         return { status: "claimed-elsewhere", issue: issueNumber };
       await fs.mkdir(runDir, { recursive: true });
       output.stderr(formatRunStart(issue));
@@ -212,12 +215,12 @@ export async function runOneIssue(
       let resume: { facts: Facts; text: string } | undefined;
       while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
         snapshot.deriving();
-        issue = await host.viewIssue(issueNumber);
+        issue = await workflow.issue(issueNumber);
         const before = resume
           ? { kind: "facts" as const, facts: resume.facts }
           : await provisionWorkspace({ ...deps, config }, issue);
         if (before.kind === "ambiguous-branches") {
-          summary = `Several issue branches exist: ${before.branches.join(", ")}`;
+          stop.summary = `Several issue branches exist: ${before.branches.join(", ")}`;
           break;
         }
         const facts = before.facts;
@@ -225,14 +228,17 @@ export async function runOneIssue(
         snapshot.facts(facts);
         const decision = phaseDecision(facts, feedback, !!resume);
         if (decision.kind === "stop") {
-          ({ label, summary } = derivedStop(
-            facts,
-            issueNumber,
-            await host.repository(),
-            decision.label,
-          ));
+          stop = {
+            ...stop,
+            ...derivedStop(
+              facts,
+              issueNumber,
+              await host.repository(),
+              decision.label,
+            ),
+          };
           if (
-            label === "inProgress" &&
+            stop.label === "inProgress" &&
             (await continueGate(facts, deps.human, () =>
               snapshot.wait("gate-wait"),
             ))
@@ -253,7 +259,7 @@ export async function runOneIssue(
         }
         const phase = decision.phase;
         if (options.planOnly && phase === "implementation") {
-          summary = "planning complete";
+          stop.summary = "planning complete";
           break;
         }
         const { launch, launcher } = await preparePhasePrompt(
@@ -300,9 +306,9 @@ export async function runOneIssue(
             : {}),
         });
         await snapshot.session();
-        const after = await collect(await host.viewIssue(issueNumber), facts);
+        const after = await collect(await workflow.issue(issueNumber), facts);
         if (after.kind === "ambiguous-branches") {
-          summary = `Several issue branches exist: ${after.branches.join(", ")}`;
+          stop.summary = `Several issue branches exist: ${after.branches.join(", ")}`;
           break;
         }
         displayFacts = after.facts;
@@ -332,27 +338,33 @@ export async function runOneIssue(
           verified.kind === "advance"
         )
           continue;
-        const guidance = await workerGuidance(
-          phase,
-          run,
-          verified,
-          deps,
-          issueNumber,
-          () => snapshot.wait("blocked"),
+        const guidance = await workerGuidance(phase, run, verified, deps, () =>
+          snapshot.wait("blocked"),
         );
         if (guidance !== undefined) {
+          await fs.appendFile(join(runDir, "guidance.md"), guidance + "\n\n");
           resume = { facts: after.facts, text: guidance };
           sinceHuman = 0;
           continue;
         }
         if (verified.kind === "stop") {
-          label = verified.label;
-          summary = verified.comment;
-          warnings = verified.warnings;
-          if (phase === "planning")
-            summary = planningStopSummary(summary, facts, after.facts);
+          const question = workerQuestion({
+            status: verified.label,
+            human: !!deps.human,
+            session,
+            result,
+          });
+          stop = {
+            label: verified.label,
+            summary:
+              phase === "planning"
+                ? planningStopSummary(verified.comment, facts, after.facts)
+                : verified.comment,
+            warnings: verified.warnings,
+            ...(question !== undefined ? { question } : {}),
+          };
           if (
-            label === "inProgress" &&
+            stop.label === "inProgress" &&
             (await continueGate(after.facts, deps.human, () =>
               snapshot.wait("gate-wait"),
             ))
@@ -360,38 +372,38 @@ export async function runOneIssue(
             sinceHuman = 0;
             continue;
           }
-          if (deps.human && phase === "implementation" && label === "done")
+          if (deps.human && phase === "implementation" && stop.label === "done")
             await review(after.facts, false);
           break;
         }
         if (options.planOnly && phase === "planning") {
-          label = "needsInfo";
-          summary = "planning complete";
+          stop.label = "needsInfo";
+          stop.summary = "planning complete";
           break;
         }
         const next = derivePhase(after.facts);
         if (next.kind === "phase" && next.phase === phase) {
-          summary = `The phase did not advance. Expected artifact: ${phase === "planning" ? after.facts.expectedPlanPath : after.facts.expectedSpecPath}`;
+          stop.summary = `The phase did not advance. Expected artifact: ${phase === "planning" ? after.facts.expectedPlanPath : after.facts.expectedSpecPath}`;
           break;
         }
       }
     } catch (error) {
-      label = "needsInfo";
-      summary = error instanceof Error ? error.message : String(error);
-      if (published) await publish([config.labels.done]);
+      stop.label = "needsInfo";
+      stop.summary = error instanceof Error ? error.message : String(error);
+      if (published) await publish();
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
     if (!published) await publish();
     const publication = publicationErrors.length ? { publicationErrors } : {};
     const outcome: RunOnceOutcome =
-      label === "done"
+      stop.label === "done"
         ? { status: "completed", issue: issueNumber, ...publication }
         : {
             status: "stopped",
             issue: issueNumber,
-            label,
-            summary,
+            label: stop.label,
+            summary: stop.summary,
             ...publication,
           };
     await fs.mkdir(runDir, { recursive: true });
@@ -417,7 +429,7 @@ export async function runOneIssue(
             ? displayFacts?.pullRequest?.state === "merged"
               ? "Already merged"
               : "PR ready"
-            : label === "inProgress"
+            : stop.label === "inProgress"
               ? "Planning PR merge required"
               : "Stopped",
         severity:
@@ -426,9 +438,12 @@ export async function runOneIssue(
             : "warning",
         issue: selected,
         ...(displayFacts ? { facts: displayFacts } : {}),
-        summary,
-        warnings: [...warnings, ...publicationErrors],
-        outcomeLabel: config.labels[label],
+        summary: stop.summary,
+        warnings: [...stop.warnings, ...publicationErrors],
+        outcomeLabel:
+          config.workflow.stateTracking === "local"
+            ? WORKFLOW_STATUS_TITLES[stop.label]
+            : config.labels[stop.label],
         logPath: join(runDir, "pi.log"),
         sessionPath: join(runDir, "sessions"),
         cost,
@@ -436,7 +451,7 @@ export async function runOneIssue(
         elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
       }),
     );
-    snapshot.ended(summary);
+    snapshot.ended(stop.summary);
     return outcome;
   } finally {
     await lock.release();

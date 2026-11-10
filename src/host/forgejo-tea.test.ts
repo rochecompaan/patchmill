@@ -201,7 +201,15 @@ test("factory constructs Forgejo", () => {
 
 for (const login of ["name", ""]) {
   test(`repository operations carry repo context and login ${JSON.stringify(login)}`, async () => {
-    const { runner, host } = fixture("[]", login);
+    const runner = recordingRunner([
+      { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+      {
+        match: /tea api .*\/comments --method POST/,
+        result: { stdout: '{"html_url":"https://host/3#comment"}' },
+      },
+      { match: /^tea /, result: { stdout: "[]" } },
+    ]);
+    const host = new ForgejoHost({ runner, repoRoot: "/repo", login });
     await host.listOpenIssues();
     await host.listLabels();
     await host.createLabel(label);
@@ -233,9 +241,10 @@ for (const login of ["name", ""]) {
     assert.ok(
       runner.calls.some(
         (c) =>
-          c[1] === "comment" &&
-          c[2] === "3" &&
-          c.slice(-2).join(" ") === "-- hello",
+          c[1] === "api" &&
+          c[2] === "/repos/{owner}/{repo}/issues/3/comments" &&
+          c.includes("POST") &&
+          c.includes('{"body":"hello"}'),
       ),
     );
   });
@@ -350,6 +359,7 @@ test("viewIssue preserves all comment pages", async () => {
     user: { login: "reviewer" },
     body: "yes",
     created_at: "later",
+    html_url: "https://host/3#c1",
   };
   const runner = recordingRunner([
     { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
@@ -375,6 +385,7 @@ test("viewIssue preserves all comment pages", async () => {
     author: "reviewer",
     body: "yes",
     createdAt: "later",
+    url: "https://host/3#c1",
   });
 });
 
@@ -581,4 +592,159 @@ test("failed issue, comment, label, PR and origin commands retain operational di
     login: "",
   });
   await assert.rejects(failedOrigin.repository(), CommandFailedError);
+});
+
+test("forgejo issue sync lists all states, drops pull requests, and passes since", async () => {
+  const raw = {
+    number: 12,
+    title: "Fix",
+    body: "Details",
+    labels: [{ name: "bug" }],
+    state: "closed",
+    html_url: "https://host/12",
+    user: { login: "author" },
+    created_at: "today",
+  };
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    {
+      match: /page=1/,
+      result: { stdout: JSON.stringify(Array.from({ length: 50 }, () => raw)) },
+    },
+    {
+      match: /page=2/,
+      result: {
+        stdout: JSON.stringify([
+          { ...raw, number: 13, state: "open" },
+          { ...raw, pull_request: {} },
+        ]),
+      },
+    },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "" });
+  for (const since of ["2026-11-07T10:00:00.000Z", undefined]) {
+    const issues = await host.listIssuesSince(since);
+    assert.equal(issues.length, 51);
+    assert.deepEqual(issues[0], {
+      number: 12,
+      title: "Fix",
+      body: "Details",
+      labels: ["bug"],
+      state: "closed",
+      url: "https://host/12",
+      author: "author",
+      createdAt: "today",
+      comments: [],
+    });
+    assert.equal(issues.at(-1)?.state, "open");
+    const endpoint =
+      "/repos/{owner}/{repo}/issues?state=all&type=issues" +
+      (since ? "&since=2026-11-07T10%3A00%3A00.000Z" : "");
+    assert.deepEqual(runner.calls.filter((c) => c[0] === "tea").at(-2), [
+      "tea",
+      "api",
+      endpoint + "&page=1&limit=50",
+      "--repo",
+      "owner/repo",
+    ]);
+  }
+});
+
+test("forgejo comment sync maps issue number and url", async () => {
+  const raw = {
+    issue_url: "https://api.github.com/repos/o/r/issues/12",
+    html_url: "https://github.com/o/r/issues/12#issuecomment-5",
+    user: { login: "author" },
+    body: "Reply",
+    created_at: "today",
+  };
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    { match: /tea api/, result: { stdout: JSON.stringify([raw]) } },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "" });
+  const expected = {
+    issue: 12,
+    url: "https://github.com/o/r/issues/12#issuecomment-5",
+    author: "author",
+    body: "Reply",
+    createdAt: "today",
+  };
+  for (const since of ["2026-11-07T10:00:00.000Z", undefined]) {
+    assert.deepEqual(await host.listCommentsSince(since), [expected]);
+    const endpoint =
+      "/repos/{owner}/{repo}/issues/comments" +
+      (since ? "?since=2026-11-07T10%3A00%3A00.000Z" : "");
+    assert.deepEqual(runner.calls.at(-1), [
+      "tea",
+      "api",
+      endpoint + (since ? "&" : "?") + "page=1&limit=50",
+      "--repo",
+      "owner/repo",
+    ]);
+  }
+});
+
+test("forgejo comment sync rejects invalid issue URLs", async () => {
+  const raw = {
+    issue_url: "https://host/pulls/12",
+    html_url: "https://host/comment",
+    user: { login: "a" },
+    body: "b",
+    created_at: "today",
+  };
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    { match: /tea api/, result: { stdout: JSON.stringify([raw]) } },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "" });
+  await assert.rejects(host.listCommentsSince(), /invalid comment/);
+});
+
+test("forgejo commentIssue returns the comment url", async () => {
+  const { host, runner } = fixture(
+    '{"html_url":"https://github.com/o/r/issues/7#issuecomment-9"}',
+    "",
+  );
+  assert.equal(
+    await host.commentIssue(7, "Question?"),
+    "https://github.com/o/r/issues/7#issuecomment-9",
+  );
+  assert.deepEqual(runner.calls.at(-1), [
+    "tea",
+    "api",
+    "/repos/{owner}/{repo}/issues/7/comments",
+    "--method",
+    "POST",
+    "-d",
+    '{"body":"Question?"}',
+    "--repo",
+    "owner/repo",
+  ]);
+});
+
+// Rejecting these replies prevents publication from succeeding without its reference.
+for (const stdout of [
+  "{}",
+  '{"html_url":42}',
+  '{"html_url":null}',
+  '{"html_url":""}',
+  '{"html_url":"   "}',
+  "null",
+]) {
+  test(`forgejo commentIssue rejects a missing or invalid URL: ${stdout}`, async () => {
+    const { host } = fixture(stdout);
+    await assert.rejects(
+      host.commentIssue(7, "Question?"),
+      /tea api comment returned no html_url/,
+    );
+  });
+}
+
+test("forgejo commentIssue rejects malformed JSON", async () => {
+  const { host } = fixture("not JSON");
+  await assert.rejects(
+    host.commentIssue(7, "Question?"),
+    /tea returned invalid JSON/,
+  );
 });

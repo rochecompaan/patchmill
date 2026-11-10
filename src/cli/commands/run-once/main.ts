@@ -1,3 +1,4 @@
+import { createWorkflowState } from "../../../kernel/workflow-factory.ts";
 import { selectRunIssue } from "../../../kernel/issue-selection.ts";
 import { formatRunResult } from "../../../kernel/console.ts";
 import { startConsole } from "../../../console/start.ts";
@@ -71,20 +72,31 @@ export async function main(
     const repoRoot = options.repoRoot ?? process.cwd();
     const config = await loadConfig(repoRoot);
     const runner = options.runner ?? runCommand;
+    const host = createHost(config, runner, repoRoot);
+    const now = () => new Date();
+    const workflow = createWorkflowState({
+      config,
+      host,
+      repoRoot,
+      now,
+      warn: (message) => output.stderr(`Warning: ${message}`),
+    });
     const deps = {
-      host: createHost(config, runner, repoRoot),
+      host,
+      workflow,
       runner,
       git: createKernelGit(runner, repoRoot),
       piCommand: resolveBundledPiCommand(),
       extensionPaths: [resolvePiSubagentsPackageRoot()],
       repoRoot,
-      now: () => new Date(),
+      now,
       output,
     };
     if (runOptions.interactive) {
+      await workflow.sync(runOptions.issue);
       const selection = await selectRunIssue({
         host: deps.host,
-        labels: config.labels,
+        workflow,
         ...(runOptions.issue !== undefined ? { issue: runOptions.issue } : {}),
         warn: (issue, message) =>
           output.stderr(`Warning: Issue #${issue}: ${message}`),

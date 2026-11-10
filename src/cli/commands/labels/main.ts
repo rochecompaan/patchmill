@@ -37,6 +37,10 @@ export async function main(
   try {
     const repoRoot = options.repoRoot ?? process.cwd();
     const config = await loadConfig(repoRoot);
+    if (config.workflow.stateTracking === "local") {
+      output.stderr("Local state mode does not use labels.");
+      return 1;
+    }
     const host = createHost(config, options.runner ?? runCommand, repoRoot);
     const check = await host.checkCli();
     if (!check.ok) throw new Error(check.message);

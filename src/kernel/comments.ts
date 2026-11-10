@@ -20,8 +20,20 @@ export function planningGateComment(facts: Facts): string {
     .join("\n\n");
 }
 
-export function guidanceComment(text: string): string {
-  return [KERNEL_COMMENT, "Maintainer guidance from the console:", text].join(
-    "\n\n",
-  );
+export function kernelComment(input: {
+  issue: number;
+  label: string;
+  summary: string;
+  cost?: string;
+  warnings?: string[];
+}): string {
+  return [
+    KERNEL_COMMENT,
+    `Issue #${input.issue}: ${input.label}`,
+    input.summary,
+    input.cost,
+    ...(input.warnings ?? []),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }

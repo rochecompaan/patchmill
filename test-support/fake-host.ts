@@ -82,6 +82,24 @@ export class FakeHost implements Host {
     );
   }
 
+  async listIssuesSince(since?: string) {
+    return this.call(`listIssuesSince:${since ?? ""}`, (state) =>
+      state.issues.map((issue) => ({ ...issue, comments: [] })),
+    );
+  }
+
+  async listCommentsSince(since?: string) {
+    return this.call(`listCommentsSince:${since ?? ""}`, (state) =>
+      state.issues.flatMap((issue) =>
+        issue.comments.map((comment, index) => ({
+          ...comment,
+          issue: issue.number,
+          url: comment.url ?? `${issue.url}#c${index}`,
+        })),
+      ),
+    );
+  }
+
   async viewIssue(n: number) {
     return this.call(`viewIssue:${n}`, (state) => this.issue(state, n));
   }
@@ -139,12 +157,16 @@ export class FakeHost implements Host {
   }
 
   async commentIssue(n: number, body: string) {
-    this.call(`commentIssue:${n}`, (state) => {
-      this.issue(state, n).comments.push({
+    return this.call(`commentIssue:${n}`, (state) => {
+      const issue = this.issue(state, n);
+      const url = `${issue.url}#c${issue.comments.length}`;
+      issue.comments.push({
+        url,
         author: "owner",
         body,
         createdAt: new Date().toISOString(),
       });
+      return url;
     });
   }
 

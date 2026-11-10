@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname } from "node:path";
-import fsExt from "fs-ext";
+import { flock } from "../process/flock.ts";
 
 export type LockRecord = { pid: number; startedAt: string };
 
@@ -57,11 +57,7 @@ export async function acquireLock(
   const handle = await fs.open(path, constants.O_CREAT | constants.O_RDWR);
   try {
     try {
-      await new Promise<void>((resolve, reject) => {
-        fsExt.flock(handle.fd, "exnb", (error) =>
-          error ? reject(error) : resolve(),
-        );
-      });
+      await flock(handle.fd, "exnb");
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "EAGAIN" || code === "EWOULDBLOCK") {

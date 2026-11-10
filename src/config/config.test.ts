@@ -20,6 +20,44 @@ test("retired blocked configuration is accepted as a string but never retained",
   assert.throws(() => parseConfig({ labels: { blocked: false } }), ConfigError);
 });
 
+test("stateTracking defaults to labels and accepts local", () => {
+  assert.equal(parseConfig({}).workflow.stateTracking, "labels");
+  assert.equal(
+    parseConfig({ workflow: { stateTracking: "local" } }).workflow
+      .stateTracking,
+    "local",
+  );
+});
+test("stateTracking rejects other values", () => {
+  assert.throws(
+    () => parseConfig({ workflow: { stateTracking: "remote" } }),
+    /Invalid value for workflow.stateTracking/,
+  );
+});
+
+// Ambiguous outcomes must be rejected regardless of the state backend.
+for (const mode of ["local", "labels"] as const) {
+  for (const needsInfo of ["shared", "SHARED"]) {
+    test(`${mode} rejects duplicate workflow labels (${needsInfo})`, () => {
+      assert.throws(
+        () =>
+          parseConfig({
+            workflow: { stateTracking: mode },
+            labels: {
+              needsInfo,
+              ready: "shared",
+              done: "other",
+              inProgress: "other",
+            },
+          }),
+        new ConfigError(
+          'Workflow labels must be distinct: labels.ready and labels.needsInfo are both "shared".',
+        ),
+      );
+    });
+  }
+}
+
 test("parseConfig fills an empty config with defaults", () => {
   assert.deepEqual(parseConfig({}), DEFAULT_CONFIG);
 });

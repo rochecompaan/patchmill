@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { createGitFixture } from "./git-fixture.ts";
 import { FakeHost, writeFakeHostState } from "./fake-host.ts";
+import { LabelWorkflowState } from "../src/kernel/label-workflow.ts";
 import { KERNEL_COMMENT } from "../src/kernel/comments.ts";
 import { DEFAULT_CONFIG } from "../src/config/config.ts";
 import { runCommand, type CommandRunner } from "../src/process/command.ts";
@@ -90,6 +91,7 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
   );
   const deps: RunOnceDeps = {
     host,
+    workflow: new LabelWorkflowState(host, config.labels),
     runner,
     git: createKernelGit(runner, f.repoRoot),
     piCommand: { command: process.execPath, argsPrefix: [wrapper] },

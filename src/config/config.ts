@@ -1,3 +1,4 @@
+import { WORKFLOW_STATUSES } from "../kernel/workflow-state.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { HostProviderId } from "../host/types.ts";
@@ -23,6 +24,7 @@ export type PatchmillConfig = {
   skills: { triage: string; planning: string; implementation: string };
   pi: { agentDir: string; timeoutMinutes: number };
   workflow: {
+    stateTracking: "labels" | "local";
     specApproval: { required: boolean };
     planApproval: { required: boolean };
   };
@@ -50,6 +52,7 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
   },
   pi: { agentDir: ".patchmill/pi-agent", timeoutMinutes: 90 },
   workflow: {
+    stateTracking: "labels",
     specApproval: { required: false },
     planApproval: { required: false },
   },
@@ -76,6 +79,7 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "skills.implementation", kind: "string" },
   { path: "pi.agentDir", kind: "string" },
   { path: "pi.timeoutMinutes", kind: "number" },
+  { path: "workflow.stateTracking", kind: "string" },
   { path: "workflow.specApproval.required", kind: "boolean" },
   { path: "workflow.planApproval.required", kind: "boolean" },
 ];
@@ -128,6 +132,13 @@ export function parseConfig(raw: unknown): PatchmillConfig {
         ) {
           throw new ConfigError(`Invalid value for ${path}`);
         }
+        if (
+          path === "workflow.stateTracking" &&
+          value !== "labels" &&
+          value !== "local"
+        ) {
+          throw new ConfigError(`Invalid value for ${path}`);
+        }
         target[key] = structuredClone(value);
       } else if (schema.some((entry) => entry.path.startsWith(`${path}.`))) {
         if (!isObject(value))
@@ -139,6 +150,23 @@ export function parseConfig(raw: unknown): PatchmillConfig {
     }
   }
   walk(raw, config, "");
+  // Preserve diagnostic priority independently of status display order.
+  const labelKeys = Object.keys(DEFAULT_CONFIG.labels);
+  const keys = [...WORKFLOW_STATUSES].sort(
+    (a, b) => labelKeys.indexOf(a) - labelKeys.indexOf(b),
+  );
+  for (const [index, first] of keys.entries()) {
+    for (const second of keys.slice(index + 1)) {
+      if (
+        config.labels[first].toLowerCase() ===
+        config.labels[second].toLowerCase()
+      ) {
+        throw new ConfigError(
+          `Workflow labels must be distinct: labels.${first} and labels.${second} are both "${config.labels[first]}".`,
+        );
+      }
+    }
+  }
   return config;
 }
 

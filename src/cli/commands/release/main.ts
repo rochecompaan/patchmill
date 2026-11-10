@@ -1,6 +1,8 @@
+import { WORKFLOW_STATUS_TITLES } from "../../../kernel/workflow-state.ts";
 import { resolve } from "node:path";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
+import { createWorkflowState } from "../../../kernel/workflow-factory.ts";
 import { acquireLock, LockHeldError } from "../../../kernel/lock.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
@@ -45,12 +47,22 @@ export async function main(
     );
     try {
       const host = createHost(config, options.runner ?? runCommand, repoRoot);
-      const issue = await host.viewIssue(issueNumber);
-      const { ready, inProgress } = config.labels;
-      if (!issue.labels.includes(inProgress)) {
+      const workflow = createWorkflowState({
+        config,
+        host,
+        repoRoot,
+        now: () => new Date(),
+        warn: (message) => output.stderr(`Warning: ${message}`),
+      });
+      const issue = await workflow.issue(issueNumber);
+      const { ready, inProgress } =
+        config.workflow.stateTracking === "local"
+          ? WORKFLOW_STATUS_TITLES
+          : config.labels;
+      if (issue.status !== "inProgress") {
         output.stdout(`Issue #${issueNumber}: nothing to release.`);
       } else {
-        await host.setLabels(issueNumber, [ready], [inProgress]);
+        await workflow.setStatus(issueNumber, { status: "ready" });
         output.stdout(`Issue #${issueNumber}: ${inProgress} -> ${ready}.`);
       }
     } finally {

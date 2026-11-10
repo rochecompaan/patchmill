@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { trustedAuthors, type PatchmillConfig } from "../config/config.ts";
+import type { ParsedResult } from "./result.ts";
+import type { PiSession } from "./pi-supervisor.ts";
 import type { Issue } from "../host/types.ts";
 import type { RunOnceDeps } from "./run-once.ts";
 import { derivePhase, type Phase } from "./phase.ts";
@@ -16,7 +18,7 @@ import {
 import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
 import { planningBranchName } from "./names.ts";
-import { guidanceComment, planningGateComment } from "./comments.ts";
+import { planningGateComment } from "./comments.ts";
 
 export async function continueGate(
   facts: Facts,
@@ -114,6 +116,24 @@ export function derivedStop(
   return { label, summary };
 }
 
+/** Only a successful unattended needs-input stop requires an upstream question. */
+export function workerQuestion(input: {
+  status: OutcomeLabel;
+  human: boolean;
+  session: Pick<PiSession, "aborted" | "timedOut">;
+  result: ParsedResult;
+}): string | undefined {
+  const { status, human, session, result } = input;
+  return status === "needsInfo" &&
+    !human &&
+    !session.aborted &&
+    !session.timedOut &&
+    result.ok &&
+    result.result.status === "needs-input"
+    ? result.result.summary
+    : undefined;
+}
+
 /** Prepare the on-disk prompt shared by interactive and print launchers. */
 export async function preparePhasePrompt(
   config: PatchmillConfig,
@@ -188,11 +208,10 @@ export async function workerGuidance(
   phase: Phase,
   run: PhaseRun,
   verified: Outcome,
-  deps: Pick<RunOnceDeps, "human" | "host">,
-  issue: number,
+  deps: Pick<RunOnceDeps, "human">,
   onBlocked: () => void,
 ): Promise<string | undefined> {
-  const { human, host } = deps;
+  const { human } = deps;
   if (
     !human ||
     phase !== "implementation" ||
@@ -206,6 +225,5 @@ export async function workerGuidance(
   onBlocked();
   const answer = await human.awaitGuidance(run.result.result.summary);
   if (answer.kind === "quit") return undefined;
-  await host.commentIssue(issue, guidanceComment(answer.text));
   return answer.text;
 }

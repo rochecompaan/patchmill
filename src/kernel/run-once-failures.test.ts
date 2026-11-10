@@ -8,6 +8,12 @@ import {
   plan,
   done,
 } from "../../test-support/run-once-fixture.ts";
+import { fakeHuman } from "../../test-support/fake-human.ts";
+import type {
+  StatusUpdate,
+  TrackedIssue,
+  WorkflowState,
+} from "./workflow-state.ts";
 import { acquireLock } from "./lock.ts";
 
 for (const mode of ["draft", "dirty"] as const) {
@@ -274,15 +280,15 @@ for (const site of ["release labels", "comment"] as const) {
       assert.equal(outcome.label, "inProgress");
       assert.match(outcome.summary, /Waiting for it to be merged/);
       assert.ok(!outcome.summary.includes("failed"));
-      assert.deepEqual(outcome.publicationErrors, [
-        ...(site === "release labels"
+      assert.deepEqual(
+        outcome.publicationErrors,
+        site === "release labels"
           ? ["Label update failed: release labels failed"]
-          : []),
-        "Comment failed: comment failed",
-      ]);
+          : ["Comment failed: comment failed"],
+      );
     }
     assert.equal(swaps, 2);
-    assert.equal(comments, 1);
+    assert.equal(comments, site === "release labels" ? 0 : 1);
     assert.deepEqual((await c.records()).result.outcome, outcome);
     assert.match(c.output.join("\n"), new RegExp(`${site} failed`));
     const inode = (await fs.stat(c.lockPath)).ino;
@@ -307,3 +313,98 @@ test("a result-record write failure still closes the permanent lock handle", asy
   await lock.release();
   assert.equal((await fs.stat(c.lockPath)).ino, inode);
 });
+
+// WorkflowState receives questions only for successful needs-input observations,
+// never for a timeout/abort that happened to emit a valid result first.
+for (const mode of [
+  "question",
+  "nonzero question",
+  "timeout",
+  "abort",
+  "human",
+  "failed",
+] as const) {
+  test(`workflow question policy: ${mode}`, async (t) => {
+    const result = {
+      status: mode === "failed" ? "failed" : "needs-input",
+      summary: "Which provider?",
+    };
+    const body = `\`\`\`json\n${JSON.stringify(result)}\n\`\`\``;
+    const c = await setupRun(t, [
+      {
+        stdout: body,
+        ...(mode === "timeout" || mode === "abort" ? { sleepMs: 60_000 } : {}),
+        exitCode: mode === "nonzero question" ? 1 : 0,
+      },
+    ]);
+    await c.seed({ [spec]: "spec", [plan]: "plan" });
+    const tracked: TrackedIssue = {
+      ...c.host.state().issues[0]!,
+      labels: [],
+      comments: [],
+      status: "ready",
+    };
+    const updates: StatusUpdate[] = [];
+    const workflow: WorkflowState = {
+      async sync() {},
+      async openIssues() {
+        return [structuredClone(tracked)];
+      },
+      async issue() {
+        return structuredClone(tracked);
+      },
+      async setStatus(_n, update) {
+        updates.push(update);
+        tracked.status = update.status;
+        return [];
+      },
+    };
+    const bypass = async (): Promise<never> => {
+      throw new Error("WorkflowState bypassed");
+    };
+    c.host.listOpenIssues = bypass;
+    c.host.viewIssue = bypass;
+    c.host.setLabels = bypass;
+    c.host.commentIssue = bypass;
+    if (mode === "timeout") c.config.pi.timeoutMinutes = 0.01;
+    const controller = new AbortController();
+    const running = c.run(
+      { signal: controller.signal },
+      { workflow, ...(mode === "human" ? { human: fakeHuman(c) } : {}) },
+    );
+    if (mode === "abort") {
+      // Abort only after the valid result reached the actual session log.
+      const root = dirname(c.lockPath);
+      const deadline = Date.now() + 10_000;
+      while (true) {
+        if (Date.now() > deadline) {
+          controller.abort();
+          throw new Error("Pi did not emit the result before the deadline");
+        }
+        const entries = await fs.readdir(root).catch(() => []);
+        const run = entries.find((entry) => entry !== "lock");
+        const log = run
+          ? await fs.readFile(join(root, run, "pi.log"), "utf8").catch(() => "")
+          : "";
+        if (log.includes("Which provider?")) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      controller.abort();
+    }
+    const outcome = await running;
+    assert.equal(outcome.status, "stopped");
+    if (outcome.status === "stopped") assert.equal(outcome.label, "needsInfo");
+    assert.equal(updates.length, 2);
+    assert.equal(updates[0]!.status, "inProgress");
+    assert.equal(updates[0]!.runId, (await c.records()).result.runId);
+    assert.equal(updates[1]!.status, "needsInfo");
+    assert.equal(
+      updates[1]!.question,
+      mode === "question" || mode === "nonzero question"
+        ? "Which provider?"
+        : undefined,
+    );
+    assert.match(updates[1]!.summary!, /Which provider/);
+    assert.equal(updates[1]!.runId, updates[0]!.runId);
+  });
+}

@@ -92,6 +92,7 @@ shown in chat. Non-interactive runs leave them in place.
 | `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                                         |
 | `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                                                        |
 | `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                       |
+| `patchmill status [--all] [--issue N]`                     | Read local state without syncing; read blockers of ready and in-progress issues live from the tracker.                                                        |
 | `patchmill skills update`                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files dropped from the pack.                       |
 | `patchmill version`                                        | Print the version.                                                                                                                                            |
 | `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
@@ -175,6 +176,10 @@ keys fail by name. `git.baseBranch: null` uses the remote default branch.
 }
 ```
 
+Workflow label names must be distinct in every state-tracking mode. The check is
+case-insensitive. Local mode still uses these names to interpret agent triage
+results, but does not write labels upstream.
+
 `init` leaves valid existing configuration unchanged and rejects invalid
 configuration. Retired spec/plan review-label settings and string-valued
 `labels.blocked` are accepted but ignored. New configuration omits them. Other
@@ -231,6 +236,30 @@ warning before starting another run on that issue.
 After a hard crash, `patchmill release --issue N` acquires the same OS lock and
 resets a stale `in-progress` label to `agent-ready`. Contention prevents label
 changes. Do not delete the permanent lock or its parent directory.
+
+## Local state mode
+
+Set `workflow.stateTracking` to `"local"` in `patchmill.config.json` to keep
+workflow state on this machine. The default is `"labels"`.
+
+Patchmill keeps issue copies and status history in `.patchmill/state/` instead
+of using labels and status comments. It still posts questions, opens pull
+requests, adds cost reports to PR bodies, and adds dependency links upstream.
+Questions are its only upstream issue comments in this mode.
+
+`patchmill status` reads local state without syncing and shows when it last
+synced. It reads blockers of ready and in-progress issues live from the tracker.
+Same-repository blockers include their local workflow status, such as `(Ready)`
+or `(In Progress)`. Done blockers show `(Done, PR not merged)`: opening a PR
+marks work Done, but the issue still blocks dependencies until it closes after
+merge. Untriaged, unknown, or unreadable statuses and cross-repository blockers
+have no status note. Add `--all` to include closed issues, or `--issue N` to see
+one issue's full status history and, if open, its live blockers.
+`patchmill labels setup` refuses in local mode; `patchmill doctor` checks the
+state folder instead of labels.
+
+Local state mode is for one user on one machine. Switching modes does not
+migrate state.
 
 ## Branch protection
 

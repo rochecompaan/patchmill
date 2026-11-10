@@ -10,7 +10,8 @@ import {
   branch,
 } from "../../test-support/run-once-fixture.ts";
 import { acquireLock } from "./lock.ts";
-import { selectIssue } from "./run-once.ts";
+import { selectRunIssue } from "./issue-selection.ts";
+import { LabelWorkflowState } from "./label-workflow.ts";
 
 for (const dryRun of [false, true]) {
   for (const label of ["agent-ready", "in-progress"]) {
@@ -302,11 +303,23 @@ test("selection resumes in-progress issues and explicit selection still requires
     base,
     { ...base, number: 3, state: "closed" as const },
   ];
-  assert.equal(selectIssue(issues, c.config.labels)?.number, 1);
-  assert.equal(selectIssue(issues, c.config.labels, 1)?.number, 1);
-  assert.equal(selectIssue(issues, c.config.labels, 9)?.number, 9);
-  for (const n of [3, 99])
-    assert.equal(selectIssue(issues, c.config.labels, n), undefined);
+  await c.mutate((s) => {
+    s.issues = issues;
+  });
+  const workflow = new LabelWorkflowState(c.host, c.config.labels);
+  const select = async (issue?: number) => {
+    const result = await selectRunIssue({
+      host: c.host,
+      workflow,
+      ...(issue !== undefined ? { issue } : {}),
+      warn: () => {},
+    });
+    return result.kind === "selected" ? result.issue.number : undefined;
+  };
+  assert.equal(await select(), 1);
+  assert.equal(await select(1), 1);
+  assert.equal(await select(9), 9);
+  for (const n of [3, 99]) assert.equal(await select(n), undefined);
   await c.mutate((s) => {
     s.issues = [];
   });

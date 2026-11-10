@@ -112,6 +112,30 @@ test("labels setup reports missing configuration without calling a provider", as
   assert.deepEqual(h.created, []);
 });
 
+test("labels setup refuses in local mode", async (t) => {
+  const h = await harness(t);
+  await writeFile(
+    join(h.root, CONFIG_FILE),
+    JSON.stringify({ workflow: { stateTracking: "local" } }),
+  );
+  let calls = 0;
+  const code = await main(["setup"], {
+    repoRoot: h.root,
+    runner: async () => {
+      calls++;
+      throw new Error("Unexpected host call");
+    },
+    output: {
+      stdout: (line) => h.stdout.push(line),
+      stderr: (line) => h.stderr.push(line),
+    },
+  });
+  assert.equal(code, 1);
+  assert.deepEqual(h.stderr, ["Local state mode does not use labels."]);
+  assert.deepEqual(h.stdout, []);
+  assert.equal(calls, 0);
+});
+
 test("top-level CLI registers labels help", async (t) => {
   const lines: string[] = [];
   t.mock.method(console, "log", (line: string) => lines.push(line));

@@ -1,3 +1,4 @@
+import { checkStateWritable } from "../../../state/writable.ts";
 import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { PatchmillConfig } from "../../../config/config.ts";
@@ -5,7 +6,12 @@ import type { Host } from "../../../host/types.ts";
 import { supervisePi } from "../../../kernel/pi-supervisor.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { commandOutput, type CommandRunner } from "../../../process/command.ts";
+import { STATE_DIR, stateDir, StateStore } from "../../../state/store.ts";
 import type { PiCommandSpec } from "../../pi-cli.ts";
+
+type ProbeResult =
+  | { ok: true; message?: string }
+  | { ok: false; message: string };
 
 export type DoctorCheck = {
   name: string;
@@ -44,14 +50,14 @@ export async function runDoctorChecks(deps: {
   async function check(
     name: string,
     severity: "warn" | "fail",
-    probe: () => Promise<string | undefined>,
+    probe: () => Promise<ProbeResult>,
   ) {
     try {
-      const message = await probe();
+      const result = await probe();
       checks.push({
         name,
-        status: message ? severity : "pass",
-        message: message ?? "Ready",
+        status: result.ok ? "pass" : severity,
+        message: result.message ?? "Ready",
       });
     } catch (error) {
       checks.push({
@@ -63,21 +69,39 @@ export async function runDoctorChecks(deps: {
   }
   await check("host CLI", "fail", async () => {
     const result = await host.checkCli();
-    return result.ok ? undefined : result.message || "Host CLI check failed";
+    return result.ok
+      ? { ok: true }
+      : { ok: false, message: result.message || "Host CLI check failed" };
   });
-  await check("labels", "fail", async () => {
-    const labels = await host.listLabels();
-    const missing = Object.values(config.labels).filter(
-      (name) => !labels.includes(name),
-    );
-    return missing.length ? `Missing labels: ${missing.join(", ")}` : undefined;
-  });
+  if (config.workflow.stateTracking === "local") {
+    await check("state", "fail", async () => {
+      await checkStateWritable(repoRoot);
+      const cursor = await new StateStore(stateDir(repoRoot)).readCursor();
+      return {
+        ok: true,
+        message: cursor
+          ? `Synced up to ${cursor.syncedUpTo}`
+          : "Writable, not synced yet",
+      };
+    });
+  } else {
+    await check("labels", "fail", async () => {
+      const labels = await host.listLabels();
+      const missing = Object.values(config.labels).filter(
+        (name) => !labels.includes(name),
+      );
+      return missing.length
+        ? { ok: false, message: `Missing labels: ${missing.join(", ")}` }
+        : { ok: true };
+    });
+  }
   await check("excludes", "warn", async () => {
     const warnings: string[] = [];
     for (const path of [
       config.paths.worktreeDir,
       config.paths.runsDir,
       config.pi.agentDir,
+      ...(config.workflow.stateTracking === "local" ? [`${STATE_DIR}/`] : []),
     ]) {
       try {
         const result = await runner("git", ["check-ignore", "-q", path], {
@@ -91,7 +115,9 @@ export async function runDoctorChecks(deps: {
         warnings.push(`${path}: ${String(error)}`);
       }
     }
-    return warnings.length ? warnings.join("; ") : undefined;
+    return warnings.length
+      ? { ok: false, message: warnings.join("; ") }
+      : { ok: true };
   });
   await check("skills", "fail", async () => {
     const missing = await missingFiles(
@@ -100,18 +126,20 @@ export async function runDoctorChecks(deps: {
       ),
     );
     return missing.length
-      ? `Missing skill files: ${missing.join(", ")}`
-      : undefined;
+      ? { ok: false, message: `Missing skill files: ${missing.join(", ")}` }
+      : { ok: true };
   });
   await check("reviewer", "warn", async () => {
     const missing = await missingFiles([
       resolve(repoRoot, config.pi.agentDir, "agents/reviewer.md"),
     ]);
-    return missing.length ? `Missing reviewer: ${missing[0]}` : undefined;
+    return missing.length
+      ? { ok: false, message: `Missing reviewer: ${missing[0]}` }
+      : { ok: true };
   });
   await check("pi-subagents", "fail", async () => {
     resolvePiSubagentsPackageRoot();
-    return undefined;
+    return { ok: true };
   });
   await check("Pi smoke", "fail", async () => {
     const runs = resolve(repoRoot, config.paths.runsDir);
@@ -137,16 +165,22 @@ export async function runDoctorChecks(deps: {
         !result.aborted &&
         result.stdout.includes("OK")
       )
-        return undefined;
-      return `Pi smoke failed (exit ${result.exitCode}, timeout ${result.timedOut}); log: ${logPath}`;
+        return { ok: true };
+      return {
+        ok: false,
+        message: `Pi smoke failed (exit ${result.exitCode}, timeout ${result.timedOut}); log: ${logPath}`,
+      };
     } catch (error) {
-      return `Pi smoke failed: ${String(error)}; log: ${logPath}`;
+      return {
+        ok: false,
+        message: `Pi smoke failed: ${String(error)}; log: ${logPath}`,
+      };
     }
   });
   await check("trusted authors", "warn", async () =>
     config.host.trustedAuthors.length
-      ? undefined
-      : "No trusted authors configured",
+      ? { ok: true }
+      : { ok: false, message: "No trusted authors configured" },
   );
   return checks;
 }

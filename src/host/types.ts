@@ -1,5 +1,11 @@
 export type HostProviderId = "github-gh" | "forgejo-tea";
-export type IssueComment = { author: string; body: string; createdAt: string };
+export type IssueComment = {
+  author: string;
+  body: string;
+  createdAt: string;
+  url?: string;
+};
+export type SyncedComment = IssueComment & { issue: number; url: string };
 export type Issue = {
   number: number;
   title: string;
@@ -38,13 +44,15 @@ export interface Host {
   checkCli(): Promise<HostCliCheck>;
   repository(): Promise<Repository>;
   listOpenIssues(): Promise<Issue[]>; // comments may be empty
+  listIssuesSince(since?: string): Promise<Issue[]>;
+  listCommentsSince(since?: string): Promise<SyncedComment[]>;
   viewIssue(n: number): Promise<Issue>; // comments populated
   listIssueDependencies(n: number): Promise<IssueDependency[]>;
   addIssueDependency(n: number, blocker: number): Promise<void>;
   listLabels(): Promise<string[]>;
   createLabel(label: LabelDefinition): Promise<void>;
   setLabels(n: number, add: string[], remove: string[]): Promise<void>;
-  commentIssue(n: number, body: string): Promise<void>;
+  commentIssue(n: number, body: string): Promise<string>;
   /** owner/repo that origin points at, where issue branches are pushed. */
   pushRepository(): Promise<string>;
   /**

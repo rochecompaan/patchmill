@@ -2,26 +2,26 @@ import fs from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   trustedAuthors,
-  type PatchmillConfig,
   type LabelsConfig,
+  type PatchmillConfig,
 } from "../config/config.ts";
 import type { Issue } from "../host/types.ts";
 import type { RunOnceDeps } from "./run-once.ts";
 import { renderTriageEnvelope } from "./envelope.ts";
 import { newRunId } from "./names.ts";
 import { supervisePi } from "./pi-supervisor.ts";
-import { KERNEL_COMMENT } from "./comments.ts";
 import { parseJsonBlock } from "./result.ts";
-import { ensureLabels } from "./labels.ts";
+import type { TrackedIssue } from "./workflow-state.ts";
+import type { WorkflowStatus } from "./workflow-state.ts";
 
 export type TriageResult = {
-  label: string;
+  status: WorkflowStatus;
   comment: string;
   blockedBy: number[];
 };
 export type TriageDeps = Pick<
   RunOnceDeps,
-  "host" | "piCommand" | "repoRoot" | "now" | "output"
+  "workflow" | "host" | "piCommand" | "repoRoot" | "now" | "output"
 >;
 export type TriageProgressEvent =
   | { type: "selected"; total: number }
@@ -32,9 +32,10 @@ export type TriageProgressEvent =
     }
   | {
       type: "triaged";
-      previousLabels: string[];
-      finalLabels: string[];
+      previousStatus: TrackedIssue["status"];
+      finalStatus: TrackedIssue["status"];
       comment: string;
+      commentKind: "preview" | "posted" | "recorded" | "asked";
       blockedBy: number[];
       applied: boolean;
       completed: number;
@@ -47,39 +48,41 @@ export type TriageOptions = {
   onProgress?: (event: TriageProgressEvent) => void;
 };
 
+export function hasReply(issue: TrackedIssue, trusted: string[]): boolean {
+  const latest = issue.comments.reduce<
+    TrackedIssue["comments"][number] | undefined
+  >(
+    (last, comment) =>
+      !last || Date.parse(comment.createdAt) >= Date.parse(last.createdAt)
+        ? comment
+        : last,
+    undefined,
+  );
+  return (
+    latest !== undefined &&
+    trusted.includes(latest.author) &&
+    !latest.fromPatchmill &&
+    (issue.statusSince === undefined ||
+      Date.parse(latest.createdAt) > Date.parse(issue.statusSince))
+  );
+}
+
 export function selectTriageCandidates(
-  issues: Issue[],
-  labels: LabelsConfig,
+  issues: TrackedIssue[],
   trusted: string[],
-): Issue[] {
-  return issues.filter((issue) => {
-    if (issue.state !== "open") return false;
-    const classified = issue.labels.filter((label) =>
-      Object.values(labels).includes(label),
-    );
-    if (!classified.length) return true;
-    if (classified.some((label) => label !== labels.needsInfo)) return false;
-    const latest = issue.comments.reduce<Issue["comments"][number] | undefined>(
-      (last, comment) =>
-        !last || Date.parse(comment.createdAt) >= Date.parse(last.createdAt)
-          ? comment
-          : last,
-      undefined,
-    );
-    return (
-      issue.labels.includes(labels.needsInfo) &&
-      latest !== undefined &&
-      trusted.includes(latest.author) &&
-      !latest.body.startsWith(KERNEL_COMMENT)
-    );
-  });
+): TrackedIssue[] {
+  return issues.filter(
+    (issue) =>
+      issue.state === "open" &&
+      (issue.status === "untriaged" ||
+        (issue.status === "needsInfo" && hasReply(issue, trusted))),
+  );
 }
 
 function validateResult(
   value: unknown,
-  allowed: string[],
+  labels: LabelsConfig,
   issue: number,
-  ready: string,
 ): TriageResult | string {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     return "result must be an object";
@@ -90,8 +93,10 @@ function validateResult(
     )
   )
     return "unexpected result field";
-  if (typeof result.label !== "string" || !allowed.includes(result.label))
-    return "label must be a configured triage outcome";
+  const status = (["ready", "unsuitable", "needsInfo"] as const).find(
+    (status) => labels[status] === result.label,
+  );
+  if (status === undefined) return "label must be a configured triage outcome";
   if (typeof result.comment !== "string") return "comment must be a string";
   if (
     !Array.isArray(result.blockedBy) ||
@@ -102,10 +107,10 @@ function validateResult(
     new Set(result.blockedBy).size !== result.blockedBy.length
   )
     return "blockedBy must contain distinct positive issue numbers other than the target";
-  if (result.blockedBy.length && result.label !== ready)
+  if (result.blockedBy.length && status !== "ready")
     return "only a ready result can propose blockers";
   return {
-    label: result.label,
+    status,
     comment: result.comment,
     blockedBy: result.blockedBy,
   };
@@ -115,22 +120,25 @@ export async function runTriage(
   config: PatchmillConfig,
   deps: TriageDeps,
   options: TriageOptions,
-): Promise<Array<{ issue: number; label: string; applied: boolean }>> {
+): Promise<Array<{ issue: number; status: WorkflowStatus; applied: boolean }>> {
   const { host, repoRoot, output } = deps;
+  const workflow = deps.workflow;
+  await workflow.sync(options.issue);
   const trusted = trustedAuthors(config, (await host.checkCli()).login);
   const warn = (issue: number, message: string) =>
     output.stderr(`Warning: Issue #${issue}: ${message}`);
   const candidates: number[] = [];
   if (options.issue !== undefined) candidates.push(options.issue);
   else {
-    for (const listed of await host.listOpenIssues()) {
+    for (const listed of await workflow.openIssues()) {
       if (options.signal?.aborted) break;
       try {
         // List responses may omit comments; needsInfo eligibility requires them.
-        const issue = listed.labels.includes(config.labels.needsInfo)
-          ? await host.viewIssue(listed.number)
-          : listed;
-        if (selectTriageCandidates([issue], config.labels, trusted).length)
+        const issue =
+          listed.status === "needsInfo"
+            ? await workflow.issue(listed.number)
+            : listed;
+        if (selectTriageCandidates([issue], trusted).length)
           candidates.push(issue.number);
       } catch (error) {
         warn(
@@ -141,21 +149,18 @@ export async function runTriage(
     }
   }
   options.onProgress?.({ type: "selected", total: candidates.length });
-  const allowed = [
-    config.labels.ready,
-    config.labels.unsuitable,
-    config.labels.needsInfo,
-  ];
-  const outcomes: Array<{ issue: number; label: string; applied: boolean }> =
-    [];
-  let labelsReady = false;
+  const outcomes: Array<{
+    issue: number;
+    status: WorkflowStatus;
+    applied: boolean;
+  }> = [];
   for (const number of candidates.sort((a, b) => a - b)) {
     if (options.signal?.aborted) break;
     try {
-      const issue = await host.viewIssue(number);
+      const issue = await workflow.issue(number);
       if (
         options.issue === undefined &&
-        !selectTriageCandidates([issue], config.labels, trusted).length
+        !selectTriageCandidates([issue], trusted).length
       )
         continue;
       const dependencies = await host.listIssueDependencies(number);
@@ -212,13 +217,13 @@ export async function runTriage(
         continue;
       }
       const parsed = parseJsonBlock(session.stdout, (value) =>
-        validateResult(value, allowed, number, config.labels.ready),
+        validateResult(value, config.labels, number),
       );
       if (!parsed.ok) {
         warn(number, `${parsed.reason}; skipping.`);
         continue;
       }
-      const { label, comment } = parsed.value;
+      const { status, comment } = parsed.value;
       const slug = `${repository.owner}/${repository.repo}`.toLowerCase();
       const blockedBy = parsed.value.blockedBy.filter(
         (blocker) =>
@@ -228,13 +233,7 @@ export async function runTriage(
               dependency.repository.toLowerCase() === slug,
           ),
       );
-      const remove = allowed.filter((value) => value !== label);
-      const finalLabels = [
-        ...new Set([
-          ...issue.labels.filter((value) => !remove.includes(value)),
-          label,
-        ]),
-      ];
+      const asked = status === "needsInfo" && comment !== "";
       if (!options.dryRun) {
         for (const [index, blocker] of blockedBy.entries()) {
           try {
@@ -251,20 +250,26 @@ export async function runTriage(
             );
           }
         }
-        if (!labelsReady) {
-          await ensureLabels(host, config.labels);
-          labelsReady = true;
-        }
-        await host.setLabels(number, [label], remove);
-        if (comment !== "")
-          await host.commentIssue(number, `${KERNEL_COMMENT}\n${comment}`);
+        const warnings = await workflow.setStatus(number, {
+          status,
+          ...(comment ? { summary: comment } : {}),
+          ...(asked ? { question: comment } : {}),
+        });
+        for (const warning of warnings) warn(number, warning);
       }
-      outcomes.push({ issue: number, label, applied: !options.dryRun });
+      outcomes.push({ issue: number, status, applied: !options.dryRun });
       options.onProgress?.({
         type: "triaged",
-        previousLabels: issue.labels,
-        finalLabels,
+        previousStatus: issue.status,
+        finalStatus: status,
         comment,
+        commentKind: options.dryRun
+          ? "preview"
+          : config.workflow.stateTracking !== "local"
+            ? "posted"
+            : asked
+              ? "asked"
+              : "recorded",
         blockedBy,
         applied: !options.dryRun,
         completed: outcomes.length,
