@@ -11,7 +11,7 @@ let
 in
 buildNpmPackageNode24 rec {
   pname = "patchmill";
-  version = "0.20.0"; # x-release-please-version
+  version = "1.0.0"; # x-release-please-version
 
   src = lib.cleanSourceWith {
     src = lib.cleanSource ../.;
@@ -26,7 +26,7 @@ buildNpmPackageNode24 rec {
         || baseName == "result");
   };
 
-  npmDepsHash = "sha256-kdlxi0svx9lBxHASNxIu/f/5Zaj7TKMiTuSOE62fSq4=";
+  npmDepsHash = "sha256-OgK9/lkqrVdg0YXY8qX1mcU7226dM1yb00fnAYNnTgQ=";
   npmDepsFetcherVersion = 2;
 
   dontNpmBuild = true;
