@@ -59,8 +59,9 @@ keeps the workflow paused without running Pi. With both gates off, planning
 writes both documents on the implementation branch and continues directly.
 
 After implementation, `agent-done` identifies a ready pull request that closes
-the issue. Review and merge it through the host. Patchmill does not merge or
-remove the worktree.
+the issue. Review and merge it through the host. Patchmill does not merge it.
+Non-interactive runs leave the worktree in place. An interactive run removes the
+clean worktrees and local branches of the issue after it confirms the merge.
 
 ## Optional disposable repository
 

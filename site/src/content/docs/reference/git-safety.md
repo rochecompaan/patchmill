@@ -11,7 +11,9 @@ attempt with `needs-info` rather than selecting one.
 `git.baseBranch: null` uses the remote default branch. Set a string to choose
 another target branch. Branch names use `agent/issue-N-<slug>`, with at most 48
 slug characters. Worktree names replace branch slashes with hyphens. The kernel
-never deletes an issue worktree.
+deletes issue worktrees and local branches only after an interactive run
+confirms that the implementation PR merged. It keeps a worktree that has
+uncommitted changes.
 
 ## Ownership
 

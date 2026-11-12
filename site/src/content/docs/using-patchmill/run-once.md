@@ -78,7 +78,7 @@ When a gate is off, its document goes into the next required planning PR. With
 no later gate, it goes into the implementation PR. Planning PR bodies use
 `Refs #N`, not closing keywords. Only the implementation PR completes the issue.
 Each later branch starts from the fetched base with earlier merged documents.
-The kernel never deletes merged planning branches or worktrees.
+Non-interactive runs never delete merged planning branches or worktrees.
 
 ## Outcome checks
 
@@ -161,9 +161,12 @@ After five seconds, it sends `SIGKILL` if needed. The kernel attempts label
 cleanup and closes the local lock handle in `finally`. A hard crash can still
 leave host labels unchanged.
 
-The kernel never deletes worktrees. Use the human-controlled `patchmill-cleanup`
-skill for inspected, confirmed cleanup under the same lock. Keep permanent lock
-files and their parent directories intact. For independent concurrent issues,
-allocate separate ports, databases, and services. Do not change shared
-configuration or Git state during active runs. See
-[Git safety](/reference/git-safety/) for host branch protection.
+Non-interactive runs never delete worktrees. After an interactive run confirms
+that the implementation PR merged, the kernel removes the implementation, spec,
+and plan worktrees and local branches of the issue. It keeps each worktree that
+has uncommitted changes and reports the reason in the chat. Otherwise, use the
+human-controlled `patchmill-cleanup` skill for inspected, confirmed cleanup
+under the same lock. Keep permanent lock files and their parent directories
+intact. For independent concurrent issues, allocate separate ports, databases,
+and services. Do not change shared configuration or Git state during active
+runs. See [Git safety](/reference/git-safety/) for host branch protection.

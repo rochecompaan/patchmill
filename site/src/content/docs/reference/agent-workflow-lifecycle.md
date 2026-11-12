@@ -57,6 +57,7 @@ questions and adds `agent-ready` before retrying. After a hard crash,
 
 Every attempt derives its phase from git and the host. Logs, sessions, and
 `result.json` are outputs only. There is no saved workflow checkpoint. The
-kernel never removes issue worktrees or the permanent lock inode, the filesystem
-object behind the lock path. Read [Run-once](/using-patchmill/run-once/) for the
-full derivation table.
+kernel never removes the permanent lock inode, the filesystem object behind the
+lock path. It removes clean issue worktrees only after an interactive run
+confirms that the implementation PR merged. Read
+[Run-once](/using-patchmill/run-once/) for the full derivation table.
