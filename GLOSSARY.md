@@ -20,8 +20,8 @@ its specification and the existing codebase. It supplies evidence, not human
 approval of a Spec gate or Plan gate. _Avoid_: Plan gate, Planner self-review
 
 **Sub-issue**: An issue whose host records a parent issue in the same
-repository, as a native sub-issue or a leading `Part of #N` body line. _Avoid_:
-Child issue, slice
+repository: a native sub-issue on GitHub, or a leading `Part of #N` body line on
+Forgejo and Gitea. _Avoid_: Child issue, slice
 
 **Parent spec**: The newest specification of a Sub-issue's parent on the base
 branch. It is the approved design that the Sub-issue's own spec extends and

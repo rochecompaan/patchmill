@@ -29,15 +29,18 @@ input to it.
   matches only the issue's own number.
 - `refArtifacts()` in `src/kernel/artifact-source.ts` can read any issue's
   artifacts from any Git ref without a worktree.
-- The worktree starts from the base branch. A parent spec on base is thus also
-  at the same relative path in the worktree.
+- A new worktree starts from the base branch, but an existing issue branch is
+  never rebased (`ensureWorktree` and `pushPlanningHead` in
+  `src/kernel/git.ts`). The worktree copy of a parent spec can thus be missing
+  or older than the copy on base. The agent must read the parent spec from
+  `origin/<base>`.
 - `GET repos/{owner}/{repo}/issues/{n}/parent` returns the parent issue on
   GitHub. It returns HTTP 404 with `No parent issue found` when the issue has no
   parent. This was checked against #357 and #364.
 - Forgejo and Gitea have no sub-issues. The issue-tracker guide already uses a
   `Part of #<map>` line at the start of the body as a fallback parent link.
 - `renderRunEnvelope()` in `src/kernel/envelope.ts` writes the Facts block from
-  `run-envelope.md`. `formatConsole` in `src/kernel/console.ts` lists the
+  `run-envelope.md`. `formatRunResult` in `src/kernel/console.ts` lists the
   artifacts. `PlanningDialogFacts` in `src/console/planning-dialog.ts` lists the
   documents in the approval dialog.
 
@@ -100,8 +103,10 @@ uses the source that its host supports, and no adapter needs a second read.
 
 - **`github-gh`:** Call `gh api repos/{owner}/{repo}/issues/<n>/parent`. A 404
   result with `No parent issue found` returns `undefined`. Other failures throw.
-  Read `number` and `repository_url`. Return `undefined` when the repository is
-  not the configured repository. Throw on a malformed response.
+  Read `number` and `html_url`. Compare the `owner/repo` part of `html_url` with
+  the same part of `issue.url`, without case. Return `undefined` when they
+  differ. Throw on a malformed response, or when `issue.url` has no
+  `owner/repo/issues/N` path.
 - **`forgejo-tea`:** Read the first non-empty line of `issue.body`. Match
   `^Part of #(\d+)\b`. The match is case-sensitive and allows text after the
   number, for example `Part of #356.` Return `undefined` when the line does not
@@ -142,7 +147,7 @@ Add one line to the Facts block in `src/kernel/run-envelope.md`, after the Spec
 line:
 
 ```text
-- Parent spec: docs/specs/2026-11-14-issue-356-...-design.md (from issue #356; approved and read-only)
+- Parent spec: docs/specs/2026-11-14-issue-356-...-design.md on origin/main (from issue #356; approved and read-only; read it with `git show origin/main:<path>`, because the worktree copy can be missing or old)
 ```
 
 When there is no parent spec, the envelope has no Parent spec line. An issue
@@ -151,8 +156,9 @@ implementation envelopes both show the line when it exists. The implementation
 agent then reads the approved design that the child spec refers to.
 
 When a parent spec exists and the phase is planning, add this rule paragraph
-after the result rules. The implementation envelope shows only the Facts line,
-because its line already says that the parent spec is read-only.
+after the result rules. In the implementation phase, add only this sentence: "If
+the parent spec must change, do not change it; stop and ask." The same
+interactive and unattended meanings of "stop and ask" apply.
 
 > The parent spec is the approved design for this issue. Do not change it. If
 > this issue has no spec yet, write it at the Spec path. Link to the parent
@@ -203,8 +209,9 @@ The web board does not display the field in this change.
 - `site/src/content/docs/reference/agent-workflow-lifecycle.md`: add a short
   sub-issue section. Describe the parent link for each host, the base-branch
   rule, and the child spec rules.
-- `docs/agents/issue-tracker.md`: state that a Forgejo or Gitea `Part of #N`
-  first line is also the parent link for Patchmill runs.
+- `docs/agents/issue-tracker.md`: this guide is for GitHub. State that Patchmill
+  runs read only native sub-issues as the parent link on GitHub. The
+  `Part of #<map>` body fallback does not give a Parent spec there.
 
 ## Domain and architecture
 

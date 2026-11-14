@@ -32,8 +32,8 @@ The spec has no mockup. Frontend design does not apply.
   `needsInfo` and the error text.
 - An issue without a Parent spec gets a byte-identical envelope:
   `src/kernel/fixtures/envelope-*.txt` must not change.
-- Envelope Facts line, exactly:
-  `- Parent spec: <path> (from issue #<N>; approved and read-only)`.
+- Envelope Facts line, exactly (with `<base>` = `facts.baseBranch`):
+  ``- Parent spec: <path> on origin/<base> (from issue #<N>; approved and read-only; read it with `git show origin/<base>:<path>`, because the worktree copy can be missing or old)``.
 - No kernel check of Parent spec edits. No change to `derivePhase`,
   `planningWorkspace`, `verifyOutcome`, triage, or selection.
 - No npm dependency changes. If any occur, run the Nix build too.
@@ -166,6 +166,10 @@ The spec has no mockup. Frontend design does not apply.
     fields with their own paths.
   - `no parent means no parentSpec and the host is asked once`: assert that the
     key is absent and that the stub records exactly one call per `collectFacts`.
+  - `a child branch created before the parent spec merged still reports it`:
+    push `agent/issue-9-x` from main first, then push the parent spec to main.
+    `collectFacts` reports the parent spec path, and the worktree copy is
+    absent. The envelope (Task 3) tells the agent to read it from the ref.
   - Extend `fetch, host and non-missing filesystem errors stay visible`: a
     `parentIssue` that throws `parent boom` makes `provisionWorkspace` reject
     with `parent boom`.
@@ -202,24 +206,29 @@ The spec has no mockup. Frontend design does not apply.
   - `a parent spec adds a read-only fact after the Spec line`: with
     `parentSpec: { issue: 356, path: "docs/specs/p-design.md" }`, the text
     contains
-    `- Spec: expected: docs/specs/2026-10-15-issue-9-x-design.md\n- Parent spec: docs/specs/p-design.md (from issue #356; approved and read-only)\n- Plan:`.
+    `- Spec: expected: docs/specs/2026-10-15-issue-9-x-design.md\n- Parent spec: docs/specs/p-design.md on origin/main (from issue #356; approved and read-only; read it with`
+    followed by
+    `` `git show origin/main:docs/specs/p-design.md`, because the worktree copy can be missing or old)\n- Plan:``.
   - `planning with a parent spec states the parent spec rules`: the unattended
     planning text contains
     `The parent spec is the approved design for this issue.` and
     ``return `needs-input` ``. The interactive planning text contains
     `ask the maintainer in this chat` and not ``return `needs-input` ``.
-  - `implementation with a parent spec shows only the fact`: the text contains
-    the Parent spec line and not `The parent spec is the approved design`.
+  - `implementation with a parent spec shows the fact and one stop rule`: the
+    text contains the Parent spec line and
+    `If the parent spec must change, do not change it; stop and return`, and not
+    `The parent spec is the approved design`.
   - The existing fixture test `the non-interactive envelope is unchanged`
     continues to pass without any fixture edits.
 - [ ] **Step 2: Run** `node --test src/kernel/envelope.test.ts`. Expected: the
       new tests FAIL.
 - [ ] **Step 3: Implement.** In the template, write
       `- Spec: {{spec}}{{parentSpec}}`. `parentSpec` renders as `""` or as
-      `"\n- Parent spec: <path> (from issue #<N>; approved and read-only)"`. Add
-      a `{{parentSpecRules}}` placeholder directly after `{{planningRules}}`. It
-      is `""` unless the phase is planning and `parentSpec` exists. Then it is
-      `"\n\n"` plus this paragraph:
+      `"\n"` plus the Global Constraints line. Add a `{{parentSpecRules}}`
+      placeholder directly after `{{planningRules}}`. It is `""` when there is
+      no `parentSpec`. In the implementation phase it is
+      `"\n\nIf the parent spec must change, do not change it; <ask>."`. In the
+      planning phase it is `"\n\n"` plus this paragraph:
 
       > The parent spec is the approved design for this issue. Do not change
       > it. If this issue has no spec yet, write it at the Spec path. Link to
@@ -229,7 +238,9 @@ The spec has no mockup. Frontend design does not apply.
       > `<ask>` instead of choosing.
 
       `<ask>` is `ask the maintainer in this chat` when `interactivePlanning`
-      is true. Otherwise it is ``stop and return `needs-input` ``. The template
+      is true. Otherwise it is ``stop and return `needs-input` ``. Interactive
+      implementation uses the unattended wording, because its envelope keeps
+      the JSON result contract. The template
       must stay under 150 lines.
 
 - [ ] **Step 4: Run** the Step 2 command. Expected: PASS.
@@ -244,7 +255,8 @@ The spec has no mockup. Frontend design does not apply.
   `src/kernel/interactive-loop.ts`, `src/console/planning-dialog.ts`,
   `src/console/planning-dialog-facts.ts`, `src/kernel/run-progress.ts`
 - Test: `src/kernel/console.test.ts`, `src/console/planning-dialog.test.ts`,
-  `src/kernel/run-progress.test.ts`
+  `src/kernel/run-progress.test.ts` (also add `parentSpec: null` to its typed
+  `record` fixture), `src/console/planning-approval.test.ts`
 
 **Interfaces:**
 
@@ -269,8 +281,11 @@ The spec has no mockup. Frontend design does not apply.
     `null` when absent. `parseRunProgress` accepts a record with no `parentSpec`
     key and returns `parentSpec: null`. It rejects `{ issue: 0, path: "a.md" }`
     and `{ issue: 5, path: "../x.md" }`.
+  - Pass-through: extend `src/console/planning-approval.test.ts` so that a
+    launch with `planningReview.parentSpec` produces a dialog title with the
+    Parent line.
 - [ ] **Step 2: Run**
-      `node --test src/kernel/console.test.ts src/console/planning-dialog.test.ts src/kernel/run-progress.test.ts`.
+      `node --test src/kernel/console.test.ts src/console/planning-dialog.test.ts src/kernel/run-progress.test.ts src/console/planning-approval.test.ts`.
       Expected: the new tests FAIL.
 - [ ] **Step 3: Implement.**
   - Console: the Artifacts item gets two details: the path with role `path`,
@@ -278,7 +293,8 @@ The spec has no mockup. Frontend design does not apply.
   - `interactive-loop.ts` copies `facts.parentSpec` into `planningReview`.
     `collectPlanningDialogFacts` passes it through unchanged. It does not search
     the worktree for it.
-  - The dialog line uses `fitLine` with the same width rule as the Branch line.
+  - The dialog line is the text `Parent   <path> (#<N>)` with the same two-space
+    indent as the Spec line, passed through `fitLine(…, width)`.
   - Progress validation uses `artifactPath` and
     `Number.isSafeInteger(issue) && issue > 0`.
 - [ ] **Step 4: Run** the Step 2 command, then `npm test`. Expected: PASS.
@@ -305,8 +321,8 @@ The spec has no mockup. Frontend design does not apply.
       It covers the GitHub sub-issues link, the Forgejo/Gitea first-line
       `Part of #N` link, the base-branch rule, one level only, and the child
       spec rules. In `docs/agents/issue-tracker.md`, add one sentence under
-      Wayfinding: Patchmill runs also read the `Part of #N` line as the parent
-      link on Forgejo/Gitea.
+      Wayfinding: on GitHub, Patchmill runs read only native sub-issues as the
+      parent link, so the `Part of #<map>` fallback gives no Parent spec.
 - [ ] **Step 3: Run** `node bin/patchmill.ts skills update`. Then run
       `git status --short .patchmill`. Expected: only
       `.patchmill/skills/patchmill-planning/SKILL.md` and
@@ -330,3 +346,39 @@ The spec has no mockup. Frontend design does not apply.
       `gh api repos/rochecompaan/patchmill/issues/357/parent --jq .number` and
       confirm that it prints `356`. This confirms the live endpoint shape that
       the adapter test uses.
+
+## Plan review
+
+**Initial review:** a fresh canonical `reviewer` (claude-opus-5-5, high
+thinking) reviewed commit `b5e5d3f` against base `5be867e`. It inspected
+`facts.ts`, `artifact-source.ts`, `git.ts`, `run-once.ts`, `envelope.ts`, the
+host adapters, the fake host, the console, the dialog, progress, and the skill
+installer. It made read-only live `gh api` calls for #357 and #364.
+
+**Architecture survey:** the facts module owns the Parent spec rules. The host
+adapters own how a parent link is read: an API on GitHub, the issue body on
+Forgejo. The two production adapters make this a real seam. The display modules
+only show the fact. `deps.host` injects the dependency. There are no ADRs and no
+conflicts.
+
+**Findings and dispositions:**
+
+- **B1 (blocker, accepted):** the Parent spec comes from `origin/<base>`, but an
+  existing issue branch is never rebased. The worktree copy can thus be missing
+  or old. Fix: the envelope line names `origin/<base>` and tells the agent to
+  use `git show`. The spec's evidence bullet is corrected. Task 2 adds a test in
+  which the child branch exists before the parent spec lands.
+- **S1 (accepted):** the implementation envelope gets a one-sentence stop rule.
+- **S2 (accepted):** the GitHub tracker guide and the glossary now say that only
+  native sub-issues link a parent on GitHub.
+- **S3 (accepted):** the spec now uses the `html_url` comparison with
+  `issue.url`. It also says what happens when `issue.url` is malformed.
+- **S4, S5, S6 (accepted):** Task 4 updates the typed progress fixture, adds a
+  pass-through test in `planning-approval.test.ts`, and states the dialog line
+  width.
+- **S7 (noted):** the adapter files are near the module-size limit. This change
+  adds about 20 lines to each, so no split is planned. The base has moved, but
+  none of the planned source files changed.
+
+**Inspection limits:** no tests were run, because there is no implementation
+yet. GitHub Enterprise behaviour without the sub-issues API was not checked.
