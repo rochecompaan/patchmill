@@ -45,13 +45,56 @@ The thirteen selected Superpowers skills are `brainstorming`, `writing-plans`,
 `finishing-a-development-branch`. SimpleEnglish supplies `simple-english`. Keep
 supporting resource files and required sibling skills with these entries.
 
+Matt Pocock supplies `domain-modeling` and `codebase-design` through the pinned
+`mattpocock-skills` production dependency. Both come from version `1.3.2` at
+commit `5863806dd4e15c63174bee4e7515a4256792ecfa`. The installer copies their
+complete selected directories, including domain formats, `DEEPENING.md`,
+`DESIGN-IT-TWICE.md`, and a root MIT license copy for each skill. The manifest
+records `sources.mattPocock` and hashes every resource. The two upstream skills
+remain unmodified. No planning session downloads them.
+
 ## Planning and implementation
 
 The planning skill reads sibling `brainstorming`, `writing-plans`, and
 `simple-english` instructions. It writes the spec and plan at the envelope's
-exact paths. Planning and implementation share the same branch and worktree. The
-agent commits and pushes artifacts and opens or updates the draft pull request.
-Required spec approval stops planning before the plan.
+exact paths. Required Spec and Plan gates use separate planning branches and
+ready planning pull requests in unattended runs. The agent stops at each gate
+until its planning PR merges. Ungated documents accompany implementation.
+Interactive Issue runs use the envelope's submit dialog for approval and the
+available PR choice. Approval without a PR keeps documents on the pushed
+implementation branch. Reviewer readiness does not satisfy a human gate.
+
+Architectural specification work follows `domain-modeling` while the planner
+clarifies terminology, inspects code, identifies context relationships, and
+reads relevant ADRs. Module or interface design also follows `codebase-design`
+and `DEEPENING.md`. The specification explains module ownership, caller
+obligations, hidden implementation, seams, adapters, dependency entry, locality,
+leverage, and observable tests. Non-architectural work records a short reason
+and does not invent domain artifacts.
+
+Terminology uses `GLOSSARY.md`, with `GLOSSARY-MAP.md` for multiple contexts.
+Legacy `CONTEXT` documents remain inputs until an authorized rename preserves
+their knowledge. Relevant domain companions can accompany a specification.
+Narrower envelopes instead record the resolution and deferred destination. ADRs
+require a real architectural trade-off, not ceremony.
+
+Every new or revised plan gets fresh, read-only review by the canonical
+`reviewer`, after planner self-review. The reviewer independently inspects
+relevant domain documents, ADRs, source, callers, dependencies, and tests. The
+local `patchmill-planning/plan-review.md` brief checks depth, interface size,
+seam placement, adapter justification, locality, leverage, and test surfaces. It
+explicitly applies the deletion test, the interface as the test surface, and the
+principle that two real adapters establish variation. Blocking findings require
+concrete codebase evidence and impact. The plan records findings, dispositions,
+inspection limits, and reviewed content identity. Accepted blockers need
+correction and one fresh scoped confirmation. Material later edits require
+renewed review.
+
+Missing required skills, resources, or reviewer capability prevent success.
+Unattended planning returns `needs-input`. Interactive planning asks the
+maintainer and waits, without installing substitutes or using self-review. The
+local interactive helper follows these analysis and review requirements without
+gaining publication authority.
 
 The implementation skill prepares the environment, executes the approved plan,
 validates the work, commits, pushes, and marks the pull request ready. It
@@ -104,7 +147,9 @@ body records the decision, findings, and repairs.
 Planning and implementation end with a fenced JSON block containing only
 `status` and `summary`. Status is `done`, `needs-input`, or `failed`. Triage
 instead returns only `label` and `comment`. Questions go in the summary or
-triage comment. The kernel alone changes issue labels and posts issue comments.
+triage comment. Interactive Issue run planning instead uses its submit tool and
+dialog as directed by the envelope. The kernel alone changes issue labels and
+posts issue comments.
 
 Visual evidence and module size are skill advice. The kernel does not inspect
 screenshots or enforce task lists. Use behavioral tests for meaningful changes

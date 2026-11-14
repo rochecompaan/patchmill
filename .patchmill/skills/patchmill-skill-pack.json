@@ -1,9 +1,10 @@
 {
-  "installedAt": "2026-11-06T06:48:43.734Z",
+  "installedAt": "2026-11-14T03:40:30.557Z",
   "sources": {
-    "patchmill": "0.20.0",
+    "patchmill": "1.0.0",
     "superpowers": "7.0.2",
-    "simpleEnglish": "1.2.0"
+    "simpleEnglish": "1.2.0",
+    "mattPocock": "1.3.2"
   },
   "files": [
     {
@@ -39,8 +40,48 @@
       "sha256": "6ffcb038b53254bd31debaa15e12dcd4ff24bd63d690e0b644ac6396701cf2e2"
     },
     {
+      "path": "codebase-design/agents/openai.yaml",
+      "sha256": "edebc9e4fcfe102114012575eaa9600b9b5fd08c311664f389c36e7bc717740f"
+    },
+    {
+      "path": "codebase-design/DEEPENING.md",
+      "sha256": "f3dd099ce99289bd213914d8ee3e2429b78309c3957ca4583f7659551b1d53c1"
+    },
+    {
+      "path": "codebase-design/DESIGN-IT-TWICE.md",
+      "sha256": "c222ab5a82e0405672eb9062d62496139a08828e45d07fc5f18e4952c10fac1a"
+    },
+    {
+      "path": "codebase-design/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    {
+      "path": "codebase-design/SKILL.md",
+      "sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2"
+    },
+    {
       "path": "dispatching-parallel-agents/SKILL.md",
       "sha256": "1968923066f3b707eb01d1992cdf4c42284c3855f70253b9cd5000ff45fca13c"
+    },
+    {
+      "path": "domain-modeling/ADR-FORMAT.md",
+      "sha256": "944c92aa790e8fbdc9199640b170979abb8a34ba8d0fe18c2a01a63bce140ca0"
+    },
+    {
+      "path": "domain-modeling/agents/openai.yaml",
+      "sha256": "f6bf2aa996c6e6f53fdd0708e18a0d16a56aed8322cca59fedbe3c0d2c75f06b"
+    },
+    {
+      "path": "domain-modeling/GLOSSARY-FORMAT.md",
+      "sha256": "21dcc40cdec8e151a829b98ab1517c1867bc444e3665134a98c6983411996801"
+    },
+    {
+      "path": "domain-modeling/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    {
+      "path": "domain-modeling/SKILL.md",
+      "sha256": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3"
     },
     {
       "path": "executing-plans/scripts/task-done",
@@ -108,11 +149,15 @@
     },
     {
       "path": "patchmill-plan/SKILL.md",
-      "sha256": "a3a5bfa010cac94693a0672f84189a5e869a73eedbd06db6e0109d62704e9b10"
+      "sha256": "2a0b1ed8327b54d1c300bf54be7b16bff5946d57c441a6eea98c25e90dbf4155"
+    },
+    {
+      "path": "patchmill-planning/plan-review.md",
+      "sha256": "ded93f16e91565b8252a1534df5b2540b38c9e72be2bb42745991c4a2c237d27"
     },
     {
       "path": "patchmill-planning/SKILL.md",
-      "sha256": "f193152ad4ad90c4f2ad4f67a6efce0c713782a84057812e8ee25ecf8065da1d"
+      "sha256": "21b4fcc6f09ac480b34bffa0ee0c39133968b0a43bb9254c0dc41a8e5f97063f"
     },
     {
       "path": "patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",

@@ -18,6 +18,32 @@ import { test } from "node:test";
 
 import * as installer from "./skill-installer.ts";
 
+async function packageFixture(
+  t: { after: (fn: () => Promise<void>) => void },
+  withDesign = true,
+) {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-resource-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const packageRoot = join(root, "package");
+  await mkdir(packageRoot);
+  await cp(join(process.cwd(), "skills"), join(packageRoot, "skills"), {
+    recursive: true,
+  });
+  await writeFile(join(packageRoot, "package.json"), '{"version":"fixture"}');
+  for (const name of [
+    "superpowers",
+    "simple-english",
+    ...(withDesign ? ["mattpocock-skills"] : []),
+  ]) {
+    await cp(
+      join(process.cwd(), "node_modules", name),
+      join(packageRoot, "node_modules", name),
+      { recursive: true },
+    );
+  }
+  return { root, packageRoot };
+}
+
 test("installs complete real packs with hashes, repairs files and preserves unchanged bytes and mtimes", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "patchmill-skills-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -64,6 +90,23 @@ test("installs complete real packs with hashes, repairs files and preserves unch
     for (const name of names)
       await checkTree(join(packRoot, "skills", name), join(destination, name));
   }
+  const designRoot = dirname(require.resolve("mattpocock-skills/package.json"));
+  assert.equal(
+    manifest.sources.mattPocock,
+    JSON.parse(await readFile(join(designRoot, "package.json"), "utf8"))
+      .version,
+  );
+  for (const name of ["domain-modeling", "codebase-design"]) {
+    await checkTree(
+      join(designRoot, "skills/engineering", name),
+      join(destination, name),
+    );
+    assert.deepEqual(
+      await readFile(join(destination, name, "LICENSE")),
+      await readFile(join(designRoot, "LICENSE")),
+    );
+    expected.push(`${name}/LICENSE`);
+  }
   // These resources guard the R51 regressions through actual installation.
   await stat(join(destination, "using-git-worktrees/SKILL.md"));
   await stat(join(destination, "finishing-a-development-branch/SKILL.md"));
@@ -108,6 +151,19 @@ test("installs complete real packs with hashes, repairs files and preserves unch
     times,
   );
   assert.equal(await readFile(manifestPath, "utf8"), manifestBytes);
+  await writeFile(join(destination, "codebase-design/DEEPENING.md"), "damage");
+  await rm(join(destination, "domain-modeling/LICENSE"));
+  assert.equal((await installer.installSkills(options)).written, 2);
+  assert.deepEqual(
+    await readFile(join(destination, "codebase-design/DEEPENING.md")),
+    await readFile(
+      join(designRoot, "skills/engineering/codebase-design/DEEPENING.md"),
+    ),
+  );
+  assert.deepEqual(
+    await readFile(join(destination, "domain-modeling/LICENSE")),
+    await readFile(join(designRoot, "LICENSE")),
+  );
   await writeFile(paths[1]!, "damaged");
   assert.equal((await installer.installSkills(options)).written, 1);
   assert.equal(
@@ -117,21 +173,19 @@ test("installs complete real packs with hashes, repairs files and preserves unch
 });
 
 test("resolves from the supplied package and copies read-only executable resources as writable files", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "patchmill-resource-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const packageRoot = join(root, "package");
-  await mkdir(packageRoot);
-  await cp(join(process.cwd(), "skills"), join(packageRoot, "skills"), {
-    recursive: true,
-  });
-  await writeFile(join(packageRoot, "package.json"), '{"version":"fixture"}');
-  for (const name of ["superpowers", "simple-english"]) {
-    await cp(
-      join(process.cwd(), "node_modules", name),
-      join(packageRoot, "node_modules", name),
-      { recursive: true },
-    );
-  }
+  const { root, packageRoot } = await packageFixture(t);
+  const designRoot = join(packageRoot, "node_modules/mattpocock-skills");
+  await writeFile(
+    join(designRoot, "package.json"),
+    '{"version":"fixture-design"}',
+  );
+  const designSource = join(
+    designRoot,
+    "skills/engineering/codebase-design/DEEPENING.md",
+  );
+  await writeFile(designSource, "package-local design resource\n");
+  await chmod(designSource, 0o444);
+  await chmod(join(designRoot, "LICENSE"), 0o444);
   const source = join(packageRoot, "skills/module-size/tool.sh");
   await writeFile(source, "#!/bin/sh\necho resource\n");
   await chmod(source, 0o555);
@@ -148,5 +202,35 @@ test("resolves from the supplied package and copies read-only executable resourc
       await readFile(join(root, "installed/patchmill-skill-pack.json"), "utf8"),
     ).sources.patchmill,
     "fixture",
+  );
+  assert.equal(
+    await readFile(
+      join(root, "installed/codebase-design/DEEPENING.md"),
+      "utf8",
+    ),
+    "package-local design resource\n",
+  );
+  assert.equal((await stat(designSource)).mode & 0o777, 0o444);
+  assert.equal(
+    (await stat(join(root, "installed/domain-modeling/LICENSE"))).mode & 0o600,
+    0o600,
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(join(root, "installed/patchmill-skill-pack.json"), "utf8"),
+    ).sources.mattPocock,
+    "fixture-design",
+  );
+});
+
+test("rejects an absent package-local design dependency", async (t) => {
+  const { root, packageRoot } = await packageFixture(t, false);
+  await assert.rejects(
+    installer.installSkills({
+      repoRoot: root,
+      skillDir: "installed",
+      packageRoot,
+    }),
+    { code: "MODULE_NOT_FOUND" },
   );
 });

@@ -102,6 +102,56 @@ test("reports an unchanged pack as up to date", async (t) => {
   assert.match(lines.join("\n"), /already up to date/);
 });
 
+test("upgrades a prior pack to complete design skills", async (t) => {
+  const { repoRoot, run, skills } = await setup(t);
+  await installSkills({
+    repoRoot,
+    skillDir: SKILL_DIR,
+    packageRoot: process.cwd(),
+  });
+  const manifestPath = join(skills, "patchmill-skill-pack.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  for (const name of ["domain-modeling", "codebase-design"]) {
+    await rm(join(skills, name), { recursive: true, force: true });
+    manifest.files = manifest.files.filter(
+      (file: { path: string }) => !file.path.startsWith(`${name}/`),
+    );
+  }
+  delete manifest.sources.mattPocock;
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await writeFile(join(skills, "user-note.txt"), "keep\n");
+  assert.equal(await run(), 0);
+  for (const path of [
+    "domain-modeling/SKILL.md",
+    "domain-modeling/LICENSE",
+    "codebase-design/DEEPENING.md",
+    "codebase-design/LICENSE",
+  ])
+    assert.equal(await exists(join(skills, path)), true, path);
+  assert.equal(await readFile(join(skills, "user-note.txt"), "utf8"), "keep\n");
+});
+
+test("protects customized design resources during update", async (t) => {
+  const { repoRoot, run, skills, errors } = await setup(t);
+  await installSkills({
+    repoRoot,
+    skillDir: SKILL_DIR,
+    packageRoot: process.cwd(),
+  });
+  const manifestPath = join(skills, "patchmill-skill-pack.json");
+  const before = await readFile(manifestPath, "utf8");
+  await writeFile(join(skills, "codebase-design/DEEPENING.md"), "local edit\n");
+  await rm(join(skills, "domain-modeling/LICENSE"));
+  assert.equal(await run(), 1);
+  assert.match(errors.join("\n"), /codebase-design\/DEEPENING.md/);
+  assert.match(errors.join("\n"), /domain-modeling\/LICENSE/);
+  assert.equal(
+    await readFile(join(skills, "codebase-design/DEEPENING.md"), "utf8"),
+    "local edit\n",
+  );
+  assert.equal(await readFile(manifestPath, "utf8"), before);
+});
+
 test("rejects unknown subcommands", async (t) => {
   const { run, errors } = await setup(t);
   assert.equal(await run(["upgrade"]), 1);

@@ -157,6 +157,11 @@ async function assertSynchronizedRepository(rootDir, expectedVersion) {
       installer.SIMPLE_ENGLISH_SKILLS,
       "simpleEnglish",
     ],
+    [
+      dirname(require.resolve("mattpocock-skills/package.json")),
+      installer.MATT_POCOCK_SKILLS,
+      "mattPocock",
+    ],
   ];
   const expected = new Map();
   async function collect(source, relative) {
@@ -183,8 +188,20 @@ async function assertSynchronizedRepository(rootDir, expectedVersion) {
         `Skill manifest source ${key} must match installed version ${version} and target`,
       );
     for (const skill of skills) {
-      await readFile(join(root, "skills", skill, "SKILL.md"));
-      await collect(join(root, "skills", skill), skill);
+      const source = join(
+        root,
+        key === "mattPocock" ? "skills/engineering" : "skills",
+        skill,
+      );
+      await readFile(join(source, "SKILL.md"));
+      await collect(source, skill);
+      if (key === "mattPocock")
+        expected.set(
+          join(skill, "LICENSE"),
+          createHash("sha256")
+            .update(await readFile(join(root, "LICENSE")))
+            .digest("hex"),
+        );
     }
   }
   if (

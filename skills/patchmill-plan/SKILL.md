@@ -42,9 +42,27 @@ document work. Do not perform its kernel publication steps from this interactive
 skill. Use the configured artifact directories and any exact paths already
 supplied by the operator. Keep existing approval gates. Do not treat local
 self-review or approval labels as a merged planning gate. If the required
-specification PR is not merged, revise only the spec and stop before the plan.
-An open plan PR also blocks implementation. Do not publish or merge from this
-interactive skill.
+specification PR is not merged, revise the spec and justified domain companions,
+then stop before the plan. An open plan PR also blocks implementation. Do not
+publish or merge from this interactive skill.
+
+## Domain analysis and Plan review
+
+Apply the sibling planning skill's domain and architecture analysis while
+writing or revising specifications. Use the installed Matt Pocock guidance when
+it applies. Preserve established language and relevant ADRs. Permit justified
+domain companions, but respect narrower artifact limits. Do not create domain
+documents for ceremony or rename legacy files without authorization.
+
+After planner self-review, follow the sibling's Fresh Plan review requirements
+for every new or revised implementation plan. Supply its local `plan-review.md`
+brief and exact installed guidance paths to a fresh, read-only `reviewer`. The
+reviewer must independently read relevant code and tests. Record evidence,
+dispositions, reviewed content identity, and any required scoped confirmation in
+the plan. Review readiness is not human approval. If a required skill,
+supporting resource, reviewer, or subagent tool is absent, ask the maintainer
+and wait. Do not install dependencies or substitute self-review. These
+requirements do not authorize kernel publication steps.
 
 ## Handoff
 
