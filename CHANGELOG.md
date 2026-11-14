@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/rochecompaan/patchmill/compare/v1.0.0...v1.1.0) (2026-11-14)
+
+
+### Features
+
+* **skills:** add domain-aware planning and fresh architecture review ([#347](https://github.com/rochecompaan/patchmill/issues/347)) ([55b551e](https://github.com/rochecompaan/patchmill/commit/55b551e60ebaddc39fbae402e62db540f7e74325))
+* **web:** add authenticated sample web server ([#349](https://github.com/rochecompaan/patchmill/issues/349)) ([e6d875b](https://github.com/rochecompaan/patchmill/commit/e6d875b86d80f87a3d797578c16128f4d594f204))
+
 ## [1.0.0](https://github.com/rochecompaan/patchmill/compare/v0.20.0...v1.0.0) (2026-11-10)
 
 
