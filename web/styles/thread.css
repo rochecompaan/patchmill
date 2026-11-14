@@ -52,6 +52,8 @@
 .ev-step .step-line {
   color: var(--text);
   font-weight: 500;
+  font-size: inherit;
+  margin: 0;
 }
 .step-num {
   color: var(--brass);
@@ -61,6 +63,39 @@
 .info-line {
   color: var(--faint);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.prompt {
+  margin: 5px 0 10px;
+}
+.prompt summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.prompt pre,
+.issue-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.prompt pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--bg-raise);
+  font: inherit;
+}
+.issue-body {
+  margin: 10px 0 24px;
+}
+.is-recorded .prose p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.is-recorded > .ev {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 40px;
 }
 
 .tool summary {
@@ -125,6 +160,8 @@
   margin: 2px 0 6px;
   white-space: pre-wrap;
   word-break: break-word;
+  max-height: 24rem;
+  overflow: auto;
   color: var(--dim);
   font: inherit;
 }
@@ -342,6 +379,7 @@
   font: 12.5px/1.55 var(--font-mono);
   color: var(--dim);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .earlier {

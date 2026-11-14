@@ -67,17 +67,53 @@ function renderMeta(doc, detail, name, p) {
     );
     meta.append(item);
   }
-  if (issue.status === "done" && detail.finalUsage) {
+  if (detail.run) {
+    for (const [label, value] of [
+      ["started", detail.run.startedAt],
+      ["ended", detail.run.finishedAt],
+    ]) {
+      if (!value || !Number.isFinite(Date.parse(value))) continue;
+      const item = el(doc, "span", "meta-item run-time", label + " ");
+      const time = el(
+        doc,
+        "time",
+        "",
+        new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone: "UTC",
+        }).format(new Date(value)) + " UTC",
+      );
+      time.dateTime = value;
+      item.append(time);
+      meta.append(item);
+    }
+  }
+  if (
+    detail.run?.outcome !== "active" &&
+    (detail.run || (issue.status === "done" && detail.finalUsage))
+  ) {
     const usage = detail.finalUsage;
-    const cost = usage.cost
-      ? `${usage.cost.currency === "USD" ? "$" : usage.cost.currency + " "}${usage.cost.amount}`
-      : "not recorded";
+    const cost = usage?.cost
+      ? new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: usage.cost.currency,
+          minimumFractionDigits: 4,
+          maximumFractionDigits: 4,
+        }).format(Number(usage.cost.amount))
+      : null;
+    const tokens =
+      usage?.tokens === null || usage?.tokens === undefined
+        ? "tokens not recorded"
+        : `${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(usage.tokens)} tokens`;
     meta.append(
       el(
         doc,
         "span",
         "meta-item mono",
-        `cost ${cost} · ${usage.tokens === null ? "not recorded" : (usage.tokens / 1000).toFixed(0) + "k"} tokens`,
+        usage
+          ? `Cost, all retained attempts: ${cost ?? "not recorded"} · ${tokens}`
+          : "Cost not recorded",
       ),
     );
   }
@@ -158,6 +194,20 @@ function renderHeader(doc, detail, name, p) {
     renderMeta(doc, detail, name, p),
     renderArtifactChips(doc, detail.artifacts),
   );
+  if (issue.documentLinks.length) {
+    const links = el(doc, "div", "artifacts");
+    links.setAttribute("aria-label", "Planning documents");
+    for (const link of issue.documentLinks)
+      links.append(
+        externalLink(
+          doc,
+          link.kind === "spec" ? "Spec" : "Plan",
+          link.url,
+          "art-chip document-link",
+        ),
+      );
+    inner.append(links);
+  }
   header.append(inner);
   return header;
 }
@@ -208,24 +258,41 @@ function renderComposer(doc, issue, name, draft, p, source) {
 export function renderIssue(doc, detail, name, draft, source = "sample") {
   const p = presentationFor(detail.summary);
   if (source === "live") {
-    if (detail.summary.status === "none") p.statusLabel = "No active run";
-    if (detail.summary.live && detail.summary.status === "idle") {
-      p.statusLabel = "Run active";
-      p.dotClass = "dot dot-live";
-    }
+    p.statusLabel = !detail.run
+      ? "No run yet"
+      : {
+          active: "Run active",
+          completed: "Finished",
+          stopped: "Stopped",
+          incomplete: "Incomplete",
+        }[detail.run.outcome];
+    if (detail.run?.outcome === "active") p.dotClass = "dot dot-live";
   }
-  const fragment = doc.createDocumentFragment(),
-    thread =
-      source === "live"
-        ? el(doc, "section", "thread")
-        : renderThread(doc, detail);
+  const fragment = doc.createDocumentFragment();
+  const active = source === "live" && detail.run?.outcome === "active";
+  const thread = active
+    ? el(doc, "section", "thread")
+    : renderThread(doc, detail);
+  thread.setAttribute("aria-label", "Issue thread");
   if (source === "live") {
-    const empty = el(doc, "div", "empty");
-    empty.append(
-      el(doc, "h2", "", "Thread not available yet"),
-      el(doc, "p", "", "Real issue threads come in a later update."),
-    );
-    thread.append(empty);
+    thread.classList.add("is-recorded");
+    if (detail.body !== null)
+      thread.append(el(doc, "div", "issue-body", detail.body));
+    if (active || !detail.run) {
+      const empty = el(doc, "div", "empty");
+      empty.append(
+        el(doc, "h2", "", active ? "Run active" : "No run yet"),
+        el(
+          doc,
+          "p",
+          "",
+          active
+            ? "Live progress comes in a later update."
+            : "This issue has no recorded Issue run.",
+        ),
+      );
+      thread.append(empty);
+    }
   } else if (!detail.thread.length) {
     const empty = el(doc, "div", "empty");
     empty.append(
