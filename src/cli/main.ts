@@ -9,6 +9,7 @@ import { main as labelsMain } from "./commands/labels/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as skillsMain } from "./commands/skills/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
+import { main as serveMain } from "./commands/serve/main.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill <command> [options]
@@ -24,6 +25,7 @@ Commands:
   status      Show local workflow state (local state mode).
   skills      Update the managed project-local skill pack.
   version     Print the Patchmill CLI version.
+  serve       Serve the view-only sample board and issue pages.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;
 
@@ -111,6 +113,7 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["labels", labelsMain],
   ["skills", skillsMain],
   ["version", versionMain],
+  ["serve", serveMain],
   ["setup-test-repo", setupTestRepoMain],
 ]);
 
