@@ -1,4 +1,20 @@
 /* ---------- issue page ---------- */
+.live-issue {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--topbar-h));
+}
+.live-issue > .thread {
+  flex: 1;
+  width: 100%;
+  min-height: 240px;
+  display: grid;
+  place-content: center;
+}
+.live-issue .thread .empty {
+  margin: 0 auto;
+}
+
 .ihead {
   position: sticky;
   top: var(--topbar-h);

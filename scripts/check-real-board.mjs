@@ -172,6 +172,16 @@ try {
       1,
     );
   }
+  if (!process.env.BOARD_URL) {
+    await browser.evaluate("location.hash='#/issue/210'");
+    await browser.until(
+      "document.querySelector('.ihead')?.dataset.issue==='210'",
+    );
+    assert.equal(
+      await browser.evaluate("document.querySelector('.meta b')?.textContent"),
+      "Run active",
+    );
+  }
   const issueNumber = process.env.BOARD_URL
     ? (actual.issues.find((i) => i.number === 302)?.number ??
       actual.issues[0]?.number)
@@ -192,8 +202,17 @@ try {
       evidence.push({ view: "board", width, theme, ...metrics });
       if (process.env.BOARD_SCREENSHOTS === "1")
         await browser.screenshot(
-          `${root}docs/screenshots/issue-302-${process.env.BOARD_URL ? "repository" : "fixture"}-board-${width}-${theme}.png`,
+          `${root}docs/screenshots/real-board-${process.env.BOARD_URL ? "repository" : "fixture"}-${width}-${theme}.png`,
         );
+      if (process.env.BOARD_SCREENSHOTS === "1" && !process.env.BOARD_URL) {
+        await browser.evaluate(
+          "document.querySelector('.board').scrollLeft=document.querySelector('.board').scrollWidth",
+        );
+        await browser.until("document.querySelector('.board').scrollLeft>0");
+        await browser.screenshot(
+          `${root}docs/screenshots/real-board-fixture-blocked-${width}-${theme}.png`,
+        );
+      }
       await browser.evaluate(`location.hash='#/issue/${issueNumber}'`);
       await browser.until(
         "document.querySelector('.thread h2')?.textContent==='Thread not available yet'",
@@ -216,6 +235,12 @@ try {
         ),
         0,
       );
+      assert.ok(
+        await browser.evaluate(
+          "Math.abs(document.querySelector('.composer').getBoundingClientRect().bottom-innerHeight)<2",
+        ),
+        "The placeholder composer must reach the viewport bottom.",
+      );
       await browser.evaluate(
         "document.querySelector('.control button')?.click()",
       );
@@ -234,7 +259,7 @@ try {
       );
       if (process.env.BOARD_SCREENSHOTS === "1")
         await browser.screenshot(
-          `${root}docs/screenshots/issue-302-${process.env.BOARD_URL ? "repository" : "fixture"}-issue-${width}-${theme}.png`,
+          `${root}docs/screenshots/real-issue-placeholder-${process.env.BOARD_URL ? "repository" : "fixture"}-${width}-${theme}.png`,
         );
       evidence.push({
         view: "issue",

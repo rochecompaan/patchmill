@@ -73,6 +73,10 @@ function openLinkedArtifact(state) {
 function render() {
   if (!current) return;
   const saved = viewState.capture();
+  mount.classList.toggle(
+    "live-issue",
+    current.status === "ready" && current.issue?.source === "live",
+  );
   mount.replaceChildren(renderPage(document, current, name, drafts));
   const meta = current.board ?? current.issue;
   if (meta) syncStatus.update(meta);

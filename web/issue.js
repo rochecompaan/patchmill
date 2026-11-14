@@ -207,6 +207,13 @@ function renderComposer(doc, issue, name, draft, p, source) {
 /** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft @param {'sample'|'live'} [source] */
 export function renderIssue(doc, detail, name, draft, source = "sample") {
   const p = presentationFor(detail.summary);
+  if (source === "live") {
+    if (detail.summary.status === "none") p.statusLabel = "No active run";
+    if (detail.summary.live && detail.summary.status === "idle") {
+      p.statusLabel = "Run active";
+      p.dotClass = "dot dot-live";
+    }
+  }
   const fragment = doc.createDocumentFragment(),
     thread =
       source === "live"

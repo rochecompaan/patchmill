@@ -52,7 +52,15 @@ export async function smokeServe(command, args, options) {
     delete env.PATCHMILL_SERVE_TOKEN;
     const child = spawn(
       command,
-      [...args, "serve", "--host", "127.0.0.1", "--port", String(port)],
+      [
+        ...args,
+        "serve",
+        "--sample",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+      ],
       { cwd: options.cwd, env, stdio: ["ignore", "pipe", "pipe"] },
     );
     const exit = new Promise((resolve) =>
