@@ -120,6 +120,33 @@ exception to the unrelated-installed-files constraint. This preserves standard
 updater output and pack coherence. It does not change cleanup source behavior.
 The cost if wrong is unrelated generated diff noise, not a new cleanup policy.
 
+## Independent review
+
+The canonical fresh-context `reviewer` used `openai-codex/gpt-6.1-sol:xhigh` on
+`7dbac5292d49753be55e73189b66bfa1ba548192..d36dd27a9177561dc95ab31f69e683a32ceaeeb5`.
+It found no Critical, Important, or Minor findings. No fix pass was necessary.
+The reviewer independently inspected source, tests, immutable upstream bytes,
+manifest hashes, generated parity, and custom links. It independently ran type
+checks and lint. It inspected recorded test/smoke logs and all four screenshots.
+It did not rerun the test suite, packed install, or browser measurements.
+
+The implementer ruled on every declined behavior:
+
+- Hosting, image previews, and uploads remain excluded by the maintainer's
+  decision. Cost if wrong: reviewers need to download HTML rather than view a
+  hosted page.
+- Approved-document backfill remains excluded. Cost if wrong: older documents
+  have no retrospective visualization until an authorized revision.
+- Product frontend review remains inapplicable to document-only examples. Cost
+  if wrong: document styling receives portability checks, not product design
+  review.
+- General updater hardening stays outside this registration change. Cost if
+  wrong: pre-existing updater limitations remain unchanged.
+- Universal model reliability is not claimed. Cost if wrong: future planners can
+  need guidance despite the tested distribution and explicit instructions.
+
+Deferred Minor findings: none.
+
 ## Limits
 
 Automated distribution checks and the direct scenarios do not prove that a model
