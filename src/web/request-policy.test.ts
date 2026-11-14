@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createRequestPolicy } from "./request-policy.ts";
+import { createRequestPolicy, isLoopback } from "./request-policy.ts";
+
+test("mapped IPv6 authorities retain valid embedded IPv4 notation", () => {
+  const policy = createRequestPolicy({
+    host: "::ffff:127.0.0.1",
+    address: "::ffff:127.0.0.1",
+    port: 4280,
+    interfaces: [],
+  });
+  assert.equal(
+    policy.authority(["Host", "[::ffff:127.0.0.1]:4280"]),
+    "[::ffff:7f00:1]:4280",
+  );
+  assert.equal(
+    policy.authority(["Host", "[::ffff:7f00:1]:4280"]),
+    "[::ffff:7f00:1]:4280",
+  );
+  assert.equal(policy.authority(["Host", "localhost:4280"]), "localhost:4280");
+  assert.equal(isLoopback("::ffff:127.0.0.1"), true);
+});
 const binding = {
   host: "127.0.0.1",
   address: "127.0.0.1",

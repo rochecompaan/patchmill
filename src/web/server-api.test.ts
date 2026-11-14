@@ -4,6 +4,31 @@ import { startWebFixture } from "../../test-support/web-fixture.ts";
 import { createSampleRunDataSource } from "./sample-data.ts";
 import { resolveWebRoot } from "./assets.ts";
 
+test("a mapped IPv6 listener authenticates its printed token link", async (t) => {
+  let f;
+  try {
+    f = await startWebFixture(t, { host: "::ffff:127.0.0.1" });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      ["EAFNOSUPPORT", "EADDRNOTAVAIL"].includes(String(error.code))
+    ) {
+      t.skip("IPv6 is unavailable");
+      return;
+    }
+    throw error;
+  }
+  const url = new URL(f.url);
+  assert.equal((await f.request(url.pathname + url.search)).status, 303);
+  assert.equal(f.networkExposed, false);
+  assert.equal(
+    (await f.request("/api/board", { cookie: f.cookie })).status,
+    200,
+  );
+});
+
 test("all sample preview resources serve locally behind authentication", async (t) => {
   const f = await startWebFixture(t, { webRoot: resolveWebRoot() });
   const snapshot = await createSampleRunDataSource().snapshot();

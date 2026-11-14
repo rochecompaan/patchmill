@@ -12,6 +12,12 @@ function freeze(value: unknown): void {
 
 /** A deterministic read-only projection; no host, filesystem, or run access. */
 export function createSampleRunDataSource(): RunDataSource {
+  const issues = sampleBoard.map((summary) => ({
+    ...summary,
+    artifacts: (sampleArtifacts[String(summary.number)] ?? []).map(
+      ({ id, kind, title }) => ({ id, kind, title }),
+    ),
+  }));
   const snapshot: RunDataSnapshot = {
     repository: {
       name: "rochecompaan/patchmill",
@@ -20,9 +26,9 @@ export function createSampleRunDataSource(): RunDataSource {
     source: "sample",
     revision: "sample-v1",
     syncedAt: null,
-    issues: sampleBoard,
+    issues,
     details: Object.fromEntries(
-      sampleBoard.map((summary) => [
+      issues.map((summary) => [
         String(summary.number),
         {
           summary,

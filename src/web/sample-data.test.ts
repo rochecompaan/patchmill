@@ -30,6 +30,10 @@ test("every board summary has matching detail and valid artifacts", async () => 
   for (const summary of snapshot.issues) {
     const detail = snapshot.details[String(summary.number)]!;
     assert.deepEqual(detail.summary, summary);
+    assert.deepEqual(
+      summary.artifacts,
+      detail.artifacts.map(({ id, kind, title }) => ({ id, kind, title })),
+    );
     assert.equal(
       new Set(detail.thread.map((e) => e.id)).size,
       detail.thread.length,

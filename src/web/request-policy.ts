@@ -20,7 +20,7 @@ function headerValues(headers: readonly string[], name: string): string[] {
   return values;
 }
 function authority(value: string): string | null {
-  if (!/^(?:\[[0-9a-fA-F:]+\]|[a-zA-Z0-9.-]+)(?::[0-9]+)?$/.test(value))
+  if (!/^(?:\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+)(?::[0-9]+)?$/.test(value))
     return null;
   try {
     const parsed = new URL("http://" + value);
@@ -43,7 +43,18 @@ function authority(value: string): string | null {
 }
 const ipHost = (host: string) => (isIP(host) === 6 ? `[${host}]` : host);
 export function isLoopback(host: string): boolean {
-  return host === "localhost" || host === "::1" || /^127\./.test(host);
+  if (host === "localhost") return true;
+  if (isIP(host) === 4) return host.startsWith("127.");
+  if (isIP(host) !== 6) return false;
+  try {
+    const canonical = new URL(`http://[${host}]`).hostname;
+    return (
+      canonical === "[::1]" ||
+      /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(canonical)
+    );
+  } catch {
+    return false;
+  }
 }
 export function createRequestPolicy(binding: Binding): RequestPolicy {
   const wildcard = ["0.0.0.0", "::"].includes(binding.host);

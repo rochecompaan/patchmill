@@ -1,5 +1,5 @@
 import type { IssueSummary } from "../api-types.ts";
-export const sampleBoard: readonly IssueSummary[] = [
+export const sampleBoard: readonly Omit<IssueSummary, "artifacts">[] = [
   {
     number: 298,
     title: "Show queued issues in patchmill status",
@@ -13,7 +13,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 282,
@@ -33,7 +32,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 262,
@@ -62,7 +60,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 227,
@@ -82,13 +79,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: 940,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title: "Multi-run cost report",
-      },
-    ],
   },
   {
     number: 206,
@@ -108,7 +98,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 233,
@@ -128,7 +117,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 268,
@@ -153,7 +141,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 194,
@@ -174,7 +161,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 177,
@@ -194,7 +180,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 250,
@@ -215,7 +200,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: 372,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 210,
@@ -255,30 +239,6 @@ export const sampleBoard: readonly IssueSummary[] = [
         kind: "plan",
       },
     ],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title:
-          "Add frontend design and independent design-review skills to UI workflows",
-      },
-      {
-        id: "plan",
-        kind: "plan",
-        title:
-          "Plan: Add frontend design and independent design-review skills to UI workflows",
-      },
-      {
-        id: "mockup",
-        kind: "mockup",
-        title: "Design review comment",
-      },
-      {
-        id: "diagram",
-        kind: "diagram",
-        title: "Design review in UI workflows",
-      },
-    ],
   },
   {
     number: 276,
@@ -303,25 +263,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: 6720,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title:
-          "run-once drops comment author attribution, so trusted-owner answers are treated as untrusted",
-      },
-      {
-        id: "plan",
-        kind: "plan",
-        title:
-          "Plan: run-once drops comment author attribution, so trusted-owner answers are treated as untrusted",
-      },
-      {
-        id: "diagram",
-        kind: "diagram",
-        title: "Comment authors in run-once",
-      },
-    ],
   },
   {
     number: 263,
@@ -346,25 +287,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: 1448,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title:
-          "Prevent final-validation host gates from using two-minute shorthand timeouts",
-      },
-      {
-        id: "plan",
-        kind: "plan",
-        title:
-          "Plan: Prevent final-validation host gates from using two-minute shorthand timeouts",
-      },
-      {
-        id: "diagram",
-        kind: "diagram",
-        title: "Host gate timeouts",
-      },
-    ],
   },
   {
     number: 231,
@@ -390,19 +312,6 @@ export const sampleBoard: readonly IssueSummary[] = [
         url: "https://github.com/rochecompaan/patchmill/pull/300",
         state: "open",
         kind: "implementation",
-      },
-    ],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title: "Add shared run identity types and the normalized outcome seam",
-      },
-      {
-        id: "plan",
-        kind: "plan",
-        title:
-          "Plan: Add shared run identity types and the normalized outcome seam",
       },
     ],
   },
@@ -436,28 +345,6 @@ export const sampleBoard: readonly IssueSummary[] = [
         kind: "implementation",
       },
     ],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title: "Show blocked reasons on board cards",
-      },
-      {
-        id: "plan",
-        kind: "plan",
-        title: "Plan: Show blocked reasons on board cards",
-      },
-      {
-        id: "mockup",
-        kind: "mockup",
-        title: "Board: blocked reasons",
-      },
-      {
-        id: "shots",
-        kind: "shots",
-        title: "Screenshots",
-      },
-    ],
   },
   {
     number: 247,
@@ -486,20 +373,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: 11520,
     blockedReason: "Final validation failed",
     pullRequests: [],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title:
-          "Implementation orchestrator can exhaust spawn budget before an oracle-authorized repair",
-      },
-      {
-        id: "plan",
-        kind: "plan",
-        title:
-          "Plan: Implementation orchestrator can exhaust spawn budget before an oracle-authorized repair",
-      },
-    ],
   },
   {
     number: 232,
@@ -519,7 +392,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 234,
@@ -539,7 +411,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 236,
@@ -559,7 +430,6 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: null,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [],
   },
   {
     number: 901,
@@ -579,12 +449,5 @@ export const sampleBoard: readonly IssueSummary[] = [
     elapsedSeconds: 1685,
     blockedReason: null,
     pullRequests: [],
-    artifacts: [
-      {
-        id: "spec",
-        kind: "spec",
-        title: "Multi-run cost report",
-      },
-    ],
   },
 ];
