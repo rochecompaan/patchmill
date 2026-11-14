@@ -48,6 +48,39 @@ starts from the fetched base after earlier planning PRs merge.
 `git.baseBranch: null` uses the remote default branch. A string selects an
 explicit base branch. The remote is `origin`.
 
+## Cleanup hook
+
+The optional top-level `cleanupHook` names a Bash script. Omit it for no hook. A
+non-string value fails with `Invalid type for cleanupHook`.
+
+```json
+{
+  "cleanupHook": "./scripts/cleanup.sh"
+}
+```
+
+After a confirmed implementation merge and issue closure, Patchmill runs
+`bash <cleanupHook>` from the implementation worktree before any workspace
+removal. Relative paths resolve there. The script needs no executable bit. A
+failing hook keeps all worktrees and branches without changing the done outcome.
+Patchmill reports the error and cleanup log path.
+
+Every real run sweeps local candidates before open-issue selection, including
+non-interactive runs and `--plan-only`. A dry run skips cleanup. Interactive
+merge confirmation also triggers immediate cleanup under the issue lock. After
+the hook, dirty workspaces remain with their branches and an operator notice.
+
+`<runsDir>/issue-N/cleanup.json` records a successful hook step. It prevents
+repetition during partial cleanup retries, but never replaces fresh merge
+verification. Hook output and diagnostics enter `cleanup.log` beside that
+receipt. A corrupt receipt or missing hook directory requires manual inspection.
+
+Use an idempotent script that touches only issue-scoped resources and tolerates
+missing resources. Exit non-zero when resource cleanup is incomplete. Never
+remove Patchmill worktrees, branches, PRs, run state, or lock files from the
+hook. See [Run-once](/using-patchmill/run-once/#supervision-and-cleanup) for
+triggers and retry behavior.
+
 ## Skills and Pi
 
 `skills` contains only `triage`, `planning`, and `implementation`. Each value

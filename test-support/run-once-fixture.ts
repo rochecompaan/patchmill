@@ -159,6 +159,14 @@ export async function merge(c: Scenario, head: string) {
   });
 }
 
-export async function mergePullRequest(c: Scenario, head = branch) {
+export async function mergePullRequest(
+  c: Scenario,
+  head = branch,
+  options: { closeIssue?: boolean } = {},
+) {
   await merge(c, head);
+  if (options.closeIssue)
+    await c.mutate((state) => {
+      state.issues[0]!.state = "closed";
+    });
 }
