@@ -227,8 +227,10 @@ worktree and its branch and reports the reason. It removes clean implementation
 and optional gated spec/plan worktrees, followed by their local branches. It
 never removes remote branches, mismatched checkouts, the primary checkout, a
 worktree containing the current directory, or a target containing the lock
-parent. A configured hook requires the implementation directory unless a
-matching receipt already proves success. No cleanup path recreates a worktree.
+parent. It also preserves targets that contain another registered checkout, even
+inside an ignored directory. A configured hook requires the implementation
+directory unless a matching receipt already proves success. No cleanup path
+recreates a worktree.
 
 A hook error or non-zero exit keeps all worktrees and branches. A cleanup error
 never changes the issue's done outcome. Patchmill reports errors to the operator

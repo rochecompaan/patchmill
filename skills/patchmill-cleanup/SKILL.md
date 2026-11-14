@@ -23,7 +23,8 @@ those separately. Do not invent separate workspaces for ungated documents.
 For each proposed target, show its absolute path, branch, base, dirty files,
 untracked files, unique commits, and merge state. Describe the work that removal
 will lose. Ask which workspaces to remove and which local branches to retain.
-Never remove remote branches through this skill.
+Never remove remote branches through this skill. Keep any target that contains
+another registered checkout, even inside an ignored directory.
 
 Stop while an issue run is active. The permanent lock is
 `<runsDir>/issue-N/lock`, where `runsDir` comes from configuration. Its PID and

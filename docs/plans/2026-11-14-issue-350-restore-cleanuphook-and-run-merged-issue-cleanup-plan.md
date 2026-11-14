@@ -97,7 +97,7 @@ unrelated parts of `run-once.ts`.
   signatures.
 - `DEFAULT_CONFIG` omits the optional property. Add a string leaf to `schema`.
 
-- [ ] **Step 1: Add failing parser and loader tests.**
+- [x] **Step 1: Add failing parser and loader tests.**
 
 Use the existing temporary-directory loader fixture. Pin these assertions:
 
@@ -123,24 +123,24 @@ assert.throws(
 Also load an on-disk string hook and an on-disk non-string hook. Assert the same
 value and exact error. Keep existing nested unknown-key tests.
 
-- [ ] **Step 2: Run the parser suite and observe the new string tests fail.**
+- [x] **Step 2: Run the parser suite and observe the new string tests fail.**
 
 Run: `node --test src/config/config.test.ts`. Expected before implementation:
 `Unknown config key: cleanupHook`.
 
-- [ ] **Step 3: Add the optional property and schema leaf.**
+- [x] **Step 3: Add the optional property and schema leaf.**
 
 Use the existing string validator. Do not normalize paths, split arguments, or
 replace omission with an empty string. Update the configuration page with a
 separate optional-hook example, execution directory, failure behavior, and safe
 script guidance. Keep the full-defaults example free of a hook path.
 
-- [ ] **Step 4: Run the parser suite and type checks.**
+- [x] **Step 4: Run the parser suite and type checks.**
 
 Run: `node --test src/config/config.test.ts && npm run check:types`. Expected:
 zero failures and no type errors.
 
-- [ ] **Step 5: Commit this deliverable.**
+- [x] **Step 5: Commit this deliverable.**
 
 Commit message: `fix(config): restore optional cleanupHook`.
 
@@ -220,7 +220,7 @@ Extend `mergePullRequest` in the fixture with an optional third argument
 without changing planning merge semantics. Make `records()` count directories,
 not `cleanup.json` or `cleanup.log`.
 
-- [ ] **Step 1: Add failing state and cleanup behavior tests.**
+- [x] **Step 1: Add failing state and cleanup behavior tests.**
 
 Use real Git worktrees and Bash. Place hook counters outside removal targets.
 Keep real commands behind a recording runner. Add these named cases and checks:
@@ -248,13 +248,13 @@ State tests cover receipt round trips, absent versus invalid files, atomic
 publication, and timestamped stdout/stderr/exit diagnostics. Cost aggregation
 must ignore cleanup files and keep its existing phase totals.
 
-- [ ] **Step 2: Run focused tests and observe the missing behavior fail.**
+- [x] **Step 2: Run focused tests and observe the missing behavior fail.**
 
 Run:
 `node --test src/kernel/cleanup-state.test.ts src/kernel/merged-cleanup.test.ts src/kernel/merged-planning-cleanup.test.ts`.
 Expected before implementation: missing state module or missing hook behavior.
 
-- [ ] **Step 3: Implement receipt storage and the shared cleanup routine.**
+- [x] **Step 3: Implement receipt storage and the shared cleanup routine.**
 
 Read fresh issue and PR facts with `host.viewIssue`, `host.repository`,
 `findPullRequest`, and `closesIssue`. Require closed issue plus merged,
@@ -278,7 +278,7 @@ errors. A log error after a completed removal cannot restore that target. Report
 the partial result and keep remaining targets. Report cleanup failures without
 throwing them into the workflow outcome handler.
 
-- [ ] **Step 4: Centralize successful in-attempt finalization.**
+- [x] **Step 4: Centralize successful in-attempt finalization.**
 
 Remove the cleanup import and call from `reviewWait`. Keep its status
 publication, refresh, and `update` behavior. In `runOneIssue`, after stop
@@ -288,14 +288,14 @@ for done implementation facts. Pass the held lock, `join(runDir, "pi.log")`, and
 gate it on `deps.human`. Do not call it for planning, needs-info, failed, or
 aborted results.
 
-- [ ] **Step 5: Run covering tests and type checks.**
+- [x] **Step 5: Run covering tests and type checks.**
 
 Run:
 `node --test src/kernel/cleanup-state.test.ts src/kernel/merged-cleanup.test.ts src/kernel/merged-planning-cleanup.test.ts src/kernel/interactive-waits.test.ts src/kernel/issue-cost.test.ts && npm run check:types`.
 Expected: zero failures. Existing interactive wait, quit, and publication counts
 remain unchanged. A confirmed closed-issue merge still cleans up before return.
 
-- [ ] **Step 6: Commit this deliverable.**
+- [x] **Step 6: Commit this deliverable.**
 
 Commit message:
 `fix(kernel): run cleanup hook before locked post-merge removal`.
@@ -321,7 +321,7 @@ Commit message:
 - `runOneIssue`, `RunOnceOptions`, and `RunOnceOutcome` keep their public
   shapes.
 
-- [ ] **Step 1: Add failing discovery and all-mode integration tests.**
+- [x] **Step 1: Add failing discovery and all-mode integration tests.**
 
 Use actual local refs and registered worktrees. Assert these behaviors:
 
@@ -345,14 +345,14 @@ Tests that currently assert no runner commands for non-interactive merged work
 must change. Assert no _mutating cleanup commands_ for unmerged PRs instead of
 prohibiting read-only discovery. Preserve dry-run read-only assertions.
 
-- [ ] **Step 2: Run the new tests and observe missing sweep behavior fail.**
+- [x] **Step 2: Run the new tests and observe missing sweep behavior fail.**
 
 Run:
 `node --test src/kernel/merged-cleanup-sweep.test.ts src/cli/commands/run-once/main.test.ts src/kernel/local-mode.test.ts`.
 Expected before implementation: missing sweep module or preserved merged
 targets.
 
-- [ ] **Step 3: Implement bounded discovery and the sweep.**
+- [x] **Step 3: Implement bounded discovery and the sweep.**
 
 Enumerate local heads and NUL-delimited registered worktrees. Accept canonical
 positive, safe-integer issue numbers. Group branches and exclude exact planning
@@ -367,7 +367,7 @@ errors, report them, and continue. Stop starting new candidates after
 cancellation. No candidate path can call `provisionWorkspace` or
 `ensureWorktree`.
 
-- [ ] **Step 4: Connect both startup boundaries.**
+- [x] **Step 4: Connect both startup boundaries.**
 
 At the start of `runOneIssue`, sweep unless `options.dryRun` or already
 cancelled, before `workflow.sync` and selection. Use the existing output
@@ -381,14 +381,14 @@ untrusted skip-cleanup flag or make cleanup depend on the console being present.
 Normal no-work, refusal, and completed outcomes remain distinct from cleanup
 logs.
 
-- [ ] **Step 5: Run covering suites and the interactive regressions.**
+- [x] **Step 5: Run covering suites and the interactive regressions.**
 
 Run:
 `node --test src/kernel/merged-cleanup-sweep.test.ts src/kernel/merged-cleanup.test.ts src/kernel/merged-planning-cleanup.test.ts src/kernel/run-once.test.ts src/kernel/local-mode.test.ts src/kernel/interactive-waits.test.ts src/cli/commands/run-once/main.test.ts src/console/start.test.ts && npm run check:types`.
 Expected: zero failures. No new issue comments, duplicate Review wait
 publication, remote branch deletion, or loss of the permanent lock.
 
-- [ ] **Step 6: Commit this deliverable.**
+- [x] **Step 6: Commit this deliverable.**
 
 Commit message: `fix(kernel): sweep merged issue cleanup before selection`.
 
@@ -408,7 +408,7 @@ Commit message: `fix(kernel): sweep merged issue cleanup before selection`.
 **Interfaces:** Consumes Tasks 1–3's public behavior. Produces no new API or
 test module. Documentation is verified through inspection, not text assertions.
 
-- [ ] **Step 1: Correct the manual cleanup procedure.**
+- [x] **Step 1: Correct the manual cleanup procedure.**
 
 Distinguish implementation and optional gated spec/plan workspaces. Offer the
 configured hook before manual removal, from the implementation directory, with
@@ -417,7 +417,7 @@ A hook failure keeps all targets. Keep force/loss confirmation rules for manual
 unfinished work separate from automatic merged-issue eligibility. Never treat
 `patchmill release` as a lasting lock, and never remove the lock parent.
 
-- [ ] **Step 2: Document configuration, lifecycle, and recovery consistently.**
+- [x] **Step 2: Document configuration, lifecycle, and recovery consistently.**
 
 Remove both statements that non-interactive runs never remove worktrees in
 Run-once. Replace interactive-only cleanup language in lifecycle and Git safety.
@@ -427,7 +427,7 @@ retries, receipt, and log locations. Explain that a missing hook directory or
 corrupt receipt requires inspected manual recovery, not automatic receipt
 deletion.
 
-- [ ] **Step 3: Inspect coverage against the design and apply the Testing Value
+- [x] **Step 3: Inspect coverage against the design and apply the Testing Value
       Gate.**
 
 Map every acceptance row to the behavioral tests in Tasks 1–3. Do not add tests
@@ -435,7 +435,7 @@ for Markdown sentences, skill text, static defaults examples, or dependency
 pins. Use direct inspection and lint for those materials. Keep automatic cleanup
 code out of the human-only skill workflow itself.
 
-- [ ] **Step 4: Run full verification.**
+- [x] **Step 4: Run full verification.**
 
 ```sh
 npm test
@@ -457,12 +457,27 @@ all resolved upstream skill paths. Confirm that configuration, metadata, and
 live dependency references retain the same upstream versions. Do not update pins
 or live projects to perform this check.
 
-- [ ] **Step 5: Commit documentation and record verification evidence.**
+- [x] **Step 5: Commit documentation and record verification evidence.**
 
 Commit message: `docs: align merged cleanup lifecycle and manual hook guidance`.
 Update this plan's checkboxes only with observed evidence. Commit and push the
 implementation branch without force. The later implementation PR owns the
 closing reference for #350.
+
+## Implementation evidence
+
+All four tasks are complete. The final suite passed 1188 tests with no failures.
+Formatting, TypeScript lint, Markdown lint, package build, packed smoke, site
+build, and Nix build passed. Packed installation inspection verified the cleanup
+skill, all 80 managed hashes, and unchanged upstream versions and paths.
+
+A fresh canonical reviewer found one Critical nested-checkout preservation
+defect. Two real-Git regressions failed before the fix and passed after it. The
+safety boundary now rejects a target containing another registered checkout,
+before and after the hook. No Minor findings remain deferred.
+
+The hook invocation resolves the script path before Bash. Tests prove that a
+bare filename cannot select a script from `PATH` or act as a Bash option.
 
 ## Planner self-review
 

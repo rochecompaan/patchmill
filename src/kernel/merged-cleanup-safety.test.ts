@@ -137,6 +137,43 @@ test("a changed registration after the hook stops removal", async (t) => {
   assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\n");
 });
 
+for (const timing of ["before hook", "after hook"] as const) {
+  test(`cleanup preserves an ignored nested registered checkout: ${timing}`, async (t) => {
+    const c = await setupCleanup(t);
+    const child = join(c.worktree, "ignored-child");
+    const ignore = join(c.dir, "nested-ignore");
+    await fs.writeFile(ignore, "ignored-child/\n");
+    await c.git(["config", "core.excludesFile", ignore]);
+    const createChild = async () => {
+      await c.git(["worktree", "add", "-b", "operator-nested", child]);
+      await fs.writeFile(join(child, "uncommitted.txt"), "must survive");
+      assert.equal(await c.git(["status", "--porcelain"], c.worktree), "");
+    };
+    if (timing === "before hook") await createChild();
+    const mutations: string[][] = [];
+    const runner: CommandRunner = async (command, args, options) => {
+      if (args[1] === "remove" || args[0] === "branch") mutations.push(args);
+      const result = await c.deps.runner(command, args, options);
+      if (command === "bash" && timing === "after hook") await createChild();
+      return result;
+    };
+    assert.equal((await c.cleanup({ runner })).status, "kept");
+    assert.equal(
+      await fs.readFile(join(child, "uncommitted.txt"), "utf8"),
+      "must survive",
+    );
+    assert.equal(await c.localBranch(), true);
+    assert.equal(await c.localBranch("operator-nested"), true);
+    assert.deepEqual(mutations, []);
+    assert.equal(
+      c.output.some((message) => message.includes(child)),
+      true,
+    );
+    if (timing === "before hook") await assert.rejects(fs.access(c.counter));
+    else assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\n");
+  });
+}
+
 test("base branch resolution honors an explicit non-default base", async (t) => {
   const c = await setupCleanup(t, false);
   c.config.git.baseBranch = "release";

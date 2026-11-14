@@ -185,7 +185,8 @@ out elsewhere, cleanup keeps it and reports the mismatch. It never substitutes
 that other checkout as a removal target. The routine must also preserve a target
 that contains the current process working directory. Containment checks compare
 filesystem real paths, including the lock parent, so symlinks cannot bypass
-them.
+them. A target that contains another registered checkout also stays, even when
+Git ignores the nested directory. Apply this guard before and after the hook.
 
 ## Repeat attempts and the success receipt
 

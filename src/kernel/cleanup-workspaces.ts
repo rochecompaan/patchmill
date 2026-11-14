@@ -76,7 +76,12 @@ export async function cleanupWorkspaces(input: {
   branch: string;
   issueDir: string;
 }): Promise<CleanupWorkspace[]> {
-  const records = await readCleanupWorktrees(input.git);
+  const records = await Promise.all(
+    (await readCleanupWorktrees(input.git)).map(async (record) => ({
+      ...record,
+      canonical: await realPath(resolve(record.path)),
+    })),
+  );
   const branches = new Set(
     (
       await input.git([
@@ -112,11 +117,18 @@ export async function cleanupWorkspaces(input: {
         `Unsafe cleanup worktree: ${worktree} contains a protected checkout, current directory, or lock parent.`,
       );
     const registration = records.find(
-      (record) => resolve(record.path) === canonical,
+      (record) => record.canonical === canonical,
     );
-    const elsewhere = records.find(
+    const nested = records.find(
       (record) =>
-        record.branch === branch && resolve(record.path) !== canonical,
+        record !== registration && contains(canonical, record.canonical),
+    );
+    if (nested)
+      throw new Error(
+        `Unsafe cleanup worktree: ${worktree} contains registered worktree ${nested.path}.`,
+      );
+    const elsewhere = records.find(
+      (record) => record.branch === branch && record.canonical !== canonical,
     );
     if (elsewhere || (registration && registration.branch !== branch))
       throw new Error(

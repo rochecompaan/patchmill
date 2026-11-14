@@ -22,7 +22,9 @@ before any removal. After hook success, Patchmill keeps each dirty worktree and
 its branch. Hook failure keeps every target without changing done status.
 Cleanup holds the issue OS lock, preserves mismatched checkouts, and never
 removes remote branches. It also preserves the primary checkout, current
-directory, and lock parent, including through symlinks.
+directory, and lock parent, including through symlinks. A target containing
+another registered checkout stays too, even when Git ignores that nested
+directory.
 
 ## Ownership
 
