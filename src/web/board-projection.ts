@@ -19,16 +19,19 @@ export function associatePullRequests(input: {
   issue: number;
   candidates: readonly HostPullRequest[];
   observed: HostPullRequest | null;
+  historical?: readonly HostPullRequest[];
   pushRepository: string;
   baseBranch: string;
 }): AssociatedPullRequests {
   const candidates = [...input.candidates.filter((p) => p.state === "open")];
-  if (
-    input.observed &&
-    input.observed.state !== "open" &&
-    !candidates.some((p) => p.number === input.observed!.number)
-  )
-    candidates.push(input.observed);
+  for (const observed of [input.observed, ...(input.historical ?? [])]) {
+    if (
+      observed &&
+      observed.state !== "open" &&
+      !candidates.some((p) => p.number === observed.number)
+    )
+      candidates.push(observed);
+  }
   const accepted = new Map<number, HostPullRequest>();
   for (const pr of candidates) {
     if (
@@ -136,14 +139,16 @@ export function projectBoardIssue(input: {
     live: run.live,
     terminal: run.live && run.interactive === false,
     phase,
-    step: run.live
-      ? run.state === "implementation"
-        ? "Implementation"
-        : run.state === "planning"
-          ? "Planning"
-          : null
-      : null,
-    elapsedSeconds: null,
+    step:
+      run.step ??
+      (run.live
+        ? run.state === "implementation"
+          ? "Implementation"
+          : run.state === "planning"
+            ? "Planning"
+            : null
+        : null),
+    elapsedSeconds: run.elapsedSeconds ?? null,
     blockedReason:
       column === "blocked"
         ? run.incomplete

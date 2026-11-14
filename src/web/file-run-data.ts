@@ -14,7 +14,13 @@ import {
   projectBoardIssue,
 } from "./board-projection.ts";
 import { createDocumentLinkReader } from "./document-links.ts";
-import type { DocumentLink, IssueSummary, Repository } from "./api-types.ts";
+import type {
+  DocumentLink,
+  IssueDetail,
+  IssueSummary,
+  Repository,
+} from "./api-types.ts";
+import { readIssueDetail } from "./file-issue-detail.ts";
 import type {
   RunDataSource,
   RunDataSnapshot,
@@ -49,8 +55,10 @@ export function createFileRunDataSource(input: {
   );
   const listeners = new Set<(change: RunDataChange) => void>();
   let previousRevision: string | undefined;
-  let pending: Promise<RunDataSnapshot> | undefined;
-  async function snapshot(): Promise<RunDataSnapshot> {
+  const pending = new Map<number | null, Promise<RunDataSnapshot>>();
+  async function snapshot(selection?: {
+    issue: number;
+  }): Promise<RunDataSnapshot> {
     if (config.workflow.stateTracking === "local") {
       const cursor = await store.readCursor();
       if (
@@ -62,6 +70,7 @@ export function createFileRunDataSource(input: {
     }
     const host = await cache.read();
     const issues: IssueSummary[] = [];
+    const details: Record<string, IssueDetail> = {};
     const documents = createDocumentLinkReader({
       ...input,
       baseBranch: metadata.baseBranch,
@@ -93,6 +102,7 @@ export function createFileRunDataSource(input: {
         issue: issue.number,
         candidates: host.pullRequests,
         observed: run.pullRequest,
+        historical: run.historicalPullRequests ?? [],
         pushRepository: metadata.pushRepository.slug,
         baseBranch: metadata.baseBranch,
       });
@@ -113,41 +123,42 @@ export function createFileRunDataSource(input: {
         documentLinks,
         labels: config.labels,
       });
-      if (summary) issues.push(summary);
+      if (summary) {
+        issues.push(summary);
+        if (selection?.issue === issue.number)
+          details[String(issue.number)] = await readIssueDetail({
+            ...input,
+            issue,
+            summary,
+            observation: run,
+          });
+      }
     }
     const repository = { ...metadata.repository };
-    const revision = createHash("sha256")
+    const boardRevision = createHash("sha256")
       .update(JSON.stringify({ repository, issues }))
       .digest("hex");
+    const revision = selection
+      ? createHash("sha256")
+          .update(JSON.stringify({ boardRevision, details }))
+          .digest("hex")
+      : boardRevision;
     const result: RunDataSnapshot = {
       repository,
       source: "live",
       revision,
       syncedAt: host.syncedAt,
       issues,
-      details: Object.fromEntries(
-        issues.map((summary) => [
-          String(summary.number),
-          {
-            summary,
-            body: null,
-            run: null,
-            participants: [],
-            thread: [],
-            artifacts: [],
-            finalUsage: null,
-          },
-        ]),
-      ),
+      details,
     };
     freeze(result);
     const changed =
-      previousRevision !== undefined && previousRevision !== revision;
-    previousRevision = revision;
+      previousRevision !== undefined && previousRevision !== boardRevision;
+    previousRevision = boardRevision;
     if (changed)
       for (const listener of listeners) {
         try {
-          listener({ revision });
+          listener({ revision: boardRevision });
         } catch {
           warn("Board change listener failed.");
         }
@@ -155,11 +166,16 @@ export function createFileRunDataSource(input: {
     return result;
   }
   return {
-    snapshot() {
-      pending ??= snapshot().finally(() => {
-        pending = undefined;
-      });
-      return pending;
+    snapshot(selection) {
+      const key = selection?.issue ?? null;
+      let work = pending.get(key);
+      if (!work) {
+        work = snapshot(selection).finally(() => {
+          pending.delete(key);
+        });
+        pending.set(key, work);
+      }
+      return work;
     },
     subscribe(listener) {
       listeners.add(listener);
