@@ -34,6 +34,67 @@ test("interactive merge runs a non-executable Bash hook before removing the work
   await assert.rejects(fs.access(c.worktree));
 });
 
+for (const failure of ["exit", "throw"]) {
+  test(`interactive hook ${failure} failure preserves the completed run outcome`, async (t) => {
+    const c = await setupRun(t, [implement]);
+    await c.seed({
+      [spec]: "spec",
+      [plan]: "plan",
+      "cleanup.sh": "echo cleanup-incomplete >&2\nexit 9\n",
+    });
+    c.config.cleanupHook = "./cleanup.sh";
+    const human = fakeHuman(c, {
+      onWait: async () => {
+        await mergePullRequest(c, branch, { closeIssue: true });
+        return "continue";
+      },
+    });
+    const runner: CommandRunner = async (command, args, options) => {
+      if (command === "bash" && failure === "throw")
+        throw new Error("hook-start-incomplete");
+      return c.deps.runner(command, args, options);
+    };
+    assert.deepEqual(await c.run({ issue: 9 }, { human, runner }), {
+      status: "completed",
+      issue: 9,
+    });
+    const record = await c.records();
+    assert.equal(record.result.outcome.status, "completed");
+    assert.match(
+      await fs.readFile(join(record.dir, "pi.log"), "utf8"),
+      /cleanup.*failed/i,
+    );
+    assert.match(c.output.join("\n"), /incomplete/);
+    assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
+    await fs.access(c.worktree);
+  });
+}
+
+for (const status of ["failed", "needs-input", "no-result"]) {
+  test(`${status} outcome never runs in-attempt cleanup despite a merged PR`, async (t) => {
+    const c = await setupRun(t, [
+      {
+        ...implement,
+        pullRequest: { ...implement.pullRequest, state: "merged" },
+        issuePatch: { state: "closed" },
+        result:
+          status === "no-result" ? null : { status, summary: "retry needed" },
+      },
+    ]);
+    const marker = join(c.dir, "unexpected-hook");
+    await c.seed({
+      [spec]: "spec",
+      [plan]: "plan",
+      "cleanup.sh": `echo ran > ${JSON.stringify(marker)}\n`,
+    });
+    c.config.cleanupHook = "./cleanup.sh";
+    const outcome = await c.run({ issue: 9 });
+    assert.equal(outcome.status, "stopped");
+    await assert.rejects(fs.access(marker));
+    await fs.access(c.worktree);
+  });
+}
+
 for (const mode of [
   "clean",
   "dirty",
@@ -124,7 +185,7 @@ for (const mode of [
   });
 }
 
-for (const ending of ["agent-done", "non-interactive merged"] as const) {
+for (const ending of ["agent-done", "merged with open issue"] as const) {
   test(`${ending} leaves the worktree and branch alone`, async (t) => {
     const c = await setupRun(t, [implement]);
     await c.seed({ [spec]: "spec", [plan]: "plan" });
@@ -145,11 +206,14 @@ for (const ending of ["agent-done", "non-interactive merged"] as const) {
       ).status,
       "completed",
     );
-    if (ending === "non-interactive merged") {
+    if (ending === "merged with open issue") {
       await mergePullRequest(c);
       assert.equal((await c.run({ issue: 9 }, { runner })).status, "completed");
     }
-    assert.deepEqual(commands, []);
+    assert.deepEqual(
+      commands.filter((args) => args[1] === "remove" || args[0] === "branch"),
+      [],
+    );
     await fs.access(c.worktree);
     assert.equal(
       (

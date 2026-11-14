@@ -10,6 +10,7 @@ import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
 import { resolveBundledPiCommand } from "../../pi-cli.ts";
+import { sweepMergedIssues } from "../../../kernel/merged-cleanup-sweep.ts";
 
 const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only] [--interactive]
 Advance one issue. Use --dry-run to show the next phase without claiming it.
@@ -22,6 +23,7 @@ type Options = {
   repoRoot?: string;
   runOneIssue?: typeof runOneIssue;
   startConsole?: typeof startConsole;
+  sweepMergedIssues?: typeof sweepMergedIssues;
   exit?: (code: number) => void;
 };
 
@@ -93,6 +95,23 @@ export async function main(
       output,
     };
     if (runOptions.interactive) {
+      process.on("SIGINT", abort);
+      process.on("SIGTERM", abort);
+      try {
+        await (options.sweepMergedIssues ?? sweepMergedIssues)({
+          ...deps,
+          config,
+          report: output.stderr,
+          signal: controller.signal,
+        });
+      } finally {
+        process.off("SIGINT", abort);
+        process.off("SIGTERM", abort);
+      }
+      if (controller.signal.aborted) {
+        output.stderr("Run cancelled before interactive selection.");
+        return 1;
+      }
       await workflow.sync(runOptions.issue);
       const selection = await selectRunIssue({
         host: deps.host,

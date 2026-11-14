@@ -7,6 +7,8 @@ import {
   spec,
   plan,
   implement,
+  branch,
+  mergePullRequest,
 } from "../../test-support/run-once-fixture.ts";
 import { createTriagePi } from "../../test-support/triage-fixture.ts";
 import { STATE_DIR, StateStore } from "../state/store.ts";
@@ -75,6 +77,33 @@ test("local mode posts no status comments and changes no labels", async (t) => {
     /\| \*\*Total\*\* .*\*\*\$0\.0500\*\*/,
   );
   assert.equal((await c.records()).result.sessions.length, 1);
+});
+
+test("local-state closed merged cleanup does not reset status or mutate host labels/comments", async (t) => {
+  const c = await setup(t, [implement]);
+  const counter = join(c.dir, "cleanup-counter");
+  await c.seed({
+    [spec]: "spec",
+    [plan]: "plan",
+    "cleanup.sh": `echo ran >> ${JSON.stringify(counter)}\n`,
+  });
+  c.config.cleanupHook = "./cleanup.sh";
+  await c.workflow.setStatus(9, { status: "ready" });
+  assert.equal((await c.run({}, { workflow: c.workflow })).status, "completed");
+  await mergePullRequest(c, branch, { closeIssue: true });
+  const statuses = await c.store.readStatus(9);
+  assert.equal((await c.run({}, { workflow: c.workflow })).status, "no-work");
+  assert.equal(await fs.readFile(counter, "utf8"), "ran\n");
+  await assert.rejects(fs.access(c.worktree));
+  assert.deepEqual(await c.store.readStatus(9), statuses);
+  assert.equal(
+    c.host
+      .state()
+      .calls.some((call) =>
+        /^(createLabel:|setLabels:|commentIssue:)/.test(call),
+      ),
+    false,
+  );
 });
 
 // Only a successful needs-input result may publish the worker's question.

@@ -39,6 +39,7 @@ import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue } from "./merged-cleanup.ts";
+import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
 export type RunOnceOptions = {
@@ -87,6 +88,14 @@ export async function runOneIssue(
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
   const workflow = deps.workflow;
+  if (!options.dryRun) {
+    await sweepMergedIssues({
+      ...deps,
+      config,
+      report: output.stderr,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  }
   await workflow.sync(options.issue);
   const selection = await selectRunIssue({
     host,
