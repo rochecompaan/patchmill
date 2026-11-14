@@ -1,0 +1,309 @@
+/* ---------- issue page ---------- */
+.ihead {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 5;
+  background: color-mix(in srgb, var(--bg) 93%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line-soft);
+}
+.ihead-inner {
+  max-width: calc(var(--thread-w) + 220px);
+  margin: 0 auto;
+  padding: 12px 24px 14px;
+}
+.back {
+  font-size: 13px;
+  color: var(--dim);
+  text-decoration: none;
+}
+.back:hover {
+  color: var(--text);
+}
+.ihead-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-top: 6px;
+}
+.ititle {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.inum {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--brass);
+  text-decoration: none;
+  margin-right: 10px;
+}
+.inum:hover {
+  text-decoration: underline;
+}
+.control {
+  flex: none;
+}
+
+.rail {
+  display: flex;
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* Equal steps when there is room. Otherwise each step keeps its label and the rail scrolls. */
+.rail li {
+  flex: 1 0 0;
+  min-width: max-content;
+  padding: 7px 10px 0 0;
+  margin-right: 4px;
+  border-top: 2px solid var(--line);
+  color: var(--faint);
+  white-space: nowrap;
+}
+.rail li .pr-tag {
+  margin-left: 6px;
+  color: inherit;
+  opacity: 0.7;
+  letter-spacing: 0;
+}
+.rail li.done {
+  border-color: color-mix(in srgb, var(--live) 55%, transparent);
+  color: var(--dim);
+}
+.rail li.current {
+  border-color: var(--brass);
+  color: var(--text);
+}
+.rail li.current.is-blocked {
+  border-color: var(--stop);
+  color: var(--stop);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 22px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--dim);
+}
+.meta b {
+  color: var(--text);
+  font-weight: 500;
+}
+.meta .mono b {
+  font-weight: 400;
+}
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.pr-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--faint);
+}
+.pr-state {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--live);
+}
+.presence {
+  display: inline-flex;
+  align-items: center;
+}
+.presence .av {
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.presence .av:first-child {
+  margin-left: 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 14px var(--font-ui);
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    filter 0.15s,
+    border-color 0.15s;
+}
+.btn:hover {
+  border-color: var(--line-hover);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--on-brass);
+}
+.btn-primary:hover {
+  filter: brightness(1.08);
+  border-color: var(--brass);
+}
+.btn-live {
+  background: var(--live);
+  border-color: var(--live);
+  color: var(--on-live);
+}
+.btn-live:hover {
+  filter: brightness(1.08);
+  border-color: var(--live);
+}
+.btn-danger {
+  color: var(--stop-text);
+  background: var(--stop-soft);
+  border-color: color-mix(in srgb, var(--stop) 40%, transparent);
+}
+.btn-stop {
+  color: var(--dim);
+  background: transparent;
+  font-weight: 500;
+}
+.note-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dim);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-m);
+  padding: 7px 12px;
+}
+.btn-sm {
+  gap: 6px;
+  padding: 5px 11px;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+/* ---------- composer ---------- */
+.composer {
+  position: sticky;
+  bottom: 0px;
+  z-index: 4;
+  padding: 18px 24px 14px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 26px);
+}
+.composer-box {
+  max-width: calc(var(--thread-w) - 48px);
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  transition: border-color 0.15s;
+}
+.composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--brass) 70%, transparent);
+}
+.composer-box.is-disabled {
+  opacity: 0.6;
+}
+.composer textarea {
+  flex: 1;
+  min-height: 26px;
+  max-height: 200px;
+  padding: 6px 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: 15px/1.5 var(--font-ui);
+}
+.composer textarea::placeholder {
+  color: var(--faint);
+}
+.composer-hint {
+  max-width: calc(var(--thread-w) - 48px);
+  margin: 7px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.kbd-hint {
+  margin-left: auto;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.note-bar {
+  max-width: calc(var(--thread-w) - 48px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-l);
+  background: var(--bg-raise);
+  color: var(--dim);
+  font-size: 13.5px;
+}
+.note-bar a {
+  color: var(--brass);
+}
+
+.card-main {
+  display: block;
+  text-decoration: none;
+}
+.card-links a {
+  font-size: 12px;
+  color: var(--dim);
+}
+#notice {
+  max-width: min(calc(var(--thread-w) - 48px), calc(100% - 48px));
+  margin: 12px auto;
+  padding: 12px 18px;
+  border: 1px solid var(--brass);
+  border-radius: var(--r-m);
+  background: var(--panel);
+  color: var(--text);
+}
+.composer #notice {
+  max-width: calc(var(--thread-w) - 48px);
+  margin: 0 auto 12px;
+}
+@media (max-width: 760px) {
+  .ihead-top {
+    flex-direction: column;
+  }
+  .ititle {
+    font-size: 19px;
+  }
+  .kbd-hint {
+    display: none;
+  }
+}

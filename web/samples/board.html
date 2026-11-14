@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Board: blocked reasons</title>
+    <link rel="stylesheet" href="/samples/preview.css" />
+  </head>
+  <body>
+    <h1>Board: blocked reasons</h1>
+    <p>
+      Each blocked card shows the first line of its error. Focus or hover shows
+      the rest.
+    </p>
+    <div class="cols">
+      <div class="col">
+        <h2>Planning</h2>
+        <div class="card">
+          <small>#250</small>run-once selection diverges from --dry-run
+        </div>
+      </div>
+      <div class="col">
+        <h2>Implementing</h2>
+        <div class="card">
+          <small>#276</small>run-once drops comment author attribution
+        </div>
+        <div class="card">
+          <small>#263</small>Prevent two-minute shorthand timeouts
+        </div>
+      </div>
+      <div class="col">
+        <h2>Blocked</h2>
+        <div class="card blocked">
+          <small>#247</small>Orchestrator can exhaust its spawn budget
+          <div class="why">Final validation failed: 3 tests</div>
+        </div>
+        <div class="card blocked">
+          <small>#227</small>PR run-cost report covers only the final run
+          <div class="why">PR #302 changed files outside the spec</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

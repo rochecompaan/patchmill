@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Patchmill · sample board</title>
+    <script src="/theme-init.js"></script>
+    <link rel="stylesheet" href="/styles/base.css" />
+    <link rel="stylesheet" href="/styles/board.css" />
+    <link rel="stylesheet" href="/styles/issue.css" />
+    <link rel="stylesheet" href="/styles/thread.css" />
+    <link rel="stylesheet" href="/styles/artifacts.css" />
+    <link rel="icon" href="/images/mark.svg" />
+  </head>
+  <body>
+    <a class="skip-link" href="#app" data-action="skip">Skip to main content</a>
+    <svg width="0" height="0" class="icon-definitions" aria-hidden="true">
+      <symbol id="sym-head" viewBox="-60 -45 120 90">
+        <rect
+          x="-43"
+          y="-30"
+          width="86"
+          height="60"
+          rx="12"
+          fill="currentColor"
+        />
+        <rect
+          x="-54"
+          y="-13"
+          width="5"
+          height="26"
+          rx="2"
+          fill="currentColor"
+        />
+        <rect x="49" y="-13" width="5" height="26" rx="2" fill="currentColor" />
+        <rect x="-5" y="-38" width="10" height="9" rx="2" fill="currentColor" />
+        <circle cx="-21" cy="0" r="11" fill="var(--bg)" />
+        <circle cx="21" cy="0" r="11" fill="var(--bg)" />
+      </symbol>
+      <symbol id="sym-ring" viewBox="-250 -250 500 500">
+        <circle r="222" fill="none" stroke="currentColor" stroke-width="20" />
+        <circle cx="0" cy="-222" r="30" fill="var(--live)" />
+        <circle cx="157" cy="-157" r="30" fill="var(--neutral)" />
+        <circle cx="222" cy="0" r="30" fill="var(--stop)" />
+        <circle cx="157" cy="157" r="30" fill="var(--neutral)" />
+        <circle cx="0" cy="222" r="30" fill="var(--live)" />
+        <circle cx="-157" cy="157" r="30" fill="var(--stop)" />
+        <circle cx="-222" cy="0" r="30" fill="var(--live)" />
+        <circle cx="-157" cy="-157" r="30" fill="var(--stop)" />
+      </symbol>
+      <symbol id="sym-wheel" viewBox="-250 -250 500 500">
+        <circle r="232" fill="none" stroke="currentColor" stroke-width="20" />
+        <g stroke="currentColor" stroke-width="20" stroke-linecap="round">
+          <line x1="0" y1="-160" x2="0" y2="-96" />
+          <line x1="0" y1="96" x2="0" y2="160" />
+          <line x1="-160" y1="0" x2="-96" y2="0" />
+          <line x1="96" y1="0" x2="160" y2="0" />
+          <line x1="-113" y1="-113" x2="-72" y2="-72" />
+          <line x1="113" y1="-113" x2="72" y2="-72" />
+          <line x1="-113" y1="113" x2="-72" y2="72" />
+          <line x1="113" y1="113" x2="72" y2="72" />
+        </g>
+        <circle cx="0" cy="-196" r="18" fill="var(--live)" />
+        <circle cx="139" cy="-139" r="18" fill="var(--neutral)" />
+        <circle cx="196" cy="0" r="18" fill="var(--stop)" />
+        <circle cx="139" cy="139" r="18" fill="var(--neutral)" />
+        <circle cx="0" cy="196" r="18" fill="var(--live)" />
+        <circle cx="-139" cy="139" r="18" fill="var(--stop)" />
+        <circle cx="-196" cy="0" r="18" fill="var(--live)" />
+        <circle cx="-139" cy="-139" r="18" fill="var(--stop)" />
+        <g transform="scale(1.35)">
+          <use href="#sym-head" x="-60" y="-45" width="120" height="90" />
+        </g>
+      </symbol>
+      <symbol
+        id="icon-spec"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <path d="M4 1.5h5.5l3 3v10h-8.5z" />
+        <path d="M9.5 1.5v3h3M6 8h4.5M6 10.5h4.5" />
+      </symbol>
+      <symbol
+        id="icon-plan"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <path
+          d="M2.5 4l1.2 1.2L6 3M2.5 9l1.2 1.2L6 8M8.5 4.5h5M8.5 9.5h5M3 13h1M8.5 13h5"
+        />
+      </symbol>
+      <symbol
+        id="icon-mockup"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+        <path d="M1.5 5.5h13M6 5.5v8" />
+      </symbol>
+      <symbol
+        id="icon-diagram"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <rect x="1.5" y="2" width="5" height="4" rx="1" />
+        <rect x="9.5" y="10" width="5" height="4" rx="1" />
+        <path d="M4 6v2.5A1.5 1.5 0 0 0 5.5 10h4" />
+      </symbol>
+      <symbol
+        id="icon-shots"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+        <circle cx="5.5" cy="6" r="1.3" />
+        <path d="M14.5 11L11 7.5l-6.5 6" />
+      </symbol>
+      <symbol
+        id="icon-external"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <path
+          d="M9 2.5h4.5V7M13.5 2.5l-6 6M12 9.5V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1H7"
+        />
+      </symbol>
+      <symbol
+        id="icon-play"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M4 2.5v11l9-5.5z" fill="currentColor" />
+      </symbol>
+      <symbol
+        id="icon-pause"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect
+          x="3.5"
+          y="2.5"
+          width="3"
+          height="11"
+          rx="1"
+          fill="currentColor"
+        />
+        <rect
+          x="9.5"
+          y="2.5"
+          width="3"
+          height="11"
+          rx="1"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol
+        id="icon-retry"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M13 8a5 5 0 1 1-1.6-3.7" />
+        <path d="M13 2.5v3h-3" />
+      </symbol>
+      <symbol
+        id="icon-stop"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" />
+      </symbol>
+      <symbol
+        id="icon-term"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+        <path d="M4.5 6l2 2-2 2M8.5 10.5h3" />
+      </symbol>
+      <symbol
+        id="icon-wrench"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M10.5 2.2a3.5 3.5 0 0 0-4.3 4.6L2.4 10.6a1.4 1.4 0 0 0 2 2l3.8-3.8a3.5 3.5 0 0 0 4.6-4.3l-2 2-1.9-.4-.4-1.9z"
+        />
+      </symbol>
+      <symbol
+        id="icon-robot"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <use href="#sym-head" />
+      </symbol>
+      <symbol
+        id="icon-pr"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="4" cy="3.5" r="1.6" />
+        <circle cx="4" cy="12.5" r="1.6" />
+        <circle cx="12" cy="12.5" r="1.6" />
+        <path d="M4 5.1v5.8M12 10.9V6.5a2 2 0 0 0-2-2H7.5M9 3L7.5 4.5 9 6" />
+      </symbol>
+    </svg>
+
+    <header class="topbar">
+      <a class="brand" href="#/board" aria-label="Patchmill board">
+        <svg class="brand-mark" aria-hidden="true">
+          <use href="#sym-wheel" />
+        </svg>
+        <span class="brand-word">PATCHMILL</span>
+      </a>
+      <span class="tb-sep"></span>
+      <span class="tb-repo" id="repository-name"></span>
+      <span class="tb-spacer"></span>
+      <span class="tb-status"
+        ><i class="dot dot-live"></i><span id="server-authority"></span
+      ></span>
+      <span class="tb-status faint">Sample data</span>
+      <button
+        class="theme-switch"
+        id="theme-switch"
+        type="button"
+        role="switch"
+        aria-checked="false"
+        aria-label="Light theme"
+        title="Switch to light theme"
+        data-action="theme"
+      >
+        <svg
+          class="ts-moon"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M13.6 9.9A5.8 5.8 0 0 1 6.1 2.4a5.8 5.8 0 1 0 7.5 7.5Z" />
+        </svg>
+        <svg
+          class="ts-sun"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="8" cy="8" r="2.9" />
+          <path
+            d="M8 1.4v1.5M8 13.1v1.5M1.4 8h1.5M13.1 8h1.5M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M3.3 12.7l1.1-1.1M11.6 4.4l1.1-1.1"
+          />
+        </svg>
+      </button>
+      <button
+        class="name-chip"
+        type="button"
+        data-action="name"
+        title="Change the name others see"
+      >
+        <span class="av av-person sm" id="me-initials">ro</span
+        ><span id="me-name">You</span>
+      </button>
+    </header>
+
+    <main id="app" tabindex="-1">
+      <p class="empty" role="status">Loading sample data…</p>
+    </main>
+    <p id="notice" role="status" hidden></p>
+
+    <dialog id="name-dialog" aria-labelledby="name-title">
+      <form method="dialog" id="name-form">
+        <h2 id="name-title">What name should others see?</h2>
+        <p>
+          This browser saves your name for live chat later. Names are not
+          accounts. Nothing here sends a message yet.
+        </p>
+        <label for="name-input">Your name</label>
+        <input
+          id="name-input"
+          name="name"
+          autocomplete="nickname"
+          aria-describedby="name-error"
+          maxlength="32"
+          required
+        />
+        <p id="name-error" aria-live="polite" hidden></p>
+        <menu>
+          <button
+            class="btn"
+            type="button"
+            value="cancel"
+            data-action="cancel-name"
+          >
+            Cancel
+          </button>
+          <button class="btn btn-primary" value="save">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog class="viewer" id="viewer" aria-labelledby="vw-title">
+      <div class="vw" id="vw"></div>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

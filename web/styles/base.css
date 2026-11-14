@@ -1,0 +1,351 @@
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/atkinson-hyperlegible-next.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/atkinson-hyperlegible-mono.woff2") format("woff2");
+}
+:root {
+  /* Logo palette: night background, light grey, brass arcs, + green, = grey, − red */
+  color-scheme: dark;
+  --bg: #08090b;
+  --bg-raise: #0d0f12;
+  --panel: #121418;
+  --panel-2: #181b20;
+  --line: #262a31;
+  --line-soft: #1a1d22;
+  --line-hover: #3b4048;
+  --text: #e4e4e4;
+  --dim: #a39e98;
+  --faint: #6f6a65;
+  --brass: #c4a882;
+  --brass-soft: color-mix(in srgb, var(--brass) 13%, transparent);
+  --live: #39c96b;
+  --live-soft: color-mix(in srgb, var(--live) 12%, transparent);
+  --stop: #ff4c4c;
+  --stop-soft: color-mix(in srgb, var(--stop) 10%, transparent);
+  --stop-text: #ff8a8a;
+  --neutral: #9a9590;
+  --on-brass: #15110b;
+  --on-live: #04150a;
+  --mock-bg: #0b0b0c;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --grain: 0.035;
+  /* Chat name colours */
+  --who-1: #c4a882;
+  --who-2: #8fb8a4;
+  --who-3: #b7a0cf;
+  --who-4: #d29b8a;
+  --who-5: #93aed1;
+
+  --font-ui: "Atkinson Hyperlegible Next", "Noto Sans", sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", "DejaVu Sans Mono", monospace;
+
+  --r-s: 4px;
+  --r-m: 8px;
+  --r-l: 12px;
+  --topbar-h: 56px;
+
+  --thread-w: 880px;
+}
+:root[data-theme="light"] {
+  /* Daylight: warm paper and ink. Brass and the + = − colours are
+           deepened so text in them stays readable (4.5:1 or better). */
+  color-scheme: light;
+  --bg: #f3f0ea;
+  --bg-raise: #f9f7f3;
+  --panel: #fffefb;
+  --panel-2: #ece7df;
+  --line: #dcd5ca;
+  --line-soft: #e7e1d7;
+  --line-hover: #c2b9ab;
+  --text: #1c1a17;
+  --dim: #5c564f;
+  --faint: #847c73;
+  --brass: #7f6038;
+  --live: #187a41;
+  --stop: #c42b2b;
+  --stop-text: #a82020;
+  --neutral: #8a847c;
+  --on-brass: #fffaf1;
+  --on-live: #f3fff7;
+  --mock-bg: #e9e3d9;
+  --scrim: rgba(40, 32, 22, 0.35);
+  --grain: 0.05;
+  --who-1: #7f6038;
+  --who-2: #2f6f55;
+  --who-3: #6b4f93;
+  --who-4: #a14d36;
+  --who-5: #345f95;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding-bottom: 0px;
+  background:
+    radial-gradient(
+      1200px 500px at 85% -10%,
+      color-mix(in srgb, var(--brass) 7%, transparent),
+      transparent 60%
+    ),
+    var(--bg);
+  color: var(--text);
+  font: 15px/1.55 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  /* faint grain */
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--grain);
+  background-image: url("/images/grain.svg");
+  z-index: 0;
+}
+a {
+  color: inherit;
+}
+code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-s);
+  padding: 0.05em 0.35em;
+}
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+.mono {
+  font-family: var(--font-mono);
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 20;
+  top: 8px;
+  left: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--brass);
+  border-radius: var(--r-s);
+  transform: translateY(calc(-100% - 16px));
+}
+.skip-link:focus {
+  transform: none;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.brand-mark {
+  width: 28px;
+  height: 28px;
+}
+.brand-word {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  font-size: 13px;
+}
+.tb-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+}
+.tb-repo {
+  font-family: var(--font-mono);
+  color: var(--dim);
+}
+.tb-spacer {
+  flex: 1;
+}
+.tb-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.tb-status.faint {
+  color: var(--faint);
+}
+.name-chip {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 3px 12px 3px 3px;
+  font: inherit;
+  cursor: pointer;
+}
+.name-chip:hover {
+  border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+}
+#me-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Night/day switch: a brass knob slides under the active icon. */
+.theme-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--faint);
+  cursor: pointer;
+}
+.theme-switch:hover {
+  border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+}
+.theme-switch::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--brass-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 45%, transparent);
+  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+:root[data-theme="light"] .theme-switch::before {
+  transform: translateX(24px);
+}
+.theme-switch svg {
+  position: relative;
+  width: 24px;
+  height: 22px;
+  padding: 4px 5px;
+  transition: color 0.2s;
+}
+:root:not([data-theme="light"]) .ts-moon,
+:root[data-theme="light"] .ts-sun {
+  color: var(--brass);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  background: var(--neutral);
+}
+.dot-live {
+  background: var(--live);
+  box-shadow: 0 0 0 3px var(--live-soft);
+}
+.dot-wait {
+  background: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-soft);
+}
+.dot-blocked {
+  background: var(--stop);
+  box-shadow: 0 0 0 3px var(--stop-soft);
+}
+
+main {
+  position: relative;
+  z-index: 1;
+  scroll-margin-top: var(--topbar-h);
+}
+main:focus-visible {
+  outline-offset: -2px;
+}
+
+.icon-definitions {
+  position: absolute;
+}
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.card-main {
+  display: block;
+  text-decoration: none;
+}
+.prose {
+  overflow-wrap: anywhere;
+}
+.composer textarea {
+  min-width: 0;
+}
+.who-1 {
+  --who: var(--who-1);
+}
+.who-2 {
+  --who: var(--who-2);
+}
+.who-3 {
+  --who: var(--who-3);
+}
+.who-4 {
+  --who: var(--who-4);
+}
+.who-5 {
+  --who: var(--who-5);
+}
+@media (max-width: 760px) {
+  .tb-repo,
+  .tb-status.faint {
+    display: none;
+  }
+}
+/* Phones: the wheel alone stands for the brand. */
+@media (max-width: 520px) {
+  .topbar {
+    gap: 10px;
+    padding: 0 14px;
+  }
+  .brand-word,
+  .tb-sep {
+    display: none;
+  }
+}

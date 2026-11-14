@@ -18,6 +18,17 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    files: ["web/**/*.js"],
+    languageOptions: { globals: globals.browser },
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_" },
+      ],
+    },
+  },
+  { files: ["web/theme-init.js"], languageOptions: { sourceType: "script" } },
+  {
     files: ["**/*.ts"],
     languageOptions: {
       globals: {
