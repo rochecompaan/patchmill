@@ -55,13 +55,22 @@ const fixture = {
     ]),
   ),
 };
+let fixtureReads = 0;
 const server = process.env.BOARD_URL
   ? null
   : await startServeServer({
       host: "127.0.0.1",
       port: 0,
       auth: createServeAuth(),
-      source: { snapshot: async () => fixture, subscribe: () => () => {} },
+      source: {
+        snapshot: async () => ({
+          ...fixture,
+          syncedAt: new Date(
+            Date.now() - (fixtureReads++ === 0 ? 12000 : 5000),
+          ).toISOString(),
+        }),
+        subscribe: () => () => {},
+      },
     });
 const url = process.env.BOARD_URL ?? server.url;
 let browser;
@@ -73,6 +82,21 @@ try {
     "fetch('/api/board').then(r=>r.json())",
   );
   assert.equal(actual.source, "live");
+  if (!process.env.BOARD_URL) {
+    await browser.evaluate(
+      "window.__retainedBoard=document.querySelector('.board');window.__retainedFocus=document.querySelector('a[href=\"#/issue/206\"]');window.__retainedFocus.focus();window.__retainedBoard.scrollLeft=123;document.dispatchEvent(new Event('visibilitychange'))",
+    );
+    await browser.until(
+      "document.getElementById('sync-status').textContent==='synced 5 s ago'",
+    );
+    assert.equal(
+      await browser.evaluate(
+        "document.querySelector('.board')===window.__retainedBoard && document.querySelector('.board').scrollLeft===123 && document.activeElement===window.__retainedFocus",
+      ),
+      true,
+      "A sync-only refresh must retain board DOM, position, and focused link.",
+    );
+  }
   if (process.env.BOARD_REPO) {
     const repo = process.env.BOARD_REPO;
     const config = JSON.parse(
@@ -223,11 +247,20 @@ try {
         ),
         "Real issue threads come in a later update.",
       );
+      const selected = actual.issues.find(
+        (issue) => issue.number === issueNumber,
+      );
+      const finished =
+        selected.terminal ||
+        selected.status === "done" ||
+        selected.pullRequests.some(
+          (pr) => pr.kind === "implementation" && pr.state === "open",
+        );
       assert.equal(
         await browser.evaluate(
-          "document.querySelector('#composer-input')?.disabled",
+          "document.querySelector('#composer-input')?.disabled ?? null",
         ),
-        true,
+        finished ? null : true,
       );
       assert.equal(
         await browser.evaluate(
@@ -241,13 +274,21 @@ try {
         ),
         "The placeholder composer must reach the viewport bottom.",
       );
-      await browser.evaluate(
-        "document.querySelector('.control button')?.click()",
-      );
-      assert.equal(
-        await browser.evaluate("document.getElementById('notice').textContent"),
-        "This comes with live chat. Nothing changed.",
-      );
+      if (
+        await browser.evaluate(
+          "Boolean(document.querySelector('.control button'))",
+        )
+      ) {
+        await browser.evaluate(
+          "document.querySelector('.control button').click()",
+        );
+        assert.equal(
+          await browser.evaluate(
+            "document.getElementById('notice').textContent",
+          ),
+          "This comes with live chat. Nothing changed.",
+        );
+      }
       await browser.evaluate(
         "document.getElementById('notice').hidden=true;document.querySelector('.back').focus()",
       );
@@ -266,7 +307,8 @@ try {
         width,
         theme,
         issue: issueNumber,
-        disabledComposer: true,
+        disabledComposer: !finished,
+        finishedOrTerminalNote: finished,
       });
     }
   }

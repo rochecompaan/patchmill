@@ -91,7 +91,17 @@ function render() {
 const controller = createPageController({
   api: createApi(),
   onState: (state) => {
+    const previousBoard = current?.board;
     current = state;
+    if (
+      previousBoard &&
+      state.board &&
+      JSON.stringify({ ...previousBoard, syncedAt: null }) ===
+        JSON.stringify({ ...state.board, syncedAt: null })
+    ) {
+      syncStatus.update(state.board);
+      return;
+    }
     render();
   },
   visible: () => !document.hidden,
