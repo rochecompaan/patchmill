@@ -145,19 +145,20 @@ line:
 - Parent spec: docs/specs/2026-11-14-issue-356-...-design.md (from issue #356; approved and read-only)
 ```
 
-When there is no parent spec, the line is `- Parent spec: none`. The planning
-and implementation envelopes both show the line. The implementation agent then
-reads the approved design that the child spec refers to.
+When there is no parent spec, the envelope has no Parent spec line. An issue
+without a parent thus gets the same envelope as today. The planning and
+implementation envelopes both show the line when it exists. The implementation
+agent then reads the approved design that the child spec refers to.
 
 When a parent spec exists and the phase is planning, add this rule paragraph
 after the result rules. The implementation envelope shows only the Facts line,
 because its line already says that the parent spec is read-only.
 
-> The parent spec is the approved design for this issue. Do not change it. Write
-> this issue's spec at the Spec path. Link to the parent spec, name the parent
-> sections this issue delivers, and record only decisions the parent spec leaves
-> open. If there are none, say so. If the parent spec is wrong or conflicts with
-> this issue, stop and ask instead of choosing.
+> The parent spec is the approved design for this issue. Do not change it. If
+> this issue has no spec yet, write it at the Spec path. Link to the parent
+> spec, name the parent sections this issue delivers, and record only decisions
+> the parent spec leaves open. If there are none, say so. If the parent spec is
+> wrong or conflicts with this issue, stop and ask instead of choosing.
 
 In an Interactive Issue run, "stop and ask" means "ask the maintainer in the
 chat". In an unattended run, it means "return `needs-input`". Use the same
@@ -175,8 +176,8 @@ repeats the three rules that the maintainer decided. It also tells the planner:
 - List the parent spec as an input in the plan.
 - Give the parent spec to the fresh plan reviewer as a specification input.
 
-Update the managed installed copy through the existing skill-pack path. Do not
-edit `.patchmill/skills` by hand.
+Refresh the tracked copy in `.patchmill/skills` with
+`node bin/patchmill.ts skills update`. Do not edit that copy by hand.
 
 ### Console, dialog, and progress
 
