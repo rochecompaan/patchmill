@@ -50,6 +50,7 @@ buildNpmPackageNode24 rec {
     mkdir -p "$out/share/${pname}"
     cp -R "$package_dir/bin" "$out/share/${pname}/bin"
     cp -R "$package_dir/src" "$out/share/${pname}/src"
+    cp -R "$package_dir/web" "$out/share/${pname}/web"
     cp -R "$package_dir/skills" "$out/share/${pname}/skills"
     cp -R "$package_dir/fixtures" "$out/share/${pname}/fixtures"
     cp "$package_dir/THIRD_PARTY_NOTICES.md" "$out/share/${pname}/THIRD_PARTY_NOTICES.md"

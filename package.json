@@ -18,7 +18,8 @@
     "THIRD_PARTY_NOTICES.md",
     "npm-shrinkwrap.json",
     "tsconfig.build.json",
-    "vendor"
+    "vendor",
+    "web"
   ],
   "repository": {
     "type": "git",

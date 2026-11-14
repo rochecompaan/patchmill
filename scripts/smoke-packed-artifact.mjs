@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRootPins, PI_PACKAGES } from "./pi-dependency-upgrade-lib.mjs";
+import { smokeServe } from "./smoke-serve.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const PI_SUBAGENTS_PACKAGE = "pi-subagents";
@@ -72,6 +73,11 @@ async function main() {
       cwd: projectDir,
       env: environment,
     });
+    await smokeServe(
+      join(projectDir, "node_modules", ".bin", "patchmill"),
+      [],
+      { cwd: homeDir, env: environment },
+    );
     await run("git", ["init"], { cwd: projectDir, env: environment });
     await run("./node_modules/.bin/patchmill", ["init"], {
       cwd: projectDir,
