@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-11-14T03:40:30.557Z",
+  "installedAt": "2026-11-14T20:17:11.589Z",
   "sources": {
     "patchmill": "1.0.0",
     "superpowers": "7.0.2",
@@ -113,7 +113,7 @@
     },
     {
       "path": "patchmill-cleanup/SKILL.md",
-      "sha256": "2b748ca2d16ccc00e677f85e6126160868f37ba38f798a8a3b2e9b5c1064ad8d"
+      "sha256": "bbdeec56cb8ae00e850805742c2375b2ff0853ccfb442104eb6bed78f1c3a580"
     },
     {
       "path": "patchmill-frontend-review/LICENSE",
@@ -178,6 +178,18 @@
     {
       "path": "requesting-code-review/SKILL.md",
       "sha256": "2180e14a448e9410bec88e6646a2d1f0ce7fdd58de27388c1e052e929679d2bc"
+    },
+    {
+      "path": "show-me/agents/openai.yaml",
+      "sha256": "a1499d95abd8447558c535fe5554adcc3c9b988a0a39264a6283d430effe1e94"
+    },
+    {
+      "path": "show-me/LICENSE",
+      "sha256": "5f13c18ea00ea5c1384f41745feeca774079164f7f59a92e4ac0899ad217b26f"
+    },
+    {
+      "path": "show-me/SKILL.md",
+      "sha256": "434a2346cc95e313b0d367d477dda2e23ba642dd2181757415a09500664af100"
     },
     {
       "path": "simple-english/references/checklist.md",

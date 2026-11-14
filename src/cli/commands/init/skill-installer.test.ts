@@ -113,8 +113,11 @@ test("installs complete real packs with hashes, repairs files and preserves unch
   await stat(
     join(destination, "subagent-driven-development/implementer-prompt.md"),
   );
-  // Planning and implementation stop when these frontend files are missing.
+  // Planning stops when a required sibling or licensed resource is missing.
   for (const path of [
+    "show-me/SKILL.md",
+    "show-me/agents/openai.yaml",
+    "show-me/LICENSE",
     "frontend-design/SKILL.md",
     "frontend-design/LICENSE.txt",
     "patchmill-frontend-review/SKILL.md",
@@ -164,6 +167,14 @@ test("installs complete real packs with hashes, repairs files and preserves unch
     await readFile(join(destination, "domain-modeling/LICENSE")),
     await readFile(join(designRoot, "LICENSE")),
   );
+  await writeFile(join(destination, "show-me/SKILL.md"), "damage");
+  await rm(join(destination, "show-me/LICENSE"));
+  assert.equal((await installer.installSkills(options)).written, 2);
+  for (const path of ["SKILL.md", "LICENSE"])
+    assert.deepEqual(
+      await readFile(join(destination, "show-me", path)),
+      await readFile(join(process.cwd(), "skills/show-me", path)),
+    );
   await writeFile(paths[1]!, "damaged");
   assert.equal((await installer.installSkills(options)).written, 1);
   assert.equal(
@@ -186,11 +197,23 @@ test("resolves from the supplied package and copies read-only executable resourc
   await writeFile(designSource, "package-local design resource\n");
   await chmod(designSource, 0o444);
   await chmod(join(designRoot, "LICENSE"), 0o444);
+  const showMeSource = join(packageRoot, "skills/show-me/SKILL.md");
+  await writeFile(showMeSource, "package-local conceptual guidance\n");
+  await chmod(showMeSource, 0o444);
   const source = join(packageRoot, "skills/module-size/tool.sh");
   await writeFile(source, "#!/bin/sh\necho resource\n");
   await chmod(source, 0o555);
   const options = { repoRoot: root, skillDir: "installed", packageRoot };
   await installer.installSkills(options);
+  assert.equal(
+    await readFile(join(root, "installed/show-me/SKILL.md"), "utf8"),
+    "package-local conceptual guidance\n",
+  );
+  assert.equal((await stat(showMeSource)).mode & 0o777, 0o444);
+  assert.equal(
+    (await stat(join(root, "installed/show-me/SKILL.md"))).mode & 0o600,
+    0o600,
+  );
   const target = join(root, "installed/module-size/tool.sh");
   assert.equal((await stat(target)).mode & 0o700, 0o700);
   await writeFile(target, "damage");
