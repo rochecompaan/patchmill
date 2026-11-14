@@ -40,6 +40,8 @@ export function createSampleRunDataSource(): RunDataSource {
           String(summary.number),
           {
             summary,
+            body: null,
+            run: null,
             ...thread,
             artifacts: sampleArtifacts[String(summary.number)] ?? [],
           },

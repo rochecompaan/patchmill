@@ -1,7 +1,7 @@
 import type { Repository, IssueSummary, IssueDetail } from "./api-types.ts";
 
 export interface RunDataSource {
-  snapshot(): Promise<RunDataSnapshot>;
+  snapshot(selection?: { issue: number }): Promise<RunDataSnapshot>;
   subscribe(listener: (change: RunDataChange) => void): () => void;
 }
 

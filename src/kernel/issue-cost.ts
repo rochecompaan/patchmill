@@ -49,17 +49,30 @@ async function recordedPhases(runDir: string): Promise<Phase[]> {
 export async function readIssueCostReport(
   issueDir: string,
   current?: CostRun,
+  selection?: { runIds: readonly string[]; records?: readonly CostRun[] },
 ): Promise<IssueCostReport | undefined> {
   const runs: CostRun[] = [];
   const entries = await fs.readdir(issueDir, { withFileTypes: true });
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!entry.isDirectory() || entry.name === current?.runId) continue;
-    runs.push({
-      runId: entry.name,
-      sessions: (await recordedPhases(join(issueDir, entry.name))).map(
-        (phase) => ({ phase }),
-      ),
-    });
+    if (
+      !entry.isDirectory() ||
+      entry.name === current?.runId ||
+      (selection && !selection.runIds.includes(entry.name))
+    )
+      continue;
+    const validated = selection?.records?.find(
+      (record) => record.runId === entry.name,
+    );
+    if (selection?.records && !validated)
+      throw new Error("Validated run metadata unavailable.");
+    runs.push(
+      validated ?? {
+        runId: entry.name,
+        sessions: (await recordedPhases(join(issueDir, entry.name))).map(
+          (phase) => ({ phase }),
+        ),
+      },
+    );
   }
   if (current) runs.push(current);
   const groups = new Map<
