@@ -111,6 +111,9 @@ The spec has no mockup. Frontend design does not apply.
     `https://github.com/other/repo/issues/5`. Expect `undefined`.
   - `parent lookup rejects a malformed response`: `{"number":"x"}` and a missing
     `html_url` both reject with `gh api parent returned an invalid parent`.
+  - `parent lookup rejects an issue without an issue URL`: `issue.url` is
+    `https://github.com/owner/repo`. The method rejects before it calls `gh`,
+    and the runner gets no calls.
 - [ ] **Step 2: Write failing Forgejo tests** in `src/host/forgejo-tea.test.ts`.
       Use the `fixture()` helper and assert that the runner gets no calls.
   - `Part of #356` gives `356`.
@@ -168,8 +171,9 @@ The spec has no mockup. Frontend design does not apply.
     key is absent and that the stub records exactly one call per `collectFacts`.
   - `a child branch created before the parent spec merged still reports it`:
     push `agent/issue-9-x` from main first, then push the parent spec to main.
-    `collectFacts` reports the parent spec path, and the worktree copy is
-    absent. The envelope (Task 3) tells the agent to read it from the ref.
+    `c.provision()` checks the worktree out from `origin/agent/issue-9-x`. It
+    reports the parent spec path, and that file is absent from the worktree. The
+    envelope (Task 3) tells the agent to read it from the ref.
   - Extend `fetch, host and non-missing filesystem errors stay visible`: a
     `parentIssue` that throws `parent boom` makes `provisionWorkspace` reject
     with `parent boom`.
@@ -208,12 +212,15 @@ The spec has no mockup. Frontend design does not apply.
     contains
     `- Spec: expected: docs/specs/2026-10-15-issue-9-x-design.md\n- Parent spec: docs/specs/p-design.md on origin/main (from issue #356; approved and read-only; read it with`
     followed by
-    `` `git show origin/main:docs/specs/p-design.md`, because the worktree copy can be missing or old)\n- Plan:``.
+    `` `git show origin/main:docs/specs/p-design.md`, because the worktree copy can be missing or old)\n- Plan:``,
+    joined by one space.
   - `planning with a parent spec states the parent spec rules`: the unattended
     planning text contains
     `The parent spec is the approved design for this issue.` and
-    ``return `needs-input` ``. The interactive planning text contains
-    `ask the maintainer in this chat` and not ``return `needs-input` ``.
+    ``stop and return `needs-input` ``. The interactive planning text contains
+    `ask the maintainer in this chat` and not
+    ``stop and return `needs-input` ``. The interactive text already has "Do not
+    return `needs-input` for questions", so assert on the longer phrase.
   - `implementation with a parent spec shows the fact and one stop rule`: the
     text contains the Parent spec line and
     `If the parent spec must change, do not change it; stop and return`, and not
@@ -316,7 +323,9 @@ The spec has no mockup. Frontend design does not apply.
   - read the Parent spec before brainstorming, and do not ask what it answers;
   - keep the parent's terms;
   - list the Parent spec as a plan input;
-  - give the Parent spec to the fresh plan reviewer.
+  - give the Parent spec to the fresh plan reviewer;
+  - read it with `git show origin/<base>:<path>`, because the worktree copy can
+    be missing or old.
 - [ ] **Step 2:** Add a "Sub-issues" section to `agent-workflow-lifecycle.md`.
       It covers the GitHub sub-issues link, the Forgejo/Gitea first-line
       `Part of #N` link, the base-branch rule, one level only, and the child
@@ -379,6 +388,16 @@ conflicts.
 - **S7 (noted):** the adapter files are near the module-size limit. This change
   adds about 20 lines to each, so no split is planned. The base has moved, but
   none of the planned source files changed.
+
+**Scoped confirmation:** a second fresh `reviewer` (same model) checked commit
+`292e525`. B1 is resolved, and the corrections add no blocker. It found one
+older defect: the interactive envelope already contains "Do not return
+`needs-input`", so a negative assertion on ``return `needs-input` `` could never
+pass. Fixed: the test asserts on ``stop and return `needs-input` ``. These
+test-only suggestions were also accepted: the B1 test uses `provisionWorkspace`,
+a malformed `issue.url` test is added, the split expected string is joined
+explicitly, and the skill names the `git show` route. These edits change no task
+or architecture, so no further review is needed.
 
 **Inspection limits:** no tests were run, because there is no implementation
 yet. GitHub Enterprise behaviour without the sub-issues API was not checked.
