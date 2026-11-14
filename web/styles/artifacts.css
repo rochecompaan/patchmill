@@ -1,3 +1,20 @@
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 56vh;
+  object-fit: contain;
+  border-radius: var(--r-s);
+}
+.thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.gallery figcaption code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 /* ---------- artifacts ---------- */
 .artifacts {
   display: flex;

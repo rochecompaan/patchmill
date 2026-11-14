@@ -2,6 +2,34 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { startWebFixture } from "../../test-support/web-fixture.ts";
 import { createSampleRunDataSource } from "./sample-data.ts";
+import { resolveWebRoot } from "./assets.ts";
+
+test("all sample preview resources serve locally behind authentication", async (t) => {
+  const f = await startWebFixture(t, { webRoot: resolveWebRoot() });
+  const snapshot = await createSampleRunDataSource().snapshot();
+  const urls = new Set<string>(["/samples/preview.css"]);
+  for (const detail of Object.values(snapshot.details))
+    for (const artifact of detail.artifacts) {
+      if (artifact.preview.kind === "page") urls.add(artifact.preview.url);
+      if (artifact.preview.kind === "gallery")
+        artifact.preview.shots.forEach((s) => urls.add(s.url));
+    }
+  for (const url of urls) {
+    assert.equal((await f.request(url)).status, 401);
+    const r = await f.request(url, { cookie: f.cookie });
+    assert.equal(r.status, 200, url);
+    if (url.endsWith(".html")) {
+      assert.match(r.headers["content-security-policy"]!, /script-src 'none'/);
+      assert.match(r.headers["content-security-policy"]!, /connect-src 'none'/);
+      assert.match(
+        r.headers["content-security-policy"]!,
+        /sandbox allow-same-origin/,
+      );
+    }
+    if (url.endsWith(".png"))
+      assert.equal(r.headers["content-type"], "image/png");
+  }
+});
 import type { BoardResponse, IssueResponse } from "./api-types.ts";
 test("API returns typed board and matching issue details from one snapshot per request", async (t) => {
   const source = createSampleRunDataSource();

@@ -5,6 +5,7 @@ import { renderBoard } from "./board.js";
 import { renderIssue } from "./issue.js";
 import { readName, saveName, preferredTheme } from "./preferences.js";
 import { el } from "./dom.js";
+import { mountArtifactViewer } from "./artifacts.js";
 const mount = /** @type {HTMLElement} */ (document.getElementById("app"));
 const notice = /** @type {HTMLElement} */ (document.getElementById("notice"));
 const nameDialog = /** @type {HTMLDialogElement} */ (
@@ -22,6 +23,10 @@ try {
 } catch {
   /* Storage can be disabled. */
 }
+const viewer = mountArtifactViewer(
+  /** @type {HTMLDialogElement} */ (document.getElementById("viewer")),
+);
+let linkedArtifact = "";
 let name = readName(storage) ?? "You",
   renderKey = "";
 const drafts = createDraftStore();
@@ -109,6 +114,25 @@ function render() {
     for (const details of mount.querySelectorAll("details"))
       if (openTools.get(String(issueNumber))?.has(details.dataset.key ?? ""))
         details.open = true;
+  if (
+    state.status === "ready" &&
+    state.issue &&
+    state.route.view === "issue" &&
+    state.route.artifactId
+  ) {
+    const artifactId = state.route.artifactId;
+    const key = `${state.route.number}:${artifactId}`;
+    const artifact = state.issue.issue.artifacts.find(
+      (a) => a.id === artifactId,
+    );
+    const origin = [...mount.querySelectorAll("button")].find(
+      (b) => b.dataset.artifactId === artifact?.id,
+    );
+    if (artifact && origin && linkedArtifact !== key) {
+      linkedArtifact = key;
+      viewer.open(artifact, origin);
+    }
+  }
   if (focused && selection) {
     const input = mount.querySelector("textarea");
     if (input && !input.disabled) {
@@ -132,6 +156,8 @@ const controller = createPageController({
   },
 });
 function route() {
+  viewer.close();
+  linkedArtifact = "";
   captureDraft();
   notice.hidden = true;
   void controller.navigate(parseRoute(location.hash));
@@ -194,6 +220,14 @@ syncTheme();
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  const artifactTrigger = target.closest("button[data-artifact-id]");
+  if (artifactTrigger instanceof HTMLButtonElement) {
+    const artifact = current?.issue?.issue.artifacts.find(
+      (a) => a.id === artifactTrigger.dataset.artifactId,
+    );
+    if (artifact) viewer.open(artifact, artifactTrigger);
+    return;
+  }
   const action = target.closest("[data-action]")?.getAttribute("data-action");
   if (action === "name") openName();
   else if (action === "theme") {
