@@ -111,15 +111,18 @@ The following distinctions apply:
 
 - **Plan review** is a fresh reviewer's assessment of an implementation plan
   against its specification and the existing codebase.
-- **Plan gate** is the existing human-control pause defined in `CONTEXT.md`.
+- **Plan gate** is the existing human-control pause, currently defined in
+  `CONTEXT.md`. Its meaning does not change with the glossary filename.
 - **Spec gate** is the existing human-control pause for a specification.
 - A reviewer verdict supplies evidence. It does not satisfy either human gate.
 
 The maintainer resolved the previously ambiguous reviewer identity: Plan review
-requires a fresh reviewer. During implementation of this issue, add the Plan
-review definition to `CONTEXT.md`. Its rejected synonyms are “Plan gate” and
-“Planner self-review.” General programming terms such as module and adapter
-remain in the architecture vocabulary, not the Patchmill domain glossary.
+requires a fresh reviewer. During implementation of this issue, rename
+`CONTEXT.md` to `GLOSSARY.md` without losing existing terms or their meanings.
+Add the Plan review definition to `GLOSSARY.md`. Its rejected synonyms are “Plan
+gate” and “Planner self-review.” General programming terms such as module and
+adapter remain in the architecture vocabulary, not the Patchmill domain
+glossary.
 
 ### Domain modeling during specification work
 
@@ -129,9 +132,9 @@ terminology and relationships, not only read a glossary.
 
 The planner must:
 
-1. Read repository instructions and the root `CONTEXT.md` and `CONTEXT-MAP.md`
+1. Read repository instructions and the root `GLOSSARY.md` and `GLOSSARY-MAP.md`
    when present.
-2. Use an existing context map to find relevant context documents and their
+2. Use an existing glossary map to find relevant context glossaries and their
    relationships.
 3. Read relevant system-wide and context-specific ADRs.
 4. Use established domain terms consistently in the specification, examples, and
@@ -154,13 +157,36 @@ notes. An ADR requires a real trade-off, meaningful reversal cost, and a
 decision that otherwise needs explanation. Absent documents are not errors. No
 empty glossary, context map, or ADR directory is required.
 
-The upstream revision uses `GLOSSARY.md` and `GLOSSARY-MAP.md` names.
-Patchmill's wrapper must explicitly adapt those references to repository policy
-without modifying upstream skill bytes. For this repository, `CONTEXT.md` is
-canonical. Do not create a parallel `GLOSSARY.md`. For repositories with an
-explicit glossary convention, preserve that convention and still read existing
-`CONTEXT` documents. If competing documents disagree, surface the conflict
-rather than choose silently.
+### Upstream terminology files
+
+The latest published release, `v1.3.2`, and inspected `main` both use
+`GLOSSARY.md` for terminology and `GLOSSARY-MAP.md` for multiple contexts. Their
+domain-modeling skill files are identical. The upstream
+[rename on 2026-09-17](https://github.com/mattpocock/skills/commit/d80fa0f4ebe0c5714af0adf8670336065233ecc6)
+changed the consumer-repository convention, not only the upstream repository's
+own glossary.
+
+Issue #173 predates that rename. Its `CONTEXT.md` and `CONTEXT-MAP.md`
+references describe the former names. This specification adopts the current
+upstream convention instead of translating upstream instructions back to those
+former names. The pinned
+[domain-modeling skill](https://github.com/mattpocock/skills/blob/5863806dd4e15c63174bee4e7515a4256792ecfa/skills/engineering/domain-modeling/SKILL.md)
+and its `GLOSSARY-FORMAT.md` remain unmodified.
+
+For a single-context repository, terminology belongs in the root `GLOSSARY.md`.
+For multiple contexts, `GLOSSARY-MAP.md` identifies context glossaries and
+relationships. Do not create a map for a single-context repository.
+
+Existing `CONTEXT.md` and `CONTEXT-MAP.md` files remain relevant inputs until
+the repository authorizes their rename. Read them to preserve established
+language and relationships. If repository instructions still require the old
+names, surface that naming conflict before a rename. Do not ignore existing
+domain knowledge or create competing terminology files.
+
+Patchmill's own implementation must rename its existing `CONTEXT.md` to
+`GLOSSARY.md` and update live guidance together. This preserves its single
+context and domain language while removing the need for a naming translation in
+the planning wrapper.
 
 ### Domain documents as planning artifacts
 
@@ -184,10 +210,11 @@ specification immediately. Assign the update to the next authorized stage. Later
 planning and review must read this resolution alongside existing domain
 documents. They must not claim that the canonical document already contains it.
 
-This run records the resolved Plan review term for the later implementation
-stage. Its explicit spec-only envelope permits only this specification, not a
-separate domain-document edit. No new ADR is necessary for this reversible
-skill-workflow extension.
+This run records the resolved Plan review term and glossary rename for the later
+implementation stage. Its explicit spec-only envelope permits only this
+specification, not a separate domain-document edit or rename. The deferred
+destination for the resolved term is `GLOSSARY.md`. No new ADR is necessary for
+this reversible skill-workflow extension.
 
 ## Specification-time architecture analysis
 
@@ -449,18 +476,19 @@ advances a human gate by itself.
 
 Update the planning requirements in
 `site/src/content/docs/guides/skills-configuration.md`. Document applicability,
-the two added skills, domain-path adaptation, required specification analysis,
-and fresh Plan review. Explain the prerequisite failure behavior and the
-difference between Plan review and the Plan gate. Correct the touched
+the two added skills, upstream glossary filenames, required specification
+analysis, and fresh Plan review. Explain the prerequisite failure behavior and
+the difference between Plan review and the Plan gate. Correct the touched
 planning-workflow description to match current gated and interactive behavior,
 rather than repeat obsolete draft-PR rules.
 
 Update relevant interactive-planning documentation to explain that it follows
-the same design and review requirements. Update `docs/agents/domain.md` only
-where necessary to explain the upstream naming adaptation. Keep third-party
+the same design and review requirements. Update `docs/agents/domain.md` and
+other live glossary references to use `GLOSSARY.md` and `GLOSSARY-MAP.md`. The
+guidance must not instruct agents to create a new `CONTEXT.md`. Keep third-party
 provenance in `THIRD_PARTY_NOTICES.md` and the resolved Plan review term in
-`CONTEXT.md`. Do not revise historical approved specifications or plans as part
-of this change.
+`GLOSSARY.md`. Do not rewrite historical approved specifications, plans, or
+changelog records merely to replace their former filenames.
 
 ## Verification strategy
 
@@ -492,8 +520,9 @@ necessary inside automated installer tests.
 Inspect the shipped and regenerated instructions, then exercise bounded planning
 scenarios:
 
-1. An architectural specification uses both skills and cites existing domain and
-   code evidence.
+1. An architectural specification reads the relevant `GLOSSARY.md` and
+   `GLOSSARY-MAP.md`, uses both skills, and cites existing domain and code
+   evidence.
 2. A term conflict or ADR conflict remains explicit until resolved. Ordinary
    spec-stage resolutions update domain companions. A narrower envelope records
    the resolution and its deferred destination without unauthorized edits.
@@ -508,6 +537,9 @@ scenarios:
    performs fresh review.
 8. Unattended and interactive planning retain their respective publication and
    human-approval contracts.
+9. Patchmill's glossary rename preserves all existing terms. Live guidance uses
+   the new filenames. A target repository with former filenames retains its
+   domain knowledge and resolves naming conflicts before any rename.
 
 These scenarios verify agent instructions directly rather than introduce tests
 that assert their wording. Record the scenario evidence in the implementation
@@ -531,8 +563,10 @@ prerequisites rather than claim unperformed checks.
 - Architectural specification work reads and uses the pinned Matt Pocock
   domain-modeling skill.
 - Module and interface design reads and uses codebase-design and `DEEPENING.md`.
-- Specifications respect repository domain conventions and surface relevant code
-  or ADR conflicts.
+- Specifications use upstream glossary filenames, preserve established domain
+  language, and surface relevant naming, code, or ADR conflicts.
+- Patchmill's existing terminology moves to `GLOSSARY.md` with consistent live
+  guidance and no competing `CONTEXT.md`.
 - Architectural specifications explain ownership, caller obligations, hidden
   implementation, seams, adapters, dependency entry, locality, leverage, and
   observable tests.
