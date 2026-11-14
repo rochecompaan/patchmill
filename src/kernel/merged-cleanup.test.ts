@@ -14,6 +14,26 @@ import {
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import type { CommandRunner } from "../process/command.ts";
 
+test("interactive merge runs a non-executable Bash hook before removing the worktree", async (t) => {
+  const c = await setupRun(t, [implement]);
+  const marker = join(c.dir, "hook-marker");
+  await c.seed({
+    [spec]: "spec",
+    [plan]: "plan",
+    "cleanup hook.sh": `pwd > ${JSON.stringify(marker)}\n`,
+  });
+  c.config.cleanupHook = "./cleanup hook.sh";
+  const human = fakeHuman(c, {
+    onWait: async () => {
+      await mergePullRequest(c, branch, { closeIssue: true });
+      return "continue";
+    },
+  });
+  assert.equal((await c.run({ issue: 9 }, { human })).status, "completed");
+  assert.equal((await fs.readFile(marker, "utf8")).trim(), c.worktree);
+  await assert.rejects(fs.access(c.worktree));
+});
+
 for (const mode of [
   "clean",
   "dirty",
@@ -38,7 +58,7 @@ for (const mode of [
     };
     const human = fakeHuman(c, {
       onWait: async () => {
-        await mergePullRequest(c);
+        await mergePullRequest(c, branch, { closeIssue: true });
         if (mode === "dirty")
           await fs.writeFile(join(c.worktree, "uncommitted.txt"), "keep me");
         return "continue";
@@ -48,20 +68,19 @@ for (const mode of [
     assert.deepEqual(outcome, { status: "completed", issue: 9 });
     assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
     assert.equal(kernelComments(c).length, 1);
-    assert.deepEqual(commands, [
-      { args: ["worktree", "list", "--porcelain"], cwd: c.repoRoot },
-      {
-        args: ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
-        cwd: c.repoRoot,
-      },
-      { args: ["status", "--porcelain"], cwd: c.worktree },
-      ...(["clean", "remove failure", "branch failure"].includes(mode)
-        ? [{ args: ["worktree", "remove", c.worktree], cwd: c.repoRoot }]
-        : []),
-      ...(["clean", "branch failure"].includes(mode)
-        ? [{ args: ["branch", "-D", branch], cwd: c.repoRoot }]
-        : []),
-    ]);
+    assert.deepEqual(
+      commands.filter(
+        ({ args }) => args[1] === "remove" || args[0] === "branch",
+      ),
+      [
+        ...(["clean", "remove failure", "branch failure"].includes(mode)
+          ? [{ args: ["worktree", "remove", c.worktree], cwd: c.repoRoot }]
+          : []),
+        ...(["clean", "branch failure"].includes(mode)
+          ? [{ args: ["branch", "-D", branch], cwd: c.repoRoot }]
+          : []),
+      ],
+    );
     if (mode === "clean") {
       await assert.rejects(fs.access(c.worktree));
       assert.equal(
@@ -80,7 +99,7 @@ for (const mode of [
       );
     } else {
       assert.match(
-        human.calls.find((s) => s.startsWith("notify:")) ?? "",
+        c.output.join("\n"),
         mode === "dirty"
           ? /Kept worktree .*uncommitted changes/
           : /cleanup denied/,

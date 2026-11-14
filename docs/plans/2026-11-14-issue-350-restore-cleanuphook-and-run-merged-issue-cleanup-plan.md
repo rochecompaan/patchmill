@@ -265,7 +265,7 @@ the current directory, and the lock parent. Verify containment before the hook.
 Add a symlinked-parent case to the unsafe-path tests.
 
 Invoke
-`runner("bash", [config.cleanupHook], { cwd: implementationWorktree, signal })`
+`runner("bash", [resolve(implementationWorktree, config.cleanupHook)], { cwd: implementationWorktree, signal })`
 only when configured and no matching success receipt exists. Capture both
 returned failures and thrown errors. Check the signal before starting. Write the
 receipt only after success, before removal. Perform post-hook status checks,
