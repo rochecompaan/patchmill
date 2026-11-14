@@ -168,11 +168,21 @@ workers before it starts a run. If it cannot stop them, it does not start the
 run. Do not start this command inside a pi-subagents child process.
 `PI_SUBAGENT_CHILD=1` disables pi-subagents.
 
-## Sample web page
+## Web board
 
-Run `patchmill serve` to open the view-only sample board and issue pages. It
-needs no repository, config, or provider account. All fonts and page assets ship
-locally. Chat and run controls show a note but change nothing.
+Run `patchmill serve` from the repository directory that contains your run
+files. The board shows real open issues, workflow columns, document links, and
+pull requests. It uses the repository config and its host CLI account. The
+server and runs must use the same directory on the same host.
+
+The server caches host issues and pull requests for one minute across all
+browsers. The page refreshes every 15 seconds and shows the host sync age. Local
+run observations and held issue locks supply current progress and Live markers.
+Real issue threads are not available yet. Chat and run controls change nothing.
+
+Use `patchmill serve --sample` for deterministic design fixtures and sample
+issue pages. Sample mode needs no repository, config, or provider account. All
+fonts and page assets ship locally in both modes.
 
 The default address is `127.0.0.1:4280`. Open the printed secret-token link. The
 server stores an HttpOnly cookie and removes the token from the address. Set
@@ -181,7 +191,7 @@ creates a new random token. Keep the printed link private.
 
 Use `--host HOST` and `--port PORT` to change the listener. A non-loopback
 listener is for a trusted network or VPN only. HTTP does not encrypt its content
-or token. This command serves sample data, not actual issues or runs.
+or token. The server only reads data. It never starts or changes a run.
 
 ### Browser regression checks
 
@@ -211,7 +221,7 @@ measurements, set `LAYOUT_EVIDENCE` to a local JSON path.
 | `patchmill release --issue N`                                              | Clear a stale claim after a hard crash.                                                                                                 |
 | `patchmill status [--all] [--issue N]`                                     | Show workflow status in local state mode. Read blockers of ready and in-progress issues live from the tracker.                          |
 | `patchmill skills update`                                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files that the pack dropped. |
-| `patchmill serve [--host HOST] [--port PORT]`                              | Serve the view-only sample board and issue pages.                                                                                       |
+| `patchmill serve [--sample] [--host HOST] [--port PORT]`                   | Serve the view-only repository board, or design fixtures with `--sample`.                                                               |
 | `patchmill version`                                                        | Print the version.                                                                                                                      |
 | `patchmill setup-test-repo`                                                | Development tool for the end-to-end CI. It is not part of the kernel.                                                                   |
 
