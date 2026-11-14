@@ -49,6 +49,44 @@ test("concurrent board reads share one host refresh across expiry and slow reque
   await expired;
 });
 
+test("a rejected host operation retains refresh ownership until its pending sibling settles", async () => {
+  let now = 0,
+    calls = 0,
+    settled = false;
+  let release!: (value: []) => void;
+  const cache = createHostBoardCache({
+    now: () => new Date(now),
+    warn: () => {},
+    host: {
+      listOpenIssues: async () => {
+        throw Error("issues failed");
+      },
+      listOpenPullRequests: () => {
+        calls++;
+        return new Promise<[]>((resolve) => {
+          release = resolve;
+        });
+      },
+    },
+  });
+  const pending = cache.read();
+  void pending.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  now = 60000;
+  assert.equal(cache.read(), pending);
+  assert.equal(calls, 1);
+  release([]);
+  await assert.rejects(pending);
+});
+
 test("failed attempts consume the period and preserve last successful host timestamps", async () => {
   let now = 0,
     calls = 0,

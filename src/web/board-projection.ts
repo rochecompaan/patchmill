@@ -86,13 +86,12 @@ export function projectBoardIssue(input: {
   if (roles.includes("ready")) column = "ready";
   if (
     roles.includes("inProgress") ||
-    run.outcomeRole === "inProgress" ||
     (run.live && ["deriving", "planning"].includes(run.state ?? ""))
   )
     column = "planning";
   if (open.some((pr) => pr.kind !== "implementation")) column = "review";
   if (run.live && run.state === "implementation") column = "implementing";
-  const done = roles.includes("done") || run.outcomeRole === "done";
+  const done = roles.includes("done");
   if (done || open.some((pr) => pr.kind === "implementation")) column = "code";
   if (
     run.incomplete ||
@@ -103,9 +102,13 @@ export function projectBoardIssue(input: {
   let phase: PhaseId | null =
     run.live && run.state === "implementation"
       ? "implement"
-      : run.stage === "spec"
+      : run.live &&
+          ["deriving", "planning"].includes(run.state ?? "") &&
+          run.stage === "spec"
         ? "spec"
-        : run.stage === "plan"
+        : run.live &&
+            ["deriving", "planning"].includes(run.state ?? "") &&
+            run.stage === "plan"
           ? "plan"
           : null;
   if (column === "review")

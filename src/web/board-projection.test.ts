@@ -149,6 +149,20 @@ test("PR association rejects foreign heads, wrong bases, and neighboring issue n
   );
 });
 
+test("current Ready resets historical done and inProgress without live-phase or PR evidence", () => {
+  for (const outcomeRole of ["done", "inProgress"] as const) {
+    const summary = projectBoardIssue(
+      input(
+        ["ready"],
+        boardObservation({ state: "ended", outcomeRole, stage: "plan" }),
+      ),
+    )!;
+    assert.equal(summary.column, "ready");
+    assert.equal(summary.status, "none");
+    assert.equal(summary.phase, null);
+  }
+});
+
 test("board JSON redacts private summaries and incomplete attempts explain their state", () => {
   const summary = projectBoardIssue(
     input(

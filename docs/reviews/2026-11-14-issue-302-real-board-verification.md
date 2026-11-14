@@ -17,7 +17,7 @@ existing fonts, palette, themes, board scrolling, and sample controls remain.
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `npm ci`                                                                           | Installed the unchanged shrinkwrap in the issue worktree.                          |
 | Baseline `npm test`                                                                | 1,109 passed, zero failed.                                                         |
-| Implementation `npm test`                                                          | 1,140 passed, zero failed.                                                         |
+| Implementation `npm test`                                                          | 1,144 passed, zero failed.                                                         |
 | `npm run check:types`                                                              | Passed.                                                                            |
 | `npm run lint`                                                                     | Passed, including formatting, ESLint, and Markdownlint.                            |
 | `CHROMIUM=/home/roche/.nix-profile/bin/chromium npm run test:web`                  | Existing sample browser regressions passed.                                        |
@@ -48,7 +48,7 @@ The feature branch's actual CLI served data with
 printed authenticated link. The capture used a temporary listener and stopped
 only that web server afterward.
 
-At `2026-11-14T16:52:23.189Z`, `gh issue list` returned 36 open issues. The
+At `2026-11-14T17:18:54.907Z`, `gh issue list` returned 36 open issues. The
 board showed 31 issues with matching numbers, titles, and labels. It excluded
 the five unsuitable issues: #191, #229, #230, #293, and #300.
 
@@ -94,6 +94,26 @@ Fixture references cover states absent in the live repository:
 The complete fixture set also includes both themes at both widths. Filenames use
 stable semantic names, as the visual-evidence skill requires, rather than the
 issue-number prefix suggested by the plan.
+
+## Independent code review
+
+The fresh code review covered `e6d875b..0409f23`. Its original foreground wait
+timed out. The supervisor authorized one asynchronous revival of that same
+stored review session. The resumed reviewer completed its read-only report.
+
+All three Important findings received one regression-backed fix pass:
+
+- Current Ready now overrides historical done/inProgress outcomes without live
+  phase or open-PR evidence. Label-mode and local-mode regressions failed first.
+- A partial host failure retains refresh ownership until both requests settle.
+  The mixed rejection/pending regression failed first.
+- A snapshot-bound document reader shares ref and tree reads across issues. The
+  regression failed with nine Git calls and passed with three.
+
+The final suite passed all 1,144 tests. The focused regressions, type checks,
+lint, sample browser checks, fixture browser checks, and repository comparison
+also passed. No Minor findings were reported. The PR body records the required
+separate frontend review and exact-head host checks.
 
 ## Boundaries and residual risks
 

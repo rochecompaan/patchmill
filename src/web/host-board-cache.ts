@@ -24,13 +24,18 @@ export function createHostBoardCache(input: {
       nextAttemptAt = input.now().getTime() + 60000;
       const refresh = async (): Promise<HostBoardData> => {
         try {
-          const [issues, pullRequests] = await Promise.all([
+          const [issues, pullRequests] = await Promise.allSettled([
             input.host.listOpenIssues(),
             input.host.listOpenPullRequests(),
           ]);
+          if (
+            issues.status === "rejected" ||
+            pullRequests.status === "rejected"
+          )
+            throw new Error("Host refresh failed.");
           cached = {
-            issues: structuredClone(issues),
-            pullRequests: structuredClone(pullRequests),
+            issues: structuredClone(issues.value),
+            pullRequests: structuredClone(pullRequests.value),
             syncedAt: input.now().toISOString(),
           };
           failure = undefined;

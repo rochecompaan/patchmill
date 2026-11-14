@@ -13,7 +13,7 @@ import {
   associatePullRequests,
   projectBoardIssue,
 } from "./board-projection.ts";
-import { readDocumentLinks } from "./document-links.ts";
+import { createDocumentLinkReader } from "./document-links.ts";
 import type { DocumentLink, IssueSummary, Repository } from "./api-types.ts";
 import type {
   RunDataSource,
@@ -62,6 +62,12 @@ export function createFileRunDataSource(input: {
     }
     const host = await cache.read();
     const issues: IssueSummary[] = [];
+    const documents = createDocumentLinkReader({
+      ...input,
+      baseBranch: metadata.baseBranch,
+      repositoryUrl: metadata.pushRepository.url,
+      provider: config.host.provider,
+    });
     const unique = new Map(
       host.issues
         .filter(
@@ -92,17 +98,10 @@ export function createFileRunDataSource(input: {
       });
       let documentLinks: readonly DocumentLink[] = [];
       try {
-        documentLinks = await readDocumentLinks({
-          ...input,
-          issue: issue.number,
-          branches: [
-            ...(run.branch ? [run.branch] : []),
-            ...associated.branches,
-          ],
-          baseBranch: metadata.baseBranch,
-          repositoryUrl: metadata.pushRepository.url,
-          provider: config.host.provider,
-        });
+        documentLinks = await documents(issue.number, [
+          ...(run.branch ? [run.branch] : []),
+          ...associated.branches,
+        ]);
       } catch {
         warn(`Could not read document links for issue #${issue.number}.`);
       }

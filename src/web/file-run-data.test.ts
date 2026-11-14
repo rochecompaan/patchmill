@@ -196,6 +196,59 @@ test("local workflow role changes appear inside a warm host cache", async (t) =>
   assert.equal(f.calls(), 1);
 });
 
+test("local Ready resets an old completed or planning-stop outcome", async (t) => {
+  const f = await fixture(t, true);
+  const store = new StateStore(stateDir(f.repoRoot));
+  await store.appendStatus(2, { at: "2026-11-14T13:00:00Z", status: "ready" });
+  for (const label of ["done", "inProgress"] as const) {
+    await writeRunProgress(
+      join(f.repoRoot, f.config.paths.runsDir, "issue-2"),
+      boardProgress({
+        issue: 2,
+        state: "ended",
+        outcome: { status: label === "done" ? "completed" : "stopped", label },
+      }),
+    );
+    assert.equal(
+      (await f.source.snapshot()).issues.find((i) => i.number === 2)?.column,
+      "ready",
+    );
+  }
+});
+
+test("shared base document trees are read once per snapshot rather than once per issue", async (t) => {
+  const repoRoot = await fs.mkdtemp(join(tmpdir(), "patchmill-shared-docs-"));
+  t.after(() => fs.rm(repoRoot, { recursive: true, force: true }));
+  let calls = 0;
+  const source = createFileRunDataSource({
+    repoRoot,
+    config: structuredClone(DEFAULT_CONFIG),
+    metadata: {
+      repository: { name: "owner/repo", url: "https://host/owner/repo" },
+      baseBranch: "main",
+      pushRepository: { slug: "owner/repo", url: "https://host/owner/repo" },
+    },
+    host: {
+      listOpenIssues: async () => [boardIssue(1), boardIssue(2), boardIssue(3)],
+      listOpenPullRequests: async () => [],
+    },
+    runner: async (_cmd, args) => {
+      calls++;
+      return {
+        code: 0,
+        stdout: args[0] === "rev-parse" ? "a".repeat(40) : "",
+        stderr: "",
+      };
+    },
+    now: () => new Date(0),
+    warn: assert.fail,
+  });
+  await source.snapshot();
+  assert.equal(calls, 3);
+  await source.snapshot();
+  assert.equal(calls, 6);
+});
+
 test("empty host repositories produce an empty valid snapshot", async () => {
   const source = createFileRunDataSource({
     repoRoot: "/unused",
