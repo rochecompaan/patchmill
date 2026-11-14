@@ -35,6 +35,8 @@ const failures = [];
 const evidence = [];
 const exceptions = [];
 const requests = [];
+const imagePauses = [];
+let imagesReady;
 function check(condition, message) {
   if (!condition) failures.push(message);
 }
@@ -79,6 +81,10 @@ try {
       exceptions.push(message.params.exceptionDetails);
     if (message.method === "Network.requestWillBeSent")
       requests.push(message.params.request);
+    if (message.method === "Fetch.requestPaused") {
+      imagePauses.push(message.params.requestId);
+      if (imagePauses.length >= 3) imagesReady?.();
+    }
   });
   function command(method, params = {}, sessionId) {
     return new Promise((resolve, reject) => {
@@ -151,6 +157,16 @@ try {
     });
     await settled();
   }
+  async function enter() {
+    for (const type of ["keyDown", "keyUp"])
+      await send("Input.dispatchKeyEvent", {
+        type,
+        key: "Enter",
+        code: "Enter",
+        windowsVirtualKeyCode: 13,
+        ...(type === "keyDown" ? { text: "\r" } : {}),
+      });
+  }
   async function metrics() {
     return evaluate(`(()=>{
       const rect=node=>{if(!node)return null;const r=node.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
@@ -186,22 +202,53 @@ try {
   await until(
     'document.querySelectorAll(".col").length===7 && document.querySelector("#name-dialog")?.open',
   );
+  // Invalid names must remain editable in the dialog; Cancel must still work.
+  await evaluate("document.querySelector('#name-input').value='   '");
+  await click("#name-form [value=save]");
+  const invalidName = await evaluate(
+    `({open:document.querySelector('#name-dialog').open,focused:document.activeElement.id,error:document.querySelector('#name-error')?.textContent??'',errorHidden:document.querySelector('#name-error')?.hidden??true,saved:localStorage.getItem('patchmill-name')})`,
+  );
+  evidence.push({ invalidName });
+  check(invalidName.open, "Whitespace-only Save must keep the dialog open");
+  check(
+    invalidName.focused === "name-input",
+    "Invalid name must retain field focus",
+  );
+  check(
+    !invalidName.errorHidden && invalidName.error.length > 0,
+    "Invalid name must have an inline error",
+  );
+  check(invalidName.saved === null, "Invalid name must not be saved");
+  await screenshot("serve-name-validation-mobile");
+  if (!invalidName.open) await click(".name-chip");
+  await click("#name-form [value=cancel]");
+  check(
+    await evaluate(
+      "!document.querySelector('#name-dialog').open && localStorage.getItem('patchmill-name')===null",
+    ),
+    "Cancel must close without saving",
+  );
+
+  await click(".name-chip");
+  await evaluate(
+    "document.querySelector('#name-input').value='Enter sample';document.querySelector('#name-input').focus()",
+  );
+  await enter();
+  await settled();
+  const enterName = await evaluate(
+    "({open:document.querySelector('#name-dialog').open,saved:localStorage.getItem('patchmill-name')})",
+  );
+  evidence.push({ enterName });
+  check(
+    !enterName.open && enterName.saved === "Enter sample",
+    "Enter in the name field must save, not cancel",
+  );
+
+  // Both normal and maximum-length names must leave the composer usable.
   for (const name of ["abcdefghijklmnopqrstuvwxyzabcdef", "Browser reviewer"]) {
     if (!(await evaluate('document.querySelector("#name-dialog").open'))) {
       await evaluate('document.querySelector(".name-chip").focus()');
-      await send("Input.dispatchKeyEvent", {
-        type: "keyDown",
-        text: "\r",
-        key: "Enter",
-        code: "Enter",
-        windowsVirtualKeyCode: 13,
-      });
-      await send("Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Enter",
-        code: "Enter",
-        windowsVirtualKeyCode: 13,
-      });
+      await enter();
       await until('document.querySelector("#name-dialog").open');
     }
     await evaluate(
@@ -289,6 +336,106 @@ try {
     await evaluate("location.hash='#/board'");
     await until('document.querySelectorAll(".col").length===7');
   }
+  // The first keyboard stop must bypass the topbar without changing the route.
+  await evaluate("location.hash='#/issue/227'");
+  await until("document.querySelector('.ihead')?.dataset.issue==='227'");
+  await evaluate(
+    "document.body.tabIndex=-1;document.body.focus();document.body.removeAttribute('tabindex')",
+  );
+  for (const type of ["keyDown", "keyUp"])
+    await send("Input.dispatchKeyEvent", {
+      type,
+      key: "Tab",
+      code: "Tab",
+      windowsVirtualKeyCode: 9,
+    });
+  await settled();
+  const skip = await evaluate(
+    `(()=>{const a=document.querySelector('.skip-link');const r=a?.getBoundingClientRect();return {exists:Boolean(a),focused:document.activeElement===a,visible:Boolean(r&&r.top>=0&&r.bottom<=innerHeight),hash:location.hash}})()`,
+  );
+  evidence.push({ skip });
+  check(
+    skip.exists && skip.focused && skip.visible,
+    "First Tab must reveal and focus a skip link",
+  );
+  if (skip.exists) {
+    await screenshot("serve-skip-link-mobile");
+    await enter();
+    await settled();
+    const destination = await evaluate(
+      "({focused:document.activeElement.id,hash:location.hash})",
+    );
+    evidence.push({ skipDestination: destination });
+    check(
+      destination.focused === "app" && destination.hash === skip.hash,
+      "Skip must focus main and preserve the issue route",
+    );
+  }
+
+  // Hold real image requests to measure the gallery before and after loading.
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 1440,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await evaluate("location.hash='#/issue/173'");
+  await until("document.querySelector('.ihead')?.dataset.issue==='173'");
+  await send("Network.setCacheDisabled", { cacheDisabled: true });
+  await send("Fetch.enable", {
+    patterns: [
+      {
+        urlPattern: server.origin + "/samples/*.png",
+        resourceType: "Image",
+        requestStage: "Request",
+      },
+    ],
+  });
+  const pausedImages = new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(Error("Screenshot requests were not paused")),
+      10000,
+    );
+    imagesReady = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+  });
+  await click("[data-artifact-id=shots]");
+  await pausedImages;
+  async function galleryGeometry() {
+    return evaluate(
+      `(()=>{const img=document.querySelector('.shot img');const r=img.getBoundingClientRect();return {loaded:img.complete&&img.naturalWidth>0,imageHeight:r.height,captionY:document.querySelector('.gallery figcaption').getBoundingClientRect().y,navY:document.querySelector('.gal-nav').getBoundingClientRect().y}})()`,
+    );
+  }
+  const beforeImage = await galleryGeometry();
+  check(
+    !beforeImage.loaded,
+    "Image must actually be delayed for the shift regression",
+  );
+  await Promise.all(
+    imagePauses.map((requestId) =>
+      send("Fetch.continueRequest", { requestId }),
+    ),
+  );
+  await send("Fetch.disable");
+  await evaluate(
+    "Promise.all([...document.querySelectorAll('#viewer img')].map(img=>img.decode()))",
+  );
+  await settled();
+  const afterImage = await galleryGeometry();
+  evidence.push({
+    gallery: { beforeImage, afterImage, pausedRequests: imagePauses.length },
+  });
+  for (const key of ["imageHeight", "captionY", "navY"])
+    check(
+      Math.abs(beforeImage[key] - afterImage[key]) < 1,
+      "Delayed gallery image must not shift " + key,
+    );
+  await click("[data-vw=next]");
+  await screenshot("serve-artifact-gallery");
+  await click("[data-vw=close]");
+
   check(exceptions.length === 0, "No browser runtime exceptions");
   check(
     requests.every((request) => request.method === "GET"),
@@ -308,7 +455,7 @@ try {
     );
   assert.deepEqual(failures, [], failures.join("\n"));
   console.log(
-    "Serve layout regressions passed: 390px names, Pause/Send notice, pointer input, keyboard name control, editable drafts, no mutations.",
+    "Serve browser regressions passed: mobile names, usable notice/composer, inline validation, Cancel, keyboard bypass, stable delayed gallery, no mutations.",
   );
 } finally {
   socket?.close();

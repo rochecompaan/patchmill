@@ -14,6 +14,9 @@ const nameDialog = /** @type {HTMLDialogElement} */ (
 const nameInput = /** @type {HTMLInputElement} */ (
   document.getElementById("name-input")
 );
+const nameError = /** @type {HTMLElement} */ (
+  document.getElementById("name-error")
+);
 const themeSwitch = /** @type {HTMLButtonElement} */ (
   document.getElementById("theme-switch")
 );
@@ -176,22 +179,34 @@ function updateName() {
     .getElementById("me-initials")
     ?.replaceChildren(document.createTextNode(name.slice(0, 2)));
 }
+function clearNameError() {
+  nameError.hidden = true;
+  nameError.textContent = "";
+  nameInput.removeAttribute("aria-invalid");
+}
+nameInput.addEventListener("input", clearNameError);
 function openName() {
+  clearNameError();
   nameDialog.returnValue = "";
   nameInput.value = name === "You" ? "" : name;
   nameDialog.showModal();
   nameInput.focus();
 }
-nameDialog.addEventListener("close", () => {
-  if (nameDialog.returnValue === "save") {
-    try {
-      name = saveName(storage, nameInput.value);
-      updateName();
-      render();
-    } catch (error) {
-      showNote(error instanceof Error ? error.message : "Enter a valid name.");
-    }
+document.getElementById("name-form")?.addEventListener("submit", (event) => {
+  try {
+    name = saveName(storage, nameInput.value);
+  } catch (error) {
+    event.preventDefault();
+    nameError.textContent =
+      error instanceof Error ? error.message : "Enter a valid name.";
+    nameError.hidden = false;
+    nameInput.setAttribute("aria-invalid", "true");
+    nameInput.focus();
+    return;
   }
+  clearNameError();
+  updateName();
+  render();
 });
 const osTheme = matchMedia("(prefers-color-scheme: light)");
 let chosen = false;
@@ -230,7 +245,12 @@ document.addEventListener("click", (event) => {
     return;
   }
   const action = target.closest("[data-action]")?.getAttribute("data-action");
-  if (action === "name") openName();
+  if (action === "skip") {
+    event.preventDefault();
+    mount.focus({ preventScroll: true });
+    mount.scrollIntoView({ block: "start" });
+  } else if (action === "name") openName();
+  else if (action === "cancel-name") nameDialog.close("cancel");
   else if (action === "theme") {
     chosen = true;
     const next =

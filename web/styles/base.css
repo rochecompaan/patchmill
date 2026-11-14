@@ -133,6 +133,22 @@ code {
   font-family: var(--font-mono);
 }
 
+.skip-link {
+  position: fixed;
+  z-index: 20;
+  top: 8px;
+  left: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--brass);
+  border-radius: var(--r-s);
+  transform: translateY(calc(-100% - 16px));
+}
+.skip-link:focus {
+  transform: none;
+}
+
 /* ---------- top bar ---------- */
 .topbar {
   position: sticky;
@@ -277,6 +293,10 @@ code {
 main {
   position: relative;
   z-index: 1;
+  scroll-margin-top: var(--topbar-h);
+}
+main:focus-visible {
+  outline-offset: -2px;
 }
 
 .icon-definitions {

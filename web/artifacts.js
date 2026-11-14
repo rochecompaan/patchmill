@@ -96,6 +96,8 @@ export function mountArtifactViewer(dialog) {
           url = safePreviewUrl(shot.url);
         if (url) {
           const img = el(doc, "img");
+          img.width = 640;
+          img.height = 400;
           img.src = url;
           img.alt = shot.caption;
           image.append(img);

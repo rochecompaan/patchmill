@@ -411,6 +411,13 @@ dialog input {
   color: var(--text);
   font: 15px var(--font-ui);
 }
+#name-error {
+  margin: 8px 0 0;
+  color: var(--stop-text);
+}
+#name-input[aria-invalid="true"] {
+  border-color: var(--stop);
+}
 dialog menu {
   display: flex;
   justify-content: flex-end;

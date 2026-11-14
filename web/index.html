@@ -13,6 +13,7 @@
     <link rel="icon" href="/images/mark.svg" />
   </head>
   <body>
+    <a class="skip-link" href="#app" data-action="skip">Skip to main content</a>
     <svg width="0" height="0" class="icon-definitions" aria-hidden="true">
       <symbol id="sym-head" viewBox="-60 -45 120 90">
         <rect
@@ -308,7 +309,7 @@
       </button>
     </header>
 
-    <main id="app">
+    <main id="app" tabindex="-1">
       <p class="empty" role="status">Loading sample data…</p>
     </main>
     <p id="notice" role="status" hidden></p>
@@ -325,11 +326,20 @@
           id="name-input"
           name="name"
           autocomplete="nickname"
+          aria-describedby="name-error"
           maxlength="32"
           required
         />
+        <p id="name-error" aria-live="polite" hidden></p>
         <menu>
-          <button class="btn" value="cancel" formnovalidate>Cancel</button>
+          <button
+            class="btn"
+            type="button"
+            value="cancel"
+            data-action="cancel-name"
+          >
+            Cancel
+          </button>
           <button class="btn btn-primary" value="save">Save</button>
         </menu>
       </form>
