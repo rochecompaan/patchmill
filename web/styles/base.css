@@ -188,6 +188,7 @@ code {
   color: var(--faint);
 }
 .name-chip {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -201,6 +202,12 @@ code {
 }
 .name-chip:hover {
   border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+}
+#me-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Night/day switch: a brass knob slides under the active icon. */

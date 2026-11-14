@@ -109,6 +109,7 @@ function render() {
     }
     mount.replaceChildren(view);
   }
+  (mount.querySelector(".composer") ?? mount).prepend(notice);
   const issueNumber = current.issue?.issue.summary.number;
   if (issueNumber)
     for (const details of mount.querySelectorAll("details"))

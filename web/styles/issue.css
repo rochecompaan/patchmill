@@ -284,17 +284,15 @@
   color: var(--dim);
 }
 #notice {
-  position: fixed;
-  z-index: 30;
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(560px, calc(100vw - 28px));
-  margin: 0;
+  max-width: min(calc(var(--thread-w) - 48px), calc(100% - 48px));
+  margin: 12px auto;
   padding: 12px 18px;
   border: 1px solid var(--brass);
   border-radius: var(--r-m);
   background: var(--panel);
   color: var(--text);
-  box-shadow: 0 4px 24px var(--scrim);
+}
+.composer #notice {
+  max-width: calc(var(--thread-w) - 48px);
+  margin: 0 auto 12px;
 }
