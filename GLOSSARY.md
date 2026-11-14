@@ -15,6 +15,10 @@ pull request, or approves it without a PR in an Interactive Issue run, which
 puts the document on the pushed implementation branch. Review approval alone
 does not unlock it. _Avoid_: Approval label
 
+**Plan review**: A fresh reviewer's assessment of an implementation plan against
+its specification and the existing codebase. It supplies evidence, not human
+approval of a Spec gate or Plan gate. _Avoid_: Plan gate, Planner self-review
+
 **Planning pull request**: A pull request for documents that must merge before
 the next required stage. It does not complete the issue. _Avoid_: Implementation
 PR

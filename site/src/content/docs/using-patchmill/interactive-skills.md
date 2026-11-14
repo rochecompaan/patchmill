@@ -14,7 +14,30 @@ skill can be invoked as `/skill:patchmill-plan 123`.
 `patchmill-plan` resolves the issue branch and worktree, then prepares or
 revises local specs and plans. It does not implement, publish, change labels, or
 clean up. If required spec approval is absent, it revises the spec and stops
-before the plan. Local self-review does not grant approval.
+before the plan. Relevant resolved domain documents can accompany the spec,
+subject to the envelope's artifact limits. Local self-review does not grant
+approval.
+
+Architectural specifications use the installed `domain-modeling` skill. Module
+and interface designs also use `codebase-design` and `DEEPENING.md`. The planner
+reads relevant glossaries, ADRs, code, and tests, then records domain ownership
+and architectural choices. Terminology uses `GLOSSARY.md` and an optional
+`GLOSSARY-MAP.md`, not new `CONTEXT` files. Existing legacy documents remain
+inputs until an authorized rename. Non-architectural work does not require new
+domain artifacts.
+
+Every new or revised implementation plan requires a fresh, read-only canonical
+`reviewer` after planner self-review. The reviewer independently inspects code
+and tests, applies the architecture rubric, and cites concrete evidence for
+blocking findings. The plan records dispositions and reviewed content identity.
+Accepted blockers need correction and a fresh scoped confirmation. Reviewer
+readiness does not grant approval or publication authority. If required skills,
+resources, or reviewer tooling are absent, the helper asks and waits instead of
+installing dependencies or substituting self-review.
+
+This local helper differs from planning inside an Interactive Issue run. The
+latter uses the kernel-provided submit dialog for approval and any PR choice.
+The local helper never opens that publication flow itself.
 
 For kernel planning and publication, run
 `patchmill run-once --issue N --plan-only` as a separate operator action. It
