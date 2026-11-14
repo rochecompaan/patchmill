@@ -7,6 +7,16 @@
   all judgment into skills. Keep every user-visible capability that earns its
   place.
 
+## Post-merge cleanup revision (#350)
+
+The cleanup contract in this document now includes automatic cleanup in every
+run mode and the optional `cleanupHook`. The detailed
+[cleanup design](2026-11-14-issue-350-restore-cleanuphook-and-run-merged-issue-cleanup-design.md)
+specifies authorization, discovery, retries, and verification. These rules
+supersede the former human-only cleanup rule. The
+[planning-gates revision](2026-10-19-planning-merge-gates-design.md) still
+defines separate workspaces for required spec and plan gates.
+
 ## Purpose and evidence
 
 Patchmill started as a thin wrapper that hands one issue to a Pi agent. It has
@@ -68,7 +78,7 @@ not in a prompt renderer with a config schema behind it.
 | Topic              | Decision                                                                                                                                                                         |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Kernel scope       | Five responsibilities: supervise Pi, claim and release, derive phase, verify outcome, fixed names. Nothing else is deterministic.                                                |
-| Workflow state     | None persisted. Every Run attempt derives the phase from git and the host. Logs and session files are outputs, never inputs.                                                     |
+| Workflow state     | Derive phases from git and the host. Logs and sessions remain outputs. A cleanup-only success receipt prevents repeated hooks after partial cleanup.                             |
 | Branch model       | One branch and one worktree per issue. Spec, plan, and implementation live on that branch. No planning pull requests.                                                            |
 | Pull request model | One pull request per issue. The agent may open it as a draft during planning and marks it ready when implementation is complete.                                                 |
 | Human gate         | One optional gate: spec approval, recorded as the `spec-approved` label on the issue. No plan approval gate. The plan is reviewed with the pull request.                         |
@@ -76,7 +86,7 @@ not in a prompt renderer with a config schema behind it.
 | Prompt             | One short envelope: facts, the untrusted boundary, the skill to follow, and the result contract. Target under 150 template lines.                                                |
 | Result contract    | A final fenced JSON block with `status` and `summary`. Nothing else.                                                                                                             |
 | Todo contract      | Removed. The vendored todo extension, task contract, done-status policy, and todo checks go. Skills may recommend todos. Code never checks them.                                 |
-| Config             | Host, labels, paths, base branch, skills, Pi timeout and agent directory, trusted authors, and the spec gate. Unknown keys fail loading by name.                                 |
+| Config             | Host, labels, paths, base, skills, Pi timeout and agent directory, trusted authors, planning gates, optional `cleanupHook`. Unknown keys fail by name.                           |
 | Init and auth      | Init provisions the agent directory and skills. Auth retains standalone provider login and model selection, uses Pi's credential storage and settings, and returns to the shell. |
 | Triage             | Code lists candidates, runs Pi with the triage skill, and applies the returned labels and comment. No simulated dry-run agent.                                                   |
 | Diagnostics        | The agent's `summary` is the diagnostic. The kernel prints the final JSON, one outcome line, and a best-effort cost line.                                                        |
@@ -180,9 +190,68 @@ when a phase needs a human, when the implementation phase verifies, or when
 `--plan-only` was given and planning is complete.
 
 The worktree lives at `<worktreeDir>/<branch-dir>`. It is created from the
-remote branch when one exists and from the base branch otherwise. The kernel
-never deletes a worktree. Cleanup is a human task through the
-`patchmill-cleanup` skill.
+remote branch when one exists and from the base branch otherwise.
+
+#### Cleanup after a merge
+
+Every non-dry-run `runOneIssue` entry sweeps local issue branches and registered
+worktrees before issue selection. This applies to interactive and
+non-interactive runs, including `--plan-only`. It works even when no open issue
+is eligible, or an explicitly named issue is closed. The interactive CLI uses
+the same sweep before its initial open-issue selection, so that check cannot
+bypass cleanup. Dry run performs no cleanup.
+
+The sweep acquires each issue's permanent OS lock without waiting. It skips
+active issues. While locked, it reads fresh host facts. Cleanup requires a
+closed issue and a merged implementation PR into the resolved base. The PR must
+have the exact implementation head in the push repository and a body that closes
+that issue. Open replacements, closed-unmerged PRs, wrong targets, and merged
+planning PRs never authorize cleanup. An absent remote branch does not prevent
+local discovery. Ambiguous implementation branches require human inspection.
+
+After verification, Patchmill runs the optional hook as `bash <cleanupHook>`
+from the implementation worktree. A relative path resolves there. The script
+does not need an executable bit. The hook runs before any worktree or branch
+removal, even when the implementation worktree has uncommitted changes.
+
+After hook success, Patchmill records a cleanup-only success receipt at
+`<runsDir>/issue-N/cleanup.json`. It binds the repository, push repository,
+issue, implementation branch, base, and merged PR. Matching receipts prevent
+repeated hook execution during later cleanup retries. They never authorize
+removal or select a workflow phase. Invalid receipts preserve targets and
+produce a warning. A failed hook creates no success receipt. A crash before
+receipt publication can require an idempotent hook retry.
+
+Patchmill then inspects each worktree after the hook. It keeps every dirty
+worktree and its branch and reports the reason. It removes clean implementation
+and optional gated spec/plan worktrees, followed by their local branches. It
+never removes remote branches, mismatched checkouts, the primary checkout, a
+worktree containing the current directory, or a target containing the lock
+parent. It also preserves targets that contain another registered checkout, even
+inside an ignored directory. A configured hook requires the implementation
+directory unless a matching receipt already proves success. No cleanup path
+recreates a worktree.
+
+A hook error or non-zero exit keeps all worktrees and branches. A cleanup error
+never changes the issue's done outcome. Patchmill reports errors to the operator
+and appends hook output and diagnostics to `<runsDir>/issue-N/cleanup.log`.
+In-attempt diagnostics also enter the current run log. A logging or receipt
+error before removal preserves all targets. A logging error during removal stops
+further removal and reports any targets already removed. Git errors preserve the
+failed target and allow independent siblings to continue.
+
+The interactive behavior introduced by #335 remains: a verified ready PR gets
+done status before the Review wait. Continue refreshes facts. A confirmed merge
+triggers cleanup before the run returns, under its already-held lock. Open PRs
+continue waiting. Quit adds no duplicate stop. If the operator quits before
+merge, the next real run's sweep performs cleanup. The shared finalization path
+also serves non-interactive runs. Planning, needs-info, failed, aborted, and
+retryable outcomes do not authorize in-attempt cleanup.
+
+All cleanup holds the issue OS lock through the hook and removal. It never
+removes or replaces the permanent lock file or its parent directory. The
+human-controlled `patchmill-cleanup` skill remains available for inspected,
+confirmed manual cleanup and offers the configured hook before removal.
 
 ### 4. Verify the outcome
 
@@ -217,8 +286,9 @@ issue comments and does not touch labels.
 | Plan          | `<plansDir>/<YYYY-MM-DD>-issue-<N>-<slug>-plan.md`, default `docs/plans`.                     |
 | Run directory | `.patchmill/runs/issue-<N>/<run-id>/` with `prompt.md`, `pi.log`, `sessions/`, `result.json`. |
 
-`result.json` is a write-only record for operators and future tooling. The
-kernel never reads it to make a decision.
+`result.json` is a diagnostic record for operators and future tooling. Phase
+derivation never reads it. The cleanup success receipt is separate and affects
+only repeated hook execution and partial cleanup discovery.
 
 ## Issue lifecycle
 
@@ -359,6 +429,7 @@ loop (#236) can call it.
     "runsDir": ".patchmill/runs"
   },
   "git": { "baseBranch": null },
+  "cleanupHook": "./scripts/cleanup.sh",
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
@@ -369,10 +440,25 @@ loop (#236) can call it.
 }
 ```
 
-`git.baseBranch` of `null` means the remote default branch. Every key has a
-default. The loader recognises exactly the keys above. There are no aliases, no
-deprecated keys, and no rewriting of files written by anything else. Any other
-key fails loading by name. The loader targets under 200 lines.
+`git.baseBranch` of `null` means the remote default branch. `cleanupHook` is
+optional and defaults to omission, which means no hook. The sample path is an
+example, not a default. The loader accepts only a string for `cleanupHook`.
+Every other type fails with `Invalid type for cleanupHook`. A string names one
+script path, not a shell command. An empty string reaches Bash and fails there.
+
+The hook runs only after a confirmed implementation merge into the base and
+issue closure, under the cleanup rules in this document. It never runs for
+planning, failed, aborted, needs-info, or other retryable outcomes. A missing
+hook changes no other cleanup behavior.
+
+The loader recognises the keys above, subject to later approved planning-gate
+revisions. There are no aliases or automatic file rewrites. All other unknown
+keys fail loading by name. The loader targets under 200 lines.
+
+Hook scripts must be idempotent, tolerate missing resources, and touch only
+resources scoped to the issue or worktree. They must exit non-zero when cleanup
+is incomplete. They must never remove Patchmill worktrees, branches, PRs, run
+state, or lock files.
 
 Direct landing is not a Patchmill feature. The agent has shell access, so code
 cannot stop it from pushing the base branch. Branch protection on the host is
@@ -537,7 +623,16 @@ silently. Updating the glossary is part of the implementation.
   head is the issue branch and whose body closes the issue.
 - The agent's result block has two fields, and the envelope template is one file
   under 150 lines.
-- `patchmill.config.json` with any unknown key fails loading and names the key.
+- `patchmill.config.json` accepts optional string `cleanupHook`. A non-string
+  fails with `Invalid type for cleanupHook`. All other unknown keys fail by
+  name.
+- Interactive and non-interactive runs clean up confirmed merged, closed issues
+  under the issue lock. The run-start sweep also works without eligible work.
+- The hook precedes all removals. Dirty worktrees remain. Hook failure preserves
+  all targets and the done outcome, with operator and run-log diagnostics.
+- Successful hook receipts prevent repeated execution on partial cleanup
+  retries. Cleanup preserves the permanent lock file and its parent in every
+  outcome.
 - No code path reads, renames, or warns about run state, config, labels, specs,
   or plans from an earlier Patchmill version. Spec and plan discovery matches
   only the names in this document.

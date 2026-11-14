@@ -7,6 +7,9 @@ import { CONFIG_FILE } from "../../../config/config.ts";
 import type { RunOnceOutcome } from "../../../kernel/run-once.ts";
 import { runCommand } from "../../../process/command.ts";
 import { main } from "./main.ts";
+import { setupCleanup } from "../../../../test-support/merged-cleanup-fixture.ts";
+import { sweepMergedIssues } from "../../../kernel/merged-cleanup-sweep.ts";
+import { access, readFile } from "node:fs/promises";
 
 const cliIssue = {
   number: 9,
@@ -44,6 +47,7 @@ async function harness(t: TestContext) {
     options: {
       repoRoot: root,
       runner: interactiveRunner,
+      sweepMergedIssues: async () => {},
       exit: (_code: number) => {},
       output: {
         stdout: (line: string) => stdout.push(line),
@@ -336,6 +340,53 @@ for (const unreadable of [false, true]) {
     });
   }
 }
+
+for (const explicit of [false, true]) {
+  test(`interactive startup sweeps before empty/closed selection (explicit=${explicit})`, async (t) => {
+    const c = await setupCleanup(t);
+    const f = await harness(t);
+    const before = process.listeners("SIGTERM");
+    const code = await main(
+      ["--interactive", ...(explicit ? ["--issue", "9"] : [])],
+      {
+        ...f.options,
+        runner: async (_command, args) => ({
+          code: 0,
+          stderr: "",
+          stdout: JSON.stringify(
+            args[0] === "issue" ? { ...cliIssue, state: "CLOSED" } : [[]],
+          ),
+        }),
+        sweepMergedIssues: async (input) => {
+          assert.equal(input.repoRoot, f.root);
+          assert.equal(input.signal?.aborted, false);
+          await sweepMergedIssues(c.services);
+        },
+        startConsole: async () =>
+          assert.fail("console opened for empty selection"),
+      },
+    );
+    assert.equal(code, explicit ? 1 : 0);
+    assert.equal(await readFile(c.counter, "utf8"), "hook ran\n");
+    await assert.rejects(access(c.worktree));
+    assert.deepEqual(process.listeners("SIGTERM"), before);
+  });
+}
+
+test("interactive startup cancellation restores listeners without starting the console", async (t) => {
+  const f = await harness(t);
+  const before = process.listeners("SIGTERM");
+  const code = await main(["--interactive", "--issue", "9"], {
+    ...f.options,
+    sweepMergedIssues: async (input) => {
+      process.emit("SIGTERM");
+      assert.equal(input.signal?.aborted, true);
+    },
+    startConsole: async () => assert.fail("console opened after cancellation"),
+  });
+  assert.equal(code, 1);
+  assert.deepEqual(process.listeners("SIGTERM"), before);
+});
 
 test("--interactive hands the issue and real dependencies to the console", async (t) => {
   const f = await harness(t);

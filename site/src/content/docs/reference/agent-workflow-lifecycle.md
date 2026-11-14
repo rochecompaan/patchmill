@@ -56,8 +56,34 @@ questions and adds `agent-ready` before retrying. After a hard crash,
 `in-progress` label. Do not release a normal planning wait to approve it.
 
 Every attempt derives its phase from git and the host. Logs, sessions, and
-`result.json` are outputs only. There is no saved workflow checkpoint. The
-kernel never removes the permanent lock inode, the filesystem object behind the
-lock path. It removes clean issue worktrees only after an interactive run
-confirms that the implementation PR merged. Read
-[Run-once](/using-patchmill/run-once/) for the full derivation table.
+`result.json` never select a phase. A cleanup-only success receipt does not
+serve as a workflow checkpoint.
+
+## Cleanup after merge
+
+Before selection, every real run sweeps local issue branches and registered
+worktrees. This includes non-interactive runs, `--plan-only`, and interactive
+startup. A dry run performs no cleanup. The sweep can clean a closed issue even
+when normal selection finds no work or refuses that explicit issue.
+
+Under the issue OS lock, fresh host facts must prove a closed issue and a merged
+implementation PR into the base. Its head and issue-closing body must match.
+Planning merges, open PRs, closed-unmerged PRs, and wrong-target PRs never
+qualify. A confirmed interactive merge also cleans up before the run returns. If
+the operator quits before merge, the next real run's sweep handles cleanup.
+
+The optional `cleanupHook` runs with Bash from the implementation worktree
+before any workspace removal. Relative script paths resolve there without an
+executable bit. The hook still runs for a dirty worktree. After the hook, each
+dirty workspace and its branch remain, with an operator notice.
+
+A hook failure preserves all targets and the done outcome. Diagnostics enter the
+console and `<runsDir>/issue-N/cleanup.log`. Immediate cleanup also records
+diagnostics in the current run log. A matching `cleanup.json` success receipt
+prevents hook repetition during partial cleanup retries. It never authorizes
+removal without fresh host facts.
+
+The kernel never removes the permanent lock inode or its parent directory. Use
+the human-controlled cleanup skill for inspected manual recovery. It offers the
+configured hook before removal. Read [Run-once](/using-patchmill/run-once/) for
+hook guidance, receipt recovery, and the full derivation table.

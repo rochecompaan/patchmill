@@ -52,10 +52,21 @@ issue-mutation tool to unattended agents.
 
 ## Cleanup
 
-`patchmill-cleanup` inspects dirty files, unique commits, and merge state before
-requesting explicit deletion confirmation. It never removes remote branches. It
-must hold the same issue OS lock throughout cleanup and prevent competing runs.
-If it cannot establish ownership safely, it stops and asks.
+`patchmill-cleanup` inspects dirty files, unique commits, and merge state for
+the implementation workspace and any separate gated spec/plan workspaces.
+Ungated documents share the implementation workspace. The skill requests
+explicit removal confirmation and never removes remote branches.
+
+Before removal, it offers the configured `cleanupHook` from the implementation
+worktree with separate consent. Bash runs the script without an executable bit.
+If the hook fails, all targets remain. If its working directory is absent, the
+skill requires inspection rather than substituting a planning directory. After
+hook success, it inspects loss details again before confirmed removal.
+
+The skill must hold the same issue OS lock throughout the hook, inspection, and
+removal. If it cannot establish ownership safely, it stops and asks. A
+successful automatic-hook receipt does not grant manual removal or rerun
+consent.
 
 Never delete or replace the permanent issue lock or its parent directory. Empty
 or stale diagnostic JSON does not authorize cleanup. A successful

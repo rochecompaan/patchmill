@@ -38,6 +38,8 @@ import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
+import { cleanupMergedIssue } from "./merged-cleanup.ts";
+import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
 export type RunOnceOptions = {
@@ -86,6 +88,14 @@ export async function runOneIssue(
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
   const workflow = deps.workflow;
+  if (!options.dryRun) {
+    await sweepMergedIssues({
+      ...deps,
+      config,
+      report: output.stderr,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  }
   await workflow.sync(options.issue);
   const selection = await selectRunIssue({
     host,
@@ -395,6 +405,18 @@ export async function runOneIssue(
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
     if (!published) await publish();
+    if (stop.label === "done" && displayFacts?.stage === "implementation") {
+      await cleanupMergedIssue({
+        ...deps,
+        config,
+        issue: issueNumber,
+        branch: displayFacts.branch,
+        lock,
+        report: output.stderr,
+        runLogPath: join(runDir, "pi.log"),
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    }
     const publication = publicationErrors.length ? { publicationErrors } : {};
     const outcome: RunOnceOutcome =
       stop.label === "done"

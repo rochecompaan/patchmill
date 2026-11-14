@@ -121,7 +121,9 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
   ) => runOneIssue(config, { ...deps, ...overrides }, options);
   const records = async () => {
     const root = join(f.repoRoot, config.paths.runsDir, "issue-9");
-    const entries = (await fs.readdir(root)).filter((n) => n !== "lock");
+    const entries = (await fs.readdir(root, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
     assert.equal(entries.length, 1);
     const dir = join(root, entries[0]!);
     return {
@@ -157,6 +159,14 @@ export async function merge(c: Scenario, head: string) {
   });
 }
 
-export async function mergePullRequest(c: Scenario, head = branch) {
+export async function mergePullRequest(
+  c: Scenario,
+  head = branch,
+  options: { closeIssue?: boolean } = {},
+) {
   await merge(c, head);
+  if (options.closeIssue)
+    await c.mutate((state) => {
+      state.issues[0]!.state = "closed";
+    });
 }

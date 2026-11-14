@@ -56,7 +56,7 @@ for (const mode of [
     };
     const human = fakeHuman(c, {
       onWait: async () => {
-        await mergePullRequest(c);
+        await mergePullRequest(c, undefined, { closeIssue: true });
         if (mode === "dirty spec")
           await fs.writeFile(join(workspaces[0]!.path, "dirty"), "keep");
         return "continue";
@@ -90,8 +90,8 @@ for (const mode of [
         kept ? 0 : 1,
       );
     }
-    const notifications = human.calls.filter((call) =>
-      call.startsWith("notify:"),
+    const notifications = c.output.filter((call) =>
+      /Kept worktree|workspace cleanup failed/.test(call),
     );
     if (mode === "dirty spec" || mode === "remove failure") {
       assert.equal(notifications.length, 1);

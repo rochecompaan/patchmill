@@ -58,6 +58,43 @@ for (const mode of ["local", "labels"] as const) {
   }
 }
 
+test("cleanupHook accepts a script path or omission without allowing unknown keys", () => {
+  assert.equal(
+    parseConfig({ cleanupHook: "./scripts/cleanup.sh" }).cleanupHook,
+    "./scripts/cleanup.sh",
+  );
+  assert.equal(parseConfig({}).cleanupHook, undefined);
+  assert.equal(parseConfig({ cleanupHook: "" }).cleanupHook, "");
+  for (const cleanupHook of [null, false, 42, [], {}]) {
+    assert.throws(
+      () => parseConfig({ cleanupHook }),
+      new ConfigError("Invalid type for cleanupHook"),
+    );
+  }
+  assert.throws(
+    () => parseConfig({ cleanupHooks: "script.sh" }),
+    new ConfigError("Unknown config key: cleanupHooks"),
+  );
+});
+
+test("loadConfig validates the optional cleanupHook", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-hook-config-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, CONFIG_FILE),
+    JSON.stringify({ cleanupHook: "./scripts/cleanup.sh" }),
+  );
+  assert.equal((await loadConfig(root)).cleanupHook, "./scripts/cleanup.sh");
+  await writeFile(
+    join(root, CONFIG_FILE),
+    JSON.stringify({ cleanupHook: null }),
+  );
+  await assert.rejects(
+    loadConfig(root),
+    new ConfigError("Invalid type for cleanupHook"),
+  );
+});
+
 test("parseConfig fills an empty config with defaults", () => {
   assert.deepEqual(parseConfig({}), DEFAULT_CONFIG);
 });

@@ -12,6 +12,7 @@ export type LabelsConfig = {
   unsuitable: string;
 };
 export type PatchmillConfig = {
+  cleanupHook?: string;
   host: { provider: HostProviderId; login: string; trustedAuthors: string[] };
   labels: LabelsConfig;
   paths: {
@@ -61,6 +62,7 @@ export class ConfigError extends Error {}
 
 type Kind = "string" | "number" | "boolean" | "string[]" | "string|null";
 const schema: { path: string; kind: Kind }[] = [
+  { path: "cleanupHook", kind: "string" },
   { path: "host.provider", kind: "string" },
   { path: "host.login", kind: "string" },
   { path: "host.trustedAuthors", kind: "string[]" },

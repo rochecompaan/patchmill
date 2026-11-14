@@ -3,25 +3,36 @@ title: Git safety
 description: Issue worktrees, permanent locks, and host branch protection.
 ---
 
-Patchmill fetches `origin` before deriving the phase. It uses one branch and
-worktree per issue. A matching remote branch is reused. With no branch, the
-worktree starts from the base branch. Several matching issue branches stop the
+Patchmill fetches `origin` before deriving the phase. Ungated documents share
+the implementation branch and worktree. Required spec and plan gates use
+separate workspaces. A matching remote branch is reused. With no branch, the
+worktree starts from the base branch. Several implementation branches stop the
 attempt with `needs-info` rather than selecting one.
 
 `git.baseBranch: null` uses the remote default branch. Set a string to choose
 another target branch. Branch names use `agent/issue-N-<slug>`, with at most 48
 slug characters. Worktree names replace branch slashes with hyphens. The kernel
-deletes issue worktrees and local branches only after an interactive run
-confirms that the implementation PR merged. It keeps a worktree that has
-uncommitted changes.
+removes issue worktrees and local branches only after fresh host facts prove an
+implementation merge into the base and issue closure. Every real run sweeps
+local candidates before selection, including non-interactive runs. A confirmed
+interactive merge also cleans up immediately. Dry runs never clean up.
+
+The optional `cleanupHook` runs from the implementation worktree with Bash
+before any removal. After hook success, Patchmill keeps each dirty worktree and
+its branch. Hook failure keeps every target without changing done status.
+Cleanup holds the issue OS lock, preserves mismatched checkouts, and never
+removes remote branches. It also preserves the primary checkout, current
+directory, and lock parent, including through symlinks. A target containing
+another registered checkout stays too, even when Git ignores that nested
+directory.
 
 ## Ownership
 
 An OS-managed advisory lock prevents cooperating processes in one clone from
 owning the same issue. This assumes a local filesystem with working advisory
-locks. The kernel retains the handle through agent work and label cleanup.
-Across clones, the ready-to-in-progress label swap has a narrow accepted race.
-Do not treat it as a distributed lock.
+locks. The kernel retains the handle through agent work, resource cleanup,
+worktree removal, and label cleanup. Across clones, the ready-to-in-progress
+label swap has a narrow accepted race. Do not treat it as a distributed lock.
 
 The permanent `<runsDir>/issue-N/lock` file must keep its inode, the filesystem
 object behind its path. Never remove or replace the file or its parent
@@ -51,7 +62,14 @@ For independent concurrent issues, allocate separate ports, databases, and
 external services. Do not change shared configuration or Git state during active
 attempts. Keep logs and sessions local because they can contain secrets.
 
-Use the human-controlled `patchmill-cleanup` skill for worktree removal. Require
-explicit loss confirmation and ownership of the same OS lock throughout cleanup.
-Never use file deletion or diagnostic PID checks as lock recovery. See
-[Run-once](/using-patchmill/run-once/) for supported resume actions.
+Use the human-controlled `patchmill-cleanup` skill for manual worktree removal.
+It inspects implementation and optional gated planning workspaces and offers the
+configured hook first. Require explicit loss confirmation and the same OS lock
+throughout the hook and removal. Never use file removal or diagnostic PID checks
+as lock recovery.
+
+Keep `<runsDir>/issue-N/cleanup.json` and `cleanup.log` with run artifacts. The
+receipt prevents repeated successful hooks during partial cleanup retries. A
+corrupt receipt or missing hook directory requires inspection, not automatic
+receipt removal. See [Run-once](/using-patchmill/run-once/) for failure recovery
+and safe hook-script guidance.

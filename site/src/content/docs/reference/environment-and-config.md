@@ -4,26 +4,47 @@ description: Repository files, Pi environment, and local run output.
 ---
 
 `patchmill.config.json` controls the host, labels, paths, base branch, three
-skill entry points, Pi agent directory and timeout, and optional spec gate.
-Unknown keys fail by name. See the
+skill entry points, Pi agent directory and timeout, planning gates, and optional
+`cleanupHook`. Unknown keys fail by name. See the
 [complete defaults](/reference/configuration-example/).
 
 ## Files and directories
 
-| Default path                        | Purpose                                                                   |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| `patchmill.config.json`             | Shared repository configuration.                                          |
-| `.patchmill/skills/`                | Installed skills and `patchmill-skill-pack.json` with sources and hashes. |
-| `.patchmill/pi-agent/`              | Local Pi credentials, settings, and reviewer definition.                  |
-| `.worktrees/`                       | One worktree per issue branch.                                            |
-| `docs/specs/` and `docs/plans/`     | Specs and plans committed on the issue branch.                            |
-| `.patchmill/runs/issue-N/lock`      | Permanent local OS lock with diagnostic JSON.                             |
-| `.patchmill/runs/issue-N/<run-id>/` | Prompt, session logs, sessions, and diagnostic result.                    |
-| `.patchmill/runs/triage/<run-id>/`  | Triage prompt, log, and sessions.                                         |
+| Default path                           | Purpose                                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------- |
+| `patchmill.config.json`                | Shared repository configuration.                                          |
+| `.patchmill/skills/`                   | Installed skills and `patchmill-skill-pack.json` with sources and hashes. |
+| `.patchmill/pi-agent/`                 | Local Pi credentials, settings, and reviewer definition.                  |
+| `.worktrees/`                          | One worktree per issue branch.                                            |
+| `docs/specs/` and `docs/plans/`        | Specs and plans committed on the issue branch.                            |
+| `.patchmill/runs/issue-N/lock`         | Permanent local OS lock with diagnostic JSON.                             |
+| `.patchmill/runs/issue-N/cleanup.json` | Versioned hook-success receipt for partial cleanup retries.               |
+| `.patchmill/runs/issue-N/cleanup.log`  | Hook output, exit status, and cleanup diagnostics.                        |
+| `.patchmill/runs/issue-N/<run-id>/`    | Prompt, session logs, sessions, and diagnostic result.                    |
+| `.patchmill/runs/triage/<run-id>/`     | Triage prompt, log, and sessions.                                         |
 
 `init` adds local Git excludes for worktrees, runs, and the agent directory.
 Commit shared configuration and skills, not credentials or local run output.
 Never remove or replace the permanent lock file or its parent directory.
+
+## Cleanup configuration and records
+
+The optional `cleanupHook` is a string path to a Bash script. Omission means no
+hook. A non-string fails with `Invalid type for cleanupHook`. Relative script
+paths resolve from the implementation worktree, which also supplies the working
+directory. The script needs no executable bit.
+
+Every real run sweeps confirmed merged, closed issues before selection.
+Immediate interactive cleanup uses the same locked routine. The hook runs before
+removal, even for dirty worktrees. Dirty worktrees remain after the hook. Hook
+failure keeps every target and done status, with console and cleanup-log
+diagnostics.
+
+The receipt skips an already successful hook during later partial cleanup
+attempts. It never selects a phase or replaces fresh host verification. Logs and
+`result.json` cannot authorize removal. Never remove the permanent lock file or
+its parent directory. See [Run-once](/using-patchmill/run-once/) for safe
+scripts, retry rules, and inspected manual recovery.
 
 ## Pi environment
 
