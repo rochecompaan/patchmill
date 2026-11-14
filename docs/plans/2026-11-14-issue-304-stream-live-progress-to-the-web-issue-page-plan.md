@@ -398,3 +398,55 @@ new modules. Add no generic helpers or barrels.
 - **Types:** `IssueUpdate`, `IssueHeader`, `activeSince`, and the `subscribe`
   signature are the same in all tasks.
 - **Proportion:** the plan gives signatures and test assertions, not bodies.
+
+## Plan review
+
+### Fresh review receipt
+
+- Reviewer: canonical `reviewer`, fresh context, read-only, no nested agents.
+- Model: `openai-codex/gpt-6.1-sol`, high thinking.
+- Initial review: commit `0cde25c`. Scoped confirmation: commit `816ded7`.
+- Inspected source revision: `d8ffd5d248ef680c5cdcee876043a10efde4a157`.
+- Confirmed plan SHA-256 before this receipt:
+  `f2aafad243d9b6ddfb23690b5cd240cb9196b5c338d41d38e8b23aa4fd24c8e9`.
+- Confirmed spec SHA-256:
+  `6d275eaf24ebe27ffa8747923e74fd561b0b2df67bfa978a5410662b4c7d8dd5`.
+- Mockup SHA-256:
+  `6604641399ca5ddd2c30b188b83368c31bc4d744ae404b7c8c5bba257696c582`.
+
+**Survey:** the reviewer confirmed that only tests use the old `subscribe`. The
+file adapter and sample adapter are real alternatives at `RunDataSource`.
+`request.ts` applies security checks before data access, and `server.ts` cannot
+end open streams today. Interactive transcripts are copied only when a session
+ends. The feed module passes the deletion test: without it, callers must own
+polling, replay, ordering, and retention. The injected clock, epoch, and fake
+`EventSource` are real test seams.
+
+**Blockers and dispositions (all accepted and corrected):**
+
+1. A run-ending header closed the stream before a thread update from the same
+   projection. Now thread updates come first, and the controller fetches the
+   issue once after the end.
+2. `viewState.restore()` scrolls the rail into view on every render, so live
+   renders moved the reader. Now same-issue renders keep the scroll position,
+   and the browser check asserts it.
+3. Issue ownership was treated as ownership of the latest attempt. Now
+   `activeRunId` requires a held lock and an unfinished attempt that started at
+   or after the lock.
+
+Optional notes applied: successive test epochs, sample issue 298, an unsubscribe
+while a fingerprint is pending, and the corrected Pi persistence claim.
+
+**Confirmation:** all three blockers resolved, no new blockers. The reviewer
+concluded that the plan is ready for implementation. This is not human approval.
+
+**Inspection limits:** no product tests, browser checks, or real runs were
+executed during review.
+
+### Planning validation
+
+The planner opened the mockup from disk in headless Chromium with network access
+blocked, at 1280px and 390px in the dark theme. Streamed entries appeared, the
+elapsed time counted, and there was no horizontal overflow. Theme and state
+toggles were not exercised in that check. Markdown lint and Prettier pass on the
+planning documents. No dependency or skill-pack files changed.
