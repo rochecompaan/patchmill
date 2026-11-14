@@ -14,6 +14,8 @@ function freeze(value: unknown): void {
 export function createSampleRunDataSource(): RunDataSource {
   const issues = sampleBoard.map((summary) => ({
     ...summary,
+    live: summary.status === "working",
+    documentLinks: [],
     artifacts: (sampleArtifacts[String(summary.number)] ?? []).map(
       ({ id, kind, title }) => ({ id, kind, title }),
     ),

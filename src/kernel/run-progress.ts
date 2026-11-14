@@ -16,7 +16,7 @@ export type RunProgress = {
   startedAt: string;
   updatedAt: string;
   state: RunState;
-  phase: RunSnapshot["phase"] | null;
+  phase: NonNullable<RunSnapshot["phase"]> | null;
   session: number;
   interactive: boolean;
   facts: {
