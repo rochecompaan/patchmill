@@ -30,12 +30,12 @@ extra configuration hooks.
 
 ## Installed pack
 
-The ten Patchmill skills are `patchmill-issue-triage`, `patchmill-planning`,
-`patchmill-implementation`, `patchmill-visual-evidence`,
-`patchmill-frontend-review`, `frontend-design`, `module-size`, `patchmill-plan`,
-`patchmill-label`, and `patchmill-cleanup`. Patchmill vendors `frontend-design`
-from Anthropic and the frontend review rules from Vercel at pinned commits. See
-`THIRD_PARTY_NOTICES.md` for their sources and licenses.
+The eleven bundled Patchmill skills are `patchmill-issue-triage`,
+`patchmill-planning`, `patchmill-implementation`, `patchmill-visual-evidence`,
+`patchmill-frontend-review`, `frontend-design`, `show-me`, `module-size`,
+`patchmill-plan`, `patchmill-label`, and `patchmill-cleanup`. Patchmill vendors
+`frontend-design` from Anthropic and the frontend review rules from Vercel at
+pinned commits. See `THIRD_PARTY_NOTICES.md` for their sources and licenses.
 
 The thirteen selected Superpowers skills are `brainstorming`, `writing-plans`,
 `executing-plans`, `subagent-driven-development`, `test-driven-development`,
@@ -52,6 +52,14 @@ complete selected directories, including domain formats, `DEEPENING.md`,
 `DESIGN-IT-TWICE.md`, and a root MIT license copy for each skill. The manifest
 records `sources.mattPocock` and hashes every resource. The two upstream skills
 remain unmodified. No planning session downloads them.
+
+HumanLayer supplies `show-me` at commit
+`4d69d20f6e9b57b4fcf0d501ccfb1be961f0f329`. Patchmill vendors the complete
+`plugins/show-me/skills/show-me/` tree and root MIT license. The installer
+copies `SKILL.md`, `agents/openai.yaml`, and `LICENSE` to the installed sibling
+and records their hashes. The upstream files remain verbatim. Planning
+explicitly reads the skill because upstream disables implicit model invocation.
+No runtime download or additional dependency is necessary.
 
 ## Planning and implementation
 
@@ -120,6 +128,42 @@ deferred Minor findings, validation results, and the reviewer's callouts.
 `pi-subagents` through runtime `-e` arguments, not copied extension files. The
 kernel does not observe child agents. Triage passes no explicit extension paths.
 Pi can still load resources from its own environment and configuration.
+
+## Conceptual planning visualizations
+
+Both planning entry points apply the installed show-me skill to every new or
+materially revised spec and plan before review. Each document gets one
+`## Visual explanation` section. Show-me conveys concepts, relationships,
+behavior, or execution order. UI mockups separately depict the proposed
+interface. One does not replace the other.
+
+Use the smallest useful format: inline Mermaid, a tree, pseudocode, a diff, or
+focused HTML. HTML is not mandatory. Store HTML beside the actual specification,
+including visuals that explain the plan. Name it after the owning Markdown file,
+replacing `.md` with `-show-me.html`.
+
+For a spec `docs/specs/topic-design.md`, use
+`docs/specs/topic-design-show-me.html`. For a plan `docs/plans/topic-plan.md`,
+use `docs/specs/topic-plan-show-me.html`. The plan links
+`../specs/topic-plan-show-me.html`. Custom directories use the actual spec
+location and links relative to the owning document.
+
+Link HTML from `## Visual explanation` and the document's single
+`## Companion artifacts` section. Embed styles and scripts so the file opens
+from disk without network assets, an installation, a build, or a local server.
+GitHub shows HTML source, not a rendered page. Committed, linked HTML is
+sufficient. Hosting and image previews are not required.
+
+If HTML generation or validation fails, use a meaningful inline diagram or text
+sketch. Record the reason and remove absent-file links. Missing show-me or its
+license still requires guidance. Prose-only output does not satisfy the visual
+requirement. Fresh Plan review includes the inline explanation and linked HTML.
+
+Keep existing gates and publication rules. Do not backfill unchanged approved
+documents or edit an approved spec merely to link a plan visual. Refresh
+explanations after substantive revisions. Companions travel with the owning
+document's authorized commit and PR. The local helper never gains publication
+authority. No issue upload, extra kernel phase, or result field is necessary.
 
 ## Frontend design and review
 

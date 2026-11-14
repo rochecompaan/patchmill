@@ -47,6 +47,64 @@ prompt injection.
 The smoke install uses an isolated home without GitHub credentials. Its expected
 host-readiness warning does not prevent skill installation or integrity checks.
 
+## Planning scenarios
+
+The implementer explicitly read the installed show-me skill and applied it to
+temporary copies of this issue's specification and plan. These are direct
+scenario exercises, not a separate model reliability benchmark. Approved source
+documents remained byte-identical.
+
+| Scenario                           | Observed result                                                                                                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A: Simple concept                  | A text call tree explains installation before planning use. No HTML file is necessary.                                                                                                                                                |
+| B: Dense concept                   | A focused HTML concept map separates spec ownership, plan ownership, and the unchanged publication path. A second HTML explains task dependencies. Neither depicts a product UI.                                                      |
+| C: Custom paths                    | Both HTML files live in `design/specs/`. The plan in `delivery/plans/` links `../../design/specs/topic-plan-show-me.html`. Contextual and companion links resolve inside the temporary root. Each document has one companion section. |
+| D: Stages and revisions            | Walkthrough preserves spec-only and plan-only limits and refreshes revised explanations before review. No approved spec is rewritten to add a plan visual. Existing gate tests pass.                                                  |
+| E: HTML fallback                   | A rejected network-dependent HTML attempt becomes an inline text tree. The replacement records the reason and has no HTML link. All-format failure requires guidance, not prose-only success.                                         |
+| F: Missing prerequisites and links | A deliberately absent companion is detected. The wrapper requires both skill and license and prohibits download substitution. Installer/update tests exercise missing resources and protection.                                       |
+| G: Publication failure             | Read-only walkthrough preserves local companions and rejects success after failed publication. Existing rejected-push, branch-lock, and conflicting-branch tests pass. No real host mutation is necessary.                            |
+
+Scenario D's stage/revision decisions and scenarios F/G's instruction responses
+are walkthrough evidence. They do not prove automatic runtime enforcement. The
+kernel still checks its existing primary-document and publication facts.
+
+### Offline HTML inspection
+
+The temporary concept map and task-order HTML opened through direct `file:` URLs
+in installed Chromium at widths 390 and 1440. CDP disabled network access before
+reload. Both files showed their issue number, title, and owning document name.
+No horizontal overflow, HTTP request, or JavaScript exception occurred. The
+implementer inspected desktop and mobile screenshots. The examples are static,
+so no interactive keyboard control needs verification.
+
+The generated HTML identities are:
+
+- Concept map:
+  `4120d4a7e8cd0460dbb0abba08fe7d3c57cc38841beef276a90f58ab10ec5242`.
+- Task order:
+  `ed0259d68f479516edb12822f155b950eafaff8d387eb20425347ab45938a75a`.
+
+These temporary examples do not backfill the approved documents or become
+product UI artifacts.
+
+## Final integration
+
+- `npm run check:types`: passed.
+- Final `npm test`: 1225 passed, zero failures.
+- Final `npm run lint`: passed.
+- Final `node scripts/smoke-packed-artifact.mjs`: passed.
+- Direct integrity verification: every managed resource matches its manifest
+  hash. Changed source/installed pairs match, including the authorized cleanup
+  synchronization. Upstream bytes remain unchanged after the commit hook.
+- Focused installation, update, discovery, naming, gate, and publication suites:
+  50 passed, zero failures.
+- The approved specification and plan retain their original file hashes.
+- Source and installed planning instructions use the same show-me contract.
+- No dependency manifest or lockfile changes are part of the delivery.
+- Frontend review does not apply. This delivery changes documentation and skill
+  distribution, not browser-visible product behavior. The temporary HTML checks
+  verify document portability only.
+
 ## Rulings
 
 ### Existing generated cleanup drift
@@ -64,7 +122,8 @@ The cost if wrong is unrelated generated diff noise, not a new cleanup policy.
 
 ## Limits
 
-Automated distribution checks do not prove that a model always obeys planning
-instructions. Scenario evidence and final integration results follow in the
-implementation record. No npm dependency changed. The install reported existing
-dependency audit advisories, which this delivery does not alter.
+Automated distribution checks and the direct scenarios do not prove that a model
+always obeys planning instructions. Publication and stage requirements remain
+skill-owned except for the kernel's existing checks. No npm dependency changed.
+The install reported existing dependency audit advisories, which this delivery
+does not alter.

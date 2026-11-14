@@ -46,6 +46,13 @@ specification PR is not merged, revise the spec and justified domain companions,
 then stop before the plan. An open plan PR also blocks implementation. Do not
 publish or merge from this interactive skill.
 
+Apply the sibling planning skill's Conceptual visualizations guidance to every
+new or materially revised document before review. Explicitly read the installed
+`show-me/SKILL.md` and require its `LICENSE`. Use inline explanations or linked
+HTML in the actual spec directory. Keep conceptual visuals separate from UI
+mockups. Preserve the shared naming, relative-link, portability, fallback, and
+stage rules. This adds local documents, not publication authority.
+
 ## Domain analysis and Plan review
 
 Apply the sibling planning skill's domain and architecture analysis while
@@ -66,9 +73,10 @@ requirements do not authorize kernel publication steps.
 
 ## Handoff
 
-Report the issue, branch, worktree, specification and plan paths, and any
-incomplete state. State that no implementation, publication, label change, or
-cleanup occurred. For kernel planning and publication, offer
-`patchmill run-once --issue N --plan-only` as a separate operator action. Do not
-execute it from this skill or suggest the removed upload workflow. After
-interruption, inspect existing artifacts and workspace state before resuming.
+Report the issue, branch, worktree, specification and plan paths, linked HTML
+paths when present, and any incomplete state. State that no implementation,
+publication, label change, or cleanup occurred. For kernel planning and
+publication, offer `patchmill run-once --issue N --plan-only` as a separate
+operator action. Do not execute it from this skill or suggest the removed upload
+workflow. After interruption, inspect existing artifacts and workspace state
+before resuming.

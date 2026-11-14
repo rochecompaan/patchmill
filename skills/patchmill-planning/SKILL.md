@@ -23,8 +23,9 @@ inline review comments too.
 
 Read `../brainstorming/SKILL.md` for specification work. Read
 `../writing-plans/SKILL.md` for implementation plans. Read
-`../simple-english/SKILL.md` for document prose. Read
-`../frontend-design/SKILL.md` when frontend design applies. Follow those
+`../simple-english/SKILL.md` for document prose. Read `../show-me/SKILL.md` for
+conceptual visual explanations and require its sibling `../show-me/LICENSE`.
+Read `../frontend-design/SKILL.md` when frontend design applies. Follow those
 workflows within the envelope boundaries below. Use the installed siblings of
 this configured entry point, not global skills or runtime downloads. If a
 required skill, supporting resource, or reviewer capability is missing, stop
@@ -141,6 +142,80 @@ Forgejo, use
 Do not add `--draft` or a `WIP:` title. Put the artifact paths, pull request
 URL, and merge requirement in the final summary.
 
+## Conceptual visualizations
+
+After substantive drafting, explicitly apply the installed show-me skill to each
+new or materially revised specification and plan. Do this before self-review,
+fresh Plan review, and publication. Upstream disables implicit model invocation.
+Do not rely on automatic suggestions, download a substitute, or start a nested
+agent to apply the skill.
+
+Add one `## Visual explanation` section to each document. Choose the smallest
+useful explanation: Mermaid for relationships or flow, trees for responsibility
+or order, pseudocode or diffs for behavior, or focused HTML for dense concepts.
+Explain the key decisions, not every paragraph. Spec visuals emphasize concepts
+and behavior. Plan visuals emphasize task order, dependencies, and ownership.
+HTML is not mandatory. Conceptual explanations and UI mockups serve different
+purposes. Do not omit show-me output merely because a mockup exists.
+
+Follow the envelope's stage limits. At stage `spec`, explain only the spec. At
+stage `plan`, explain the new or revised plan and any missing spec written in
+that stage. At stage `implementation`, explain each missing or materially
+revised planning document. Do not backfill unchanged approved documents or edit
+an approved spec to link a plan visual. Refresh the affected explanation after
+substantive revisions. Material plan changes require renewed review.
+
+### HTML companions
+
+Store all show-me HTML in the actual specification's directory, including HTML
+that explains the plan. Use the owning document's basename without `.md`, then
+append `-show-me.html`. Derive paths from the exact envelope paths, not fixed
+`docs/` locations. Replace the same companion on revision.
+
+For a spec `docs/specs/YYYY-MM-DD-issue-N-topic-design.md`, its HTML is
+`docs/specs/YYYY-MM-DD-issue-N-topic-design-show-me.html`. A plan at
+`docs/plans/YYYY-MM-DD-issue-N-topic-plan.md` produces
+`docs/specs/YYYY-MM-DD-issue-N-topic-plan-show-me.html`.
+
+In `## Visual explanation`, give one sentence of context and a relative link.
+List the repository path and a resolving relative link in the owning document's
+single `## Companion artifacts` section. Reuse any section that lists mockups or
+domain documents. Resolve links from the owning document's directory. The
+example plan links `../specs/YYYY-MM-DD-issue-N-topic-plan-show-me.html`. Verify
+that every target exists and stays within the worktree.
+
+Include the title, issue number, and owning document name in HTML. Avoid
+generated timestamps and circular commit-hash updates. Embed styles and any
+scripts. The file must open directly from disk without network assets, CDNs,
+installation, a build, or a local server. Use readable semantic content and
+mobile/desktop layouts. If interaction helps, provide keyboard access and
+visible focus. Static diagrams are sufficient when interaction adds no value.
+
+Do not auto-open a browser or start a server during unattended planning, despite
+upstream's `open` example. Validate the file and links locally. Opening the file
+is optional in interactive planning. This document work does not itself require
+frontend design or an application mockup.
+
+### Fallback and publication
+
+If HTML generation or validation fails, use an inline Mermaid diagram or text
+sketch. Record the reason briefly and remove absent-file links. If no visual
+format succeeds, stop through the existing guidance channel. Prose alone does
+not satisfy the visual requirement. Missing show-me or its license remains a
+missing prerequisite, not permission to skip visualization.
+
+Review the explanation against its document. Supply the plan's inline output and
+linked companions to fresh Plan review. Commit and publish HTML with its owning
+document through the same authorized branch and PR. Keep existing gates,
+local-helper publication limits, and interactive approval rules. Committed,
+linked HTML is sufficient. GitHub shows its source, not a rendered page. Do not
+add hosting, image previews, uploads, issue comments, or PR-body mutations.
+
+If commit, push, or required PR publication fails, preserve the document and
+companion and report the existing execution failure. Never claim publication or
+fall back to an issue upload. Include HTML paths in the final summary when
+present, without changing its result schema.
+
 ## Frontend design
 
 While you brainstorm the specification, decide whether frontend design applies.
@@ -191,12 +266,13 @@ missing, unlinked, a fragment, or needs network access, fix it before you return
 ## Implementation plan
 
 Use writing-plans to write the plan at the exact Plan path. Base it on the
-specification, its linked mockups, and resolved review comments. List the spec
-and each mockup as plan inputs. For kernel runs, record inline execution through
-the sibling `executing-plans` skill. Fresh Plan review is required even for
-inline execution. If an interactive operator authorizes per-task implementation
-review, use sibling `subagent-driven-development` with the canonical `reviewer`
-agent. Never require the disabled `code-reviewer` agent.
+specification, its linked mockups, conceptual explanations, and resolved review
+comments. List the spec, each mockup, and linked visualizations as plan inputs.
+For kernel runs, record inline execution through the sibling `executing-plans`
+skill. Fresh Plan review is required even for inline execution. If an
+interactive operator authorizes per-task implementation review, use sibling
+`subagent-driven-development` with the canonical `reviewer` agent. Never require
+the disabled `code-reviewer` agent.
 
 Apply the Testing Value Gate before adding automated tests to the plan. Tests
 must prove meaningful behavior and catch a regression worth maintaining. Use
@@ -215,14 +291,15 @@ fresh-context canonical `reviewer`. This includes ungated plans written at stage
 Spec-only work does not create an implementation plan to review.
 
 Build the task from the full `plan-review.md` in this skill directory. Supply
-exact repository/worktree, issue requirements, specification, plan, project
-instructions, inspected base revision, and installed guidance paths. Include
-resolved domain decisions as claims for independent verification. Source
-locations are discovery hints, not an authoritative architecture summary. Do not
-pass the planner's conversation history. Select the most capable available
-review model and pass its model and thinking settings explicitly. Await the
-complete report before continuing. Keep the reviewer read-only and prohibit
-nested agents or optional upstream workflows.
+exact repository/worktree, issue requirements, specification, plan, their inline
+explanations and linked visualizations, project instructions, inspected base
+revision, and installed guidance paths. Include resolved domain decisions as
+claims for independent verification. Source locations are discovery hints, not
+an authoritative architecture summary. Do not pass the planner's conversation
+history. Select the most capable available review model and pass its model and
+thinking settings explicitly. Await the complete report before continuing. Keep
+the reviewer read-only and prohibit nested agents or optional upstream
+workflows.
 
 The reviewer must independently inspect relevant source and tests. Reading only
 the specification, plan, diff, or planner summary is insufficient. Record the
