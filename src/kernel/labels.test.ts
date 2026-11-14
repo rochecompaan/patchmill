@@ -23,6 +23,7 @@ function fakeHost(existing: LabelDefinition[]) {
     checkCli: unexpected,
     repository: unexpected,
     listOpenIssues: unexpected,
+    listOpenPullRequests: unexpected,
     viewIssue: unexpected,
     listIssueDependencies: unexpected,
     addIssueDependency: unexpected,

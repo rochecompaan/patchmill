@@ -44,6 +44,7 @@ export interface Host {
   checkCli(): Promise<HostCliCheck>;
   repository(): Promise<Repository>;
   listOpenIssues(): Promise<Issue[]>; // comments may be empty
+  listOpenPullRequests(): Promise<PullRequest[]>;
   listIssuesSince(since?: string): Promise<Issue[]>;
   listCommentsSince(since?: string): Promise<SyncedComment[]>;
   viewIssue(n: number): Promise<Issue>; // comments populated

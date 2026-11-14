@@ -6,6 +6,46 @@ import { CommandFailedError } from "../process/command.ts";
 import { createHostForProvider } from "./factory.ts";
 import { ForgejoHost } from "./forgejo-tea.ts";
 
+test("open PRs paginate and preserve fork, draft, and target facts", async () => {
+  const raw = (number: number) => ({
+    number,
+    html_url: `https://host/owner/repo/pulls/${number}`,
+    state: "open",
+    merged: false,
+    draft: true,
+    title: "Change",
+    body: null,
+    head: { ref: "agent/issue-9-test", repo: { full_name: "fork/repo" } },
+    base: { ref: "release" },
+  });
+  const runner = recordingRunner([
+    { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },
+    {
+      match: /pulls\?state=open&page=1&limit=50/,
+      result: {
+        stdout: JSON.stringify(
+          Array.from({ length: 50 }, (_, i) => raw(i + 1)),
+        ),
+      },
+    },
+    {
+      match: /pulls\?state=open&page=2&limit=50/,
+      result: {
+        stdout: JSON.stringify([
+          { ...raw(51), head: { ref: "deleted", repo: null } },
+        ]),
+      },
+    },
+  ]);
+  const host = new ForgejoHost({ runner, repoRoot: "/repo", login: "work" });
+  const prs = await host.listOpenPullRequests();
+  assert.equal(prs.length, 51);
+  assert.equal(prs[0]?.headRepository, "fork/repo");
+  assert.equal(prs[0]?.baseBranch, "release");
+  assert.equal(prs[0]?.draft, true);
+  assert.equal(prs[50]?.headRepository, null);
+});
+
 const target = { owner: "owner", repo: "repo", slug: "owner/repo" };
 const label = { name: "bug", color: "ff0000", description: "Broken" };
 const rawIssue = {

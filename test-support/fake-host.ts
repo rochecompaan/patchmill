@@ -187,6 +187,12 @@ export class FakeHost implements Host {
     );
   }
 
+  async listOpenPullRequests() {
+    return this.call("listOpenPullRequests", (state) =>
+      state.pullRequests.filter((pr) => pr.state === "open"),
+    );
+  }
+
   async listPullRequests(branch: string) {
     return this.call(`listPullRequests:${branch}`, (state) =>
       state.pullRequests.filter((pr) => pr.headBranch === branch),

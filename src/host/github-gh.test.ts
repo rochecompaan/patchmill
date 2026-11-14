@@ -5,6 +5,46 @@ import { CommandFailedError } from "../process/command.ts";
 import { createHostForProvider } from "./factory.ts";
 import { GitHubHost } from "./github-gh.ts";
 
+test("open PRs include every host page without losing head identity", async () => {
+  const raw = (number: number) => ({
+    number,
+    html_url: `https://github.com/owner/repo/pull/${number}`,
+    state: "open",
+    draft: true,
+    body: null,
+    head: { ref: "agent/issue-9-test", repo: { full_name: "fork/repo" } },
+    base: { ref: "release" },
+  });
+  const runner = recordingRunner([
+    {
+      match: /gh api --paginate --slurp/,
+      result: {
+        stdout: JSON.stringify([
+          [raw(42)],
+          [{ ...raw(43), head: { ref: "deleted", repo: null } }],
+        ]),
+      },
+    },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  const prs = await host.listOpenPullRequests();
+  assert.deepEqual(
+    prs.map((pr) => pr.number),
+    [42, 43],
+  );
+  assert.equal(prs[0]?.headRepository, "fork/repo");
+  assert.equal(prs[0]?.baseBranch, "release");
+  assert.equal(prs[0]?.draft, true);
+  assert.equal(prs[1]?.headRepository, null);
+  assert.deepEqual(runner.calls[0], [
+    "gh",
+    "api",
+    "--paginate",
+    "--slurp",
+    "repos/{owner}/{repo}/pulls?state=open&per_page=100",
+  ]);
+});
+
 const fork = {
   number: 1,
   url: "https://example/1",
