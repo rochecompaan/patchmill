@@ -121,4 +121,39 @@ model compliance. Their fixture has no Git history or real issue host. The
 architecture and narrow-envelope outputs were returned for runtime persistence
 rather than direct file editing. No real publication was exercised. The existing
 runtime suites cover launch, provisioning, and interactive contracts separately.
-Final delivery checks follow below.
+
+## Final delivered-state checks
+
+The following checks ran after the planning policy and glossary changes:
+
+| Command or probe                                                                               | Result                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test`                                                                                     | 1074 passed, zero failures, skips, or cancellations.                                                                                          |
+| `npm run lint`                                                                                 | Formatting, TypeScript lint, and Markdown lint passed. Markdown covered 278 files.                                                            |
+| `npm run build`                                                                                | TypeScript application build passed.                                                                                                          |
+| Targeted Run-once, provisioning, supervisor, interactive, worker-launcher, and discovery tests | 89 passed with zero failures.                                                                                                                 |
+| `npm pack --dry-run --json`                                                                    | Verified the wrapper, review prompt, shrinkwrap, and provenance in the package inventory.                                                     |
+| `node scripts/smoke-packed-artifact.mjs`                                                       | Clean npm installation and actual `init` installed both complete design trees, licenses, hashes, and version `1.3.2`.                         |
+| `nix build --print-build-logs .#patchmill`                                                     | Passed the build, full test phase, and installed-command checks.                                                                              |
+| Nix-installed `installSkills` probe                                                            | Verified all ten design resource/license files, all managed metadata, and unchanged repeat installation. The new review prompt was installed. |
+| Final dependency/manifest audit and `skills update`                                            | Both lock references and integrity values agree. All 80 managed hashes match. Update reports no changes.                                      |
+
+The npm smoke resolved the dependency under its isolated application's
+`node_modules/mattpocock-skills`, without using the checkout's dependency path.
+The Nix probe imported the packaged TypeScript installation module and supplied
+these actual package locations:
+
+- Application:
+  `/nix/store/fmcl0chlxqz3la3x3ps5xyxvfbg4vjxz-patchmill-1.0.0/share/patchmill`.
+- Dependency:
+  `/nix/store/fmcl0chlxqz3la3x3ps5xyxvfbg4vjxz-patchmill-1.0.0/lib/node_modules/patchmill/node_modules/mattpocock-skills`.
+
+The probe used a temporary destination and compared copied bytes, license bytes,
+hashes, and the actual source version. It removed its temporary output. These
+store paths identify the tested policy/source state before this results section
+was appended. No unavailable build or required model scenario remains.
+
+Full local command logs remain in this implementation plan's ignored execution
+workspace. The committed record preserves results, scenario identities, artifact
+hashes, scope, and limitations without including credentials or raw session
+transcripts.
