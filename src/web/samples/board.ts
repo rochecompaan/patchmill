@@ -1,5 +1,8 @@
 import type { IssueSummary } from "../api-types.ts";
-export const sampleBoard: readonly Omit<IssueSummary, "artifacts">[] = [
+export const sampleBoard: readonly Omit<
+  IssueSummary,
+  "artifacts" | "live" | "documentLinks"
+>[] = [
   {
     number: 298,
     title: "Show queued issues in patchmill status",

@@ -321,6 +321,11 @@ export class ForgejoHost implements Host, RepositorySetupHost {
   async pushRepository(): Promise<string> {
     return originRepository(this.runner, this.repoRoot);
   }
+  async listOpenPullRequests(): Promise<PullRequest[]> {
+    return (
+      await this.pages<RawPull>("/repos/{owner}/{repo}/pulls?state=open")
+    ).map(mapPull);
+  }
   async listPullRequests(branch: string): Promise<PullRequest[]> {
     return (await this.pages<RawPull>("/repos/{owner}/{repo}/pulls?state=all"))
       .filter((raw) => raw.head.ref === branch)

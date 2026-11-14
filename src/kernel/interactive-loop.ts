@@ -23,9 +23,9 @@ import { planningGateComment } from "./comments.ts";
 export async function continueGate(
   facts: Facts,
   human?: HumanChannel,
-  onWait?: () => void,
+  onWait?: () => void | Promise<void>,
 ): Promise<boolean> {
-  if (human) onWait?.();
+  if (human) await onWait?.();
   return (
     !!human &&
     (await human.awaitContinue({
@@ -209,7 +209,7 @@ export async function workerGuidance(
   run: PhaseRun,
   verified: Outcome,
   deps: Pick<RunOnceDeps, "human">,
-  onBlocked: () => void,
+  onBlocked: () => void | Promise<void>,
 ): Promise<string | undefined> {
   const { human } = deps;
   if (
@@ -222,7 +222,7 @@ export async function workerGuidance(
     run.session.timedOut
   )
     return undefined;
-  onBlocked();
+  await onBlocked();
   const answer = await human.awaitGuidance(run.result.result.summary);
   if (answer.kind === "quit") return undefined;
   return answer.text;

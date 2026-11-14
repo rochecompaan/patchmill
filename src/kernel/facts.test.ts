@@ -42,6 +42,7 @@ async function setup(t: TestContext) {
   const host: Host = {
     checkCli: unexpected,
     listOpenIssues: unexpected,
+    listOpenPullRequests: unexpected,
     viewIssue: unexpected,
     listIssueDependencies: unexpected,
     addIssueDependency: unexpected,

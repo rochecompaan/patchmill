@@ -11,6 +11,10 @@ export type RunState =
   | "review-wait"
   | "blocked"
   | "ended";
+export type ObservedRunOutcome = {
+  status: "completed" | "stopped";
+  label: "done" | "inProgress" | "needsInfo";
+};
 export type RunSnapshot = {
   issue: number;
   runId: string;
@@ -22,6 +26,7 @@ export type RunSnapshot = {
   facts?: Facts;
   usage?: PiUsage;
   summary?: string;
+  outcome?: ObservedRunOutcome;
 };
 
 /** Write-only progress projection; never drives the run's decisions. */
@@ -29,27 +34,38 @@ export function runSnapshot(
   identity: Pick<RunSnapshot, "issue" | "runId" | "runDir" | "startedAt">,
   observe: ((snapshot: RunSnapshot) => void) | undefined,
   report: (line: string) => void,
+  persist?: (snapshot: RunSnapshot) => Promise<void>,
 ) {
   let current: RunSnapshot = { ...identity, state: "deriving", session: 0 };
-  const emit = (update: Partial<RunSnapshot>) => {
+  const warning = (kind: string, error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    report(`Run snapshot ${kind} failed: ${message.replace(/[\r\n]+/g, " ")}`);
+  };
+  const save = async () => {
+    try {
+      await persist?.(current);
+    } catch (error) {
+      warning("persistence", error);
+    }
+  };
+  const emit = async (update: Partial<RunSnapshot>) => {
     current = { ...current, ...update };
+    await save();
     try {
       observe?.(current);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      report(
-        `Run snapshot observer failed: ${message.replace(/[\r\n]+/g, " ")}`,
-      );
+      warning("observer", error);
     }
   };
   return {
-    deriving() {
+    async deriving() {
       current = { ...current };
       delete current.phase;
-      emit({ state: "deriving" });
+      await emit({ state: "deriving" });
     },
-    facts: (facts: Facts) => {
+    async facts(facts: Facts) {
       current = { ...current, facts };
+      await save();
     },
     phase: (phase: Phase, session: number) =>
       emit({ state: phase, phase, session }),
@@ -58,8 +74,9 @@ export function runSnapshot(
       const usage = await sumSessionUsage(join(identity.runDir, "sessions"));
       current = { ...current };
       delete current.usage;
-      emit(usage ? { usage } : {});
+      await emit(usage ? { usage } : {});
     },
-    ended: (summary: string) => emit({ state: "ended", summary }),
+    ended: (summary: string, outcome: ObservedRunOutcome) =>
+      emit({ state: "ended", summary, outcome }),
   };
 }

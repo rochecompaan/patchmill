@@ -17,6 +17,7 @@ import type {
   SyncedComment,
 } from "./types.ts";
 import { originRepository } from "./origin.ts";
+import { parseGitHubOpenPullRequests } from "./github-open-pulls.ts";
 
 type RawIssue = Omit<Issue, "labels" | "author" | "comments" | "state"> & {
   labels: { name: string }[];
@@ -326,6 +327,15 @@ export class GitHubHost implements Host, RepositorySetupHost {
   }
   async pushRepository(): Promise<string> {
     return originRepository(this.runner, this.repoRoot);
+  }
+  async listOpenPullRequests(): Promise<PullRequest[]> {
+    const result = await this.ghOk([
+      "api",
+      "--paginate",
+      "--slurp",
+      "repos/{owner}/{repo}/pulls?state=open&per_page=100",
+    ]);
+    return parseGitHubOpenPullRequests(result.stdout);
   }
   async listPullRequests(branch: string): Promise<PullRequest[]> {
     // --head cannot name a fork, so same-named branches from every fork appear.

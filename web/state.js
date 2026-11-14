@@ -91,6 +91,16 @@ export function parseRoute(hash) {
   };
 }
 
+/** @param {IssueSummary} issue @returns {readonly Marker[]} */
+export function boardMarkers(issue) {
+  /** @type {Marker[]} */ const markers = [];
+  if (issue.live)
+    markers.push({ className: "mk mk-live", label: "Live", dot: true });
+  const status = statuses[issue.status].marker;
+  if (status && status.label !== "Live") markers.push(status);
+  return markers;
+}
+
 /** @param {IssueSummary} issue @returns {Presentation} */
 export function presentationFor(issue) {
   const status = statuses[issue.status];

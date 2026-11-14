@@ -49,7 +49,14 @@ export interface ArtifactLink {
   readonly title: string;
 }
 
+export interface DocumentLink {
+  readonly kind: "spec" | "plan";
+  readonly url: string;
+}
+
 export interface IssueSummary {
+  readonly live: boolean;
+  readonly documentLinks: readonly DocumentLink[];
   readonly number: number;
   readonly title: string;
   readonly url: string;

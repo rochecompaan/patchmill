@@ -1,9 +1,9 @@
 import { el, icon, externalLink } from "./dom.js";
-import { presentationFor } from "./state.js";
+import { presentationFor, boardMarkers } from "./state.js";
 /** @typedef {import('../src/web/api-types.ts').BoardResponse} BoardResponse */
 const columns = [
-  ["triage", "Triage", "No workflow label, or needs-info"],
-  ["ready", "Ready", "agent-ready"],
+  ["triage", "Triage", "Needs triage or more information"],
+  ["ready", "Ready", "Ready for an agent"],
   ["planning", "Planning", "Brainstorm, spec or plan in progress"],
   ["review", "Planning review", "Spec or plan pull request open"],
   ["implementing", "Implementing", "Implementation step running"],
@@ -13,11 +13,15 @@ const columns = [
 /** @param {Document} doc @param {import('../src/web/api-types.ts').IssueSummary} issue */
 function card(doc, issue) {
   const p = presentationFor(issue);
-  const node = el(
-    doc,
-    "article",
-    "card" + (p.cardClass ? " " + p.cardClass : ""),
-  );
+  const cardClass =
+    issue.status === "blocked"
+      ? "is-blocked"
+      : issue.live
+        ? "is-live"
+        : p.cardClass === "is-live"
+          ? ""
+          : p.cardClass;
+  const node = el(doc, "article", "card" + (cardClass ? " " + cardClass : ""));
   const main = el(doc, "a", "card-main");
   main.href = "#/issue/" + issue.number;
   main.append(
@@ -30,10 +34,10 @@ function card(doc, issue) {
   if (issue.blockedReason)
     node.append(el(doc, "div", "card-error", "− " + issue.blockedReason));
   const markers = el(doc, "div", "card-row");
-  if (p.marker) {
-    const marker = el(doc, "span", p.marker.className);
-    if (p.marker.dot) marker.append(el(doc, "i"));
-    marker.append(doc.createTextNode(p.marker.label));
+  for (const entry of boardMarkers(issue)) {
+    const marker = el(doc, "span", entry.className);
+    if (entry.dot) marker.append(el(doc, "i"));
+    marker.append(doc.createTextNode(entry.label));
     markers.append(marker);
   }
   if (issue.terminal) markers.append(el(doc, "span", "mk mk-term", "Terminal"));
@@ -61,6 +65,10 @@ function card(doc, issue) {
     );
   if (labels.childElementCount) node.append(labels);
   const links = el(doc, "div", "card-row card-links");
+  for (const link of issue.documentLinks)
+    links.append(
+      externalLink(doc, link.kind === "spec" ? "Spec" : "Plan", link.url),
+    );
   for (const a of issue.artifacts.filter(
     (a) => a.kind === "spec" || a.kind === "plan",
   )) {

@@ -1,15 +1,19 @@
 import type { CliOutput } from "../../main.ts";
 import { createServeAuth } from "../../../web/auth.ts";
-import { createSampleRunDataSource } from "../../../web/sample-data.ts";
+import { createServeSource } from "./source.ts";
+import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import { startServeServer, type Serving } from "../../../web/server.ts";
 import { parseServeArgs } from "./args.ts";
 export type ServeMainOptions = {
   output?: CliOutput;
   env?: NodeJS.ProcessEnv;
   startServer?: typeof startServeServer;
+  createSource?: typeof createServeSource;
+  repoRoot?: string;
+  runner?: CommandRunner;
 };
 const HELP =
-  "Usage: patchmill serve [--host HOST] [--port PORT]\nServe the view-only sample board. Defaults: 127.0.0.1:4280. Open the printed token link.";
+  "Usage: patchmill serve [--sample] [--host HOST] [--port PORT]\nServe the view-only repository board. Use --sample for design fixtures without a repository. Defaults: 127.0.0.1:4280. Open the printed token link.";
 export async function main(
   args: string[] = process.argv.slice(2),
   options: ServeMainOptions = {},
@@ -32,9 +36,15 @@ export async function main(
       (options.env ?? process.env).PATCHMILL_SERVE_TOKEN,
     );
     serving = await (options.startServer ?? startServeServer)({
-      ...flags,
+      host: flags.host,
+      port: flags.port,
       auth,
-      source: createSampleRunDataSource(),
+      source: await (options.createSource ?? createServeSource)({
+        sample: flags.sample,
+        repoRoot: options.repoRoot ?? process.cwd(),
+        runner: options.runner ?? runCommand,
+        warn: (message) => output.stderr(`Warning: ${message}`),
+      }),
     });
     process.once("SIGINT", stop);
     process.once("SIGTERM", stop);
@@ -42,7 +52,9 @@ export async function main(
       output.stderr(
         "Warning: the server is available on the network. HTTP does not encrypt content. Use only a trusted network or VPN.",
       );
-    output.stdout(`Patchmill sample data: ${serving.url}`);
+    output.stdout(
+      `Patchmill ${flags.sample ? "sample data" : "board"}: ${serving.url}`,
+    );
     await serving.closed;
     return 0;
   } catch (error) {

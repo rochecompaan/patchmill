@@ -48,6 +48,31 @@ export async function readLock(path: string): Promise<LockRecord | undefined> {
   return undefined;
 }
 
+/** Observe ownership without creating or changing the permanent lock inode. */
+export async function probeIssueLock(path: string): Promise<boolean> {
+  let handle;
+  try {
+    handle = await fs.open(path, constants.O_RDONLY);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  try {
+    await flock(handle.fd, "shnb");
+    return false;
+  } catch (error) {
+    if (
+      ["EAGAIN", "EWOULDBLOCK"].includes(
+        (error as NodeJS.ErrnoException).code ?? "",
+      )
+    )
+      return true;
+    throw error;
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function acquireLock(
   path: string,
   options: { pid?: number; now?: () => Date } = {},

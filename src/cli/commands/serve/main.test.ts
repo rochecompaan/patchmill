@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { main } from "./main.ts";
+import { createSampleRunDataSource } from "../../../web/sample-data.ts";
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   test(`${signal} closes serve and restores signal handlers`, async () => {
     const before = process.listeners(signal);
@@ -9,7 +10,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
       resolve!: () => void;
     const closed = new Promise<void>((r) => (resolve = r));
     let closing: Promise<void> | undefined;
-    const result = main([], {
+    const result = main(["--sample"], {
       output: {
         stdout: (l) => {
           lines.push(l);
@@ -35,6 +36,29 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
     assert.match(lines[0]!, /Patchmill sample data:/);
     assert.deepEqual(process.listeners(signal), before);
   });
+test("serve selects repository data by default and prints the real board prefix", async () => {
+  const lines: string[] = [];
+  let selected: boolean | undefined;
+  const code = await main([], {
+    env: {},
+    output: { stdout: (s) => lines.push(s), stderr: assert.fail },
+    createSource: async (input) => {
+      selected = input.sample;
+      return createSampleRunDataSource();
+    },
+    startServer: async () => ({
+      origin: "http://127.0.0.1:4280",
+      url: "http://127.0.0.1:4280/?token=test",
+      networkExposed: false,
+      closed: Promise.resolve(),
+      close: async () => {},
+    }),
+  });
+  assert.equal(code, 0);
+  assert.equal(selected, false);
+  assert.match(lines[0]!, /^Patchmill board:/);
+});
+
 test("help and invalid args are effect free and bind failure prints no link", async () => {
   const out: string[] = [],
     err: string[] = [];
@@ -59,7 +83,7 @@ test("help and invalid args are effect free and bind failure prints no link", as
   );
   out.length = 0;
   assert.equal(
-    await main([], {
+    await main(["--sample"], {
       output,
       env: {},
       startServer: async () => {
