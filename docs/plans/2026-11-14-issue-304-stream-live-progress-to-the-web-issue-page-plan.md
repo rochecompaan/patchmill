@@ -56,8 +56,8 @@ specification, and `docs/mockups/web/run-once-workflow.md`.
   epoch, so the page gets one `reset`, not a broken thread. Task 1 tests this.
 - `patchmill serve` stops while a stream is open: shutdown completes. Task 3
   tests this.
-- A tool result arrives for an older tool call: the page updates that tool in
-  place and keeps later entries in order. Tasks 1, 2, and 4 test this.
+- A new attempt holds the lock before it writes progress: older attempts stay
+  ended, and the page does not use their start time. Task 2 tests this.
 
 ## File structure and ownership
 
@@ -101,7 +101,8 @@ new modules. Add no generic helpers or barrels.
 
 - [ ] **Step 1: Write failing tests** in `issue-feed.test.ts` with a manual
       clock (an array of pending timers that the test advances), a mutable fake
-      projection, and a fingerprint counter. Use `epoch: () => "0000000a"`.
+      projection, and a fingerprint counter. Use an `epoch` function that
+      returns `"0000000a"`, then `"0000000b"`, and so on.
   - `first subscriber receives a reset with the current projection`: the first
     update has `kind: "reset"`, `id: "0000000a-1"`, and the projected issue.
   - `appended entries arrive in order as one thread update`: append entries `c`
@@ -109,7 +110,7 @@ new modules. Add no generic helpers or barrels.
     `{ kind: "thread", after: "b", entries: [c, d] }`.
   - `a changed earlier entry resends it and later entries`: change entry `b`'s
     tool state. Expect `{ after: "a", entries: [b', c, d] }`.
-  - `header change precedes thread change from the same projection`.
+  - `thread change precedes header change from the same projection`.
   - `unchanged fingerprint does not project; unchanged projection sends nothing`.
   - `projection is forced after 60,000 ms with an unchanged fingerprint`.
   - `replay sends only updates after lastEventId`: subscriber A sees IDs 1–4.
@@ -119,10 +120,12 @@ new modules. Add no generic helpers or barrels.
     1,001 updates and subscribe with ID 1.
   - `last unsubscribe stops polling`: after the unsubscribe, advance 10,000 ms.
     The fingerprint count does not change, and no timer from `every` remains.
+    Repeat with an unsubscribe while a fingerprint promise is pending: when it
+    resolves, no projection starts.
   - `idle hub replays within retention and resets after it`: unsubscribe, change
     the projection, and subscribe with the last ID after 1,000 ms. Expect one
     immediate projection and only the new update. Repeat after 300,001 ms and
-    expect a `reset` with a new epoch.
+    expect a `reset` with an ID that starts with `0000000b-`.
   - `one projection at a time`: hold a projection promise open across three
     ticks. Expect one `project` call.
   - `null projection sends unavailable once`.
@@ -152,6 +155,7 @@ new modules. Add no generic helpers or barrels.
 
 - Create: `src/web/run-fingerprint.ts`, `src/web/file-live-feed.test.ts`
 - Modify: `src/web/run-files.ts`, `src/web/pi-thread.ts`,
+  `src/web/file-run-observations.ts`, `src/web/file-run-observations.test.ts`,
   `src/web/issue-history.ts`, `src/web/file-issue-detail.ts`,
   `src/web/file-run-data.ts`, `src/web/sample-data.ts`,
   `test-support/issue-thread-fixture.ts`, `src/web/file-issue-detail.test.ts`
@@ -185,9 +189,11 @@ new modules. Add no generic helpers or barrels.
   - `interactive active attempt shows the pending-transcript notice`: with
     `progress.interactive: true` and no session transcript, expect the entry
     with ID `RUN_ID:interactive-pending`.
-  - `lock release sends final header`: write `result.json`, release the lock,
-    and advance. Expect a `header` update with `run.outcome` `completed`,
-    `activeSince: null`, a non-null `finalUsage`, and the final `summary.step`.
+  - `lock release sends final thread, then final header`: append a final
+    progress line, write `result.json`, release the lock, and advance once.
+    Expect a `thread` update with the progress line, then a `header` update with
+    `run.outcome` `completed`, `activeSince: null`, a non-null `finalUsage`, and
+    the final `summary.step`.
   - `no reads after last unsubscribe`: after the unsubscribe, the manual clock
     has no active `every` timer. Append files and advance 10,000 ms. The
     listener receives nothing.
@@ -195,8 +201,16 @@ new modules. Add no generic helpers or barrels.
     and advance 60,000 ms.
   - Extend `file-issue-detail.test.ts`: an ended attempt with a truncated tail
     still warns, and `active` is false by default.
-  - Sample source: `subscribe({ issue: 1, lastEventId: null })` sends one
-    `reset`, and an unknown issue sends `unavailable`.
+  - Sample source: `subscribe({ issue: 298, lastEventId: null })` sends one
+    `reset`, and issue 999999 sends `unavailable`.
+  - `held lock without a new attempt keeps attempts ended`: one ended attempt,
+    and a held lock with a later `startedAt`. Expect `run.outcome: "active"`,
+    `activeSince: null`, and the ended attempt's tools still `stopped`. Then
+    write the new attempt's `progress.json` and advance: expect a non-null
+    `activeSince` that equals the new attempt's start.
+  - Extend `file-run-observations.test.ts`: `activeRunId` is the latest
+    unfinished attempt when the lock is held and the attempt started at or after
+    the lock, and null in the newer-lock and no-lock cases.
 
 - [ ] **Step 2: Run** `node --test src/web/file-live-feed.test.ts`. Expected:
       FAIL.
@@ -210,12 +224,15 @@ new modules. Add no generic helpers or barrels.
     session files. Skip the missing-transcript notice and the error block. Add
     the interactive notice when `record.progress?.interactive` is true and the
     latest session has no projected transcript entry.
+  - `readIssueObservation()`: add `activeRunId: string | null` to
+    `RunObservation` with the rule in the spec. It already reads the lock
+    record.
   - `readIssueDetail()`: remove the live early return. Project every attempt,
-    with `active: true` for the latest attempt when `observation.live`. Set
-    `run.activeSince` to the latest attempt's `startedAt` when live, otherwise
-    null. While live, set `summary.elapsedSeconds` to the sum of the earlier
-    ended attempts, 0 when none, and null when one has no `finishedAt`. Keep
-    `finalUsage: null` while live.
+    with `active: true` only for the attempt with ID `observation.activeRunId`.
+    Set `run.activeSince` to that attempt's `startedAt`, otherwise null. While
+    live, set `summary.elapsedSeconds` to the sum of the earlier ended attempts,
+    0 when none, and null when one has no `finishedAt`. Keep `finalUsage: null`
+    while live.
   - `issueFingerprint()`: build a string from the lock probe and the
     `size:mtimeMs` of the files the spec names. Use `runFiles` listings. Skip
     entries that are not regular files or directories.
@@ -290,7 +307,8 @@ new modules. Add no generic helpers or barrels.
 - Create: `web/live-issue.js`, `src/web/browser-live.test.ts`,
   `docs/reviews/2026-11-14-issue-304-live-progress-verification.md`
 - Modify: `web/controller.js`, `web/app.js`, `web/issue.js`,
-  `web/styles/issue.css`, `scripts/check-issue-thread-layout.mjs`
+  `web/view-state.js`, `web/styles/issue.css`,
+  `scripts/check-issue-thread-layout.mjs`
 
 **Interfaces:**
 
@@ -310,10 +328,12 @@ new modules. Add no generic helpers or barrels.
     A future `activeSince` clamps to the base. A null base gives only the active
     time. A non-active run returns `summary.elapsedSeconds`.
   - Controller with a fake `events`: an active live issue opens
-    `/api/issues/7/events`. A `header` with outcome `completed` closes it. A
-    navigation closes it. An `error` with `readyState` 2 reloads the issue once.
-    An `error` with `readyState` 0 sets `connection: "reconnecting"`, and `open`
-    sets `"live"`. A sample source and a finished run never open a stream.
+    `/api/issues/7/events`. A `header` with outcome `completed` closes it and
+    starts exactly one `api.issue(7)` fetch, whose response becomes the page
+    state. A navigation closes it. An `error` with `readyState` 2 reloads the
+    issue once. An `error` with `readyState` 0 sets
+    `connection: "reconnecting"`, and `open` sets `"live"`. A sample source and
+    a finished run never open a stream.
 
 - [ ] **Step 2: Run** `node --test src/web/browser-live.test.ts`. Expected:
       FAIL.
@@ -326,10 +346,13 @@ new modules. Add no generic helpers or barrels.
     runs. Show the “Live” or “Reconnecting…” meta item with the existing live
     dot. Mark the elapsed item with `data-live-elapsed` and the base data that
     `liveElapsedSeconds` needs.
+  - `view-state.js`: `restore(saved, { keepScroll: boolean })`. With
+    `keepScroll`, do not call `scrollIntoView()` on the rail.
   - `app.js`: pass `events: (url) => new EventSource(url)`. Run a 1,000 ms
-    interval that updates only `[data-live-elapsed]` text. Before each render,
-    record whether the window is within 120 px of the bottom, and scroll to the
-    bottom after the render when it was. Update a visually hidden
+    interval that updates only `[data-live-elapsed]` text. For a render of the
+    same issue, record `scrollY` and whether the window is within 120 px of the
+    bottom. Restore with `keepScroll: true`. Then scroll to the bottom when it
+    was near the bottom, else restore `scrollY`. Update a visually hidden
     `role="status"` element with “Run finished” or “Run stopped” once at the
     end.
   - `issue.css`: the connection item and the hidden status. The pulse respects
@@ -342,9 +365,11 @@ new modules. Add no generic helpers or barrels.
       `scripts/check-issue-thread-layout.mjs`: a fixture attempt with a held
       lock. The script appends a tool call after the page loads. It asserts that
       the tool appears within 5 s without a navigation, that the elapsed text
-      changes, and that a lock release shows “Finished” and the cost. Run it at
-      desktop and 390 px in both themes. Expected: PASS with no page overflow
-      and no console errors.
+      changes, and that a lock release shows “Finished” and the cost. It also
+      opens a tool, scrolls to the top, appends an entry, and asserts that
+      `scrollY` stays the same and the tool stays open. Run it at desktop and
+      390 px in both themes. Expected: PASS with no page overflow and no console
+      errors.
 
 - [ ] **Step 6: Real run check.** Run `patchmill setup-test-repo` for a test
       repository. Start `patchmill serve` and an unattended

@@ -45,12 +45,17 @@ Current sources establish these facts:
 - `readIssueDetail()` returns early for a live run with no thread and no cost.
   `web/issue.js` then shows “Run active. Live progress comes in a later update.”
   This slice removes that placeholder.
-- `readIssueObservation()` sets `live` from `probeIssueLock()`. `runOneIssue()`
-  writes `result.json` before it releases the issue lock. Thus a released lock
-  with a valid attempt result is a final state.
+- `readIssueObservation()` sets `live` from `probeIssueLock()`. A held lock that
+  is newer than the latest retained attempt means a new attempt that has not
+  written progress yet. `file-run-observations.test.ts` covers this case. Thus
+  issue ownership does not always identify an active attempt.
+- `runOneIssue()` writes its last progress line and `result.json` before it
+  releases the issue lock. Thus a released lock with a valid attempt result is a
+  final state.
 - `createRunHistory()` appends one JSON line for each progress line, session
-  launch, and progress snapshot. Pi's `SessionManager._persist()` appends one
-  JSON line for each entry after the first assistant reply.
+  launch, and progress snapshot. Pi's `SessionManager._persist()` writes the
+  file when the session has its first user or assistant message, then appends
+  one JSON line for each entry.
 - `runFiles().lines()` parses an unterminated last line and warns when it is not
   valid JSON. A live reader can see a line that a writer has not completed.
 - Thread IDs are stable when files grow. Pi entries use
@@ -167,11 +172,20 @@ export type IssueUpdate = { readonly id: string } & (
   subscription and keeps its content.
 
 `IssueDetail.run` gets `activeSince: string | null`. It is the start time of the
-active attempt and is null when no attempt is active. While a run is active,
-`summary.elapsedSeconds` is the known duration of the earlier ended attempts:
-zero when there are none, and null when one is unknown. The page shows that
-total plus the time since `activeSince`. After the run ends, the existing #303
-rules apply.
+active attempt and is null when no attempt is active.
+
+The **active attempt** is the latest retained attempt when three conditions are
+true: the issue lock is held, the attempt has no finish time, and the attempt
+started at or after the lock's `startedAt`. `readIssueObservation()` exposes it
+as `RunObservation.activeRunId: string | null`. When the lock is held without an
+active attempt, the run outcome is `active`, `activeSince` is null, and all
+retained attempts keep their ended projection. The next projection finds the new
+attempt when it writes its progress.
+
+While a run is active, `summary.elapsedSeconds` is the known duration of the
+earlier ended attempts: zero when there are none, and null when one is unknown.
+The page shows that total plus the time since `activeSince`. After the run ends,
+the existing #303 rules apply.
 
 ### The live feed module
 
@@ -203,8 +217,9 @@ The module hides these rules:
 - **Diff.** The hub compares the new projection with its last state. A header
   that differs by JSON value produces one `header` update. A thread that differs
   produces one `thread` update after the longest common prefix of entries with
-  the same JSON value. A `header` update comes before a `thread` update from the
-  same projection. An unchanged projection produces no update. A `null`
+  the same JSON value. A `thread` update comes before a `header` update from the
+  same projection. Thus the page has the final entries when a header reports the
+  end of the run. An unchanged projection produces no update. A `null`
   projection produces `unavailable` once.
 - **IDs.** An ID is `EPOCH-SEQUENCE`. `EPOCH` is eight random lowercase
   hexadecimal characters for each hub instance. `SEQUENCE` is a decimal integer
@@ -251,7 +266,7 @@ that it owns:
 
 `readIssueDetail()` projects the active attempt instead of returning early:
 
-- Pass `active: true` for the latest attempt while the lock is held.
+- Pass `active: true` only for the attempt with ID `activeRunId`.
 - An unmatched tool call in the active attempt has state `running` and a null
   result. Ended attempts keep `stopped` and “Output not recorded.”
 - The active attempt has no “Agent transcript not recorded” notice and no “Run
@@ -314,18 +329,22 @@ shutdown ends at once.
   an `after` ID that the page does not have replaces the whole thread. The next
   projection is still correct.
 - The controller closes the stream when the run outcome is no longer `active`,
-  on `unavailable`, on navigation, and on page hide. A stream error that closes
-  the `EventSource` makes the controller reload the issue once through the
-  normal path. Thus a 401 or 404 shows the existing states.
+  on `unavailable`, on navigation, and on page hide. After a header that ends
+  the run, the controller fetches the issue once through the normal path. This
+  final response is the settled page, even if a thread update was lost. A stream
+  error that closes the `EventSource` makes the controller reload the issue once
+  through the normal path. Thus a 401 or 404 shows the existing states.
 - `PageState` gets `connection: "connecting" | "live" | "reconnecting" | null`.
   The header shows “Live” with the existing live dot, or “Reconnecting…”.
 - The elapsed meta item has the attribute `data-live-elapsed`. `app.js` updates
   only its text each second from `liveElapsedSeconds()`. It does not render the
   page again.
 - Each update renders the page through the existing `render()`. Open tools and
-  the composer keep their state. When the window was within 120 pixels of the
-  bottom before the render, the page scrolls to the bottom after it, without
-  smooth scrolling. Otherwise the scroll position stays.
+  the composer keep their state. A render for the same issue keeps the window's
+  scroll position: `createViewState().restore()` does not scroll the workflow
+  rail into view for it. When the window was within 120 pixels of the bottom
+  before the render, the page scrolls to the bottom after it, without smooth
+  scrolling.
 - The thread has no live region, so a screen reader does not read every tool
   call. One visually hidden polite status reads “Run finished” or “Run stopped”
   when the run ends.
@@ -380,14 +399,17 @@ document text or mockup structure.
 - **File adapter:** append history lines and Pi entries to an active fixture
   attempt with a held lock. Check that a subscriber receives the new entries in
   order. Check that a partial last line appears only after it is complete, a
-  tool changes from `running` to `completed`, and a lock release sends a final
-  header with an outcome and cost. Check that no file reads occur after the last
-  unsubscribe.
+  tool changes from `running` to `completed`, and a lock release sends the final
+  thread and then a final header with an outcome and cost. Check that a held
+  lock newer than the retained attempts keeps those attempts ended. Check that
+  no file reads occur after the last unsubscribe.
 - **HTTP:** check authentication, 400, 404, 405, the event-stream headers, a
   reconnect with `Last-Event-ID` that receives only the missed entries, the
   unsubscribe on client disconnect, and a server close with an open stream.
 - **Page:** check `applyIssueUpdate()`, `liveElapsedSeconds()`, and the
-  controller's open, close, and reload behavior with a fake `EventSource`.
+  controller's open, close, final fetch, and reload behavior with a fake
+  `EventSource`. The browser check proves that a reader away from the bottom
+  stays in place, and that an open tool stays open, when an update arrives.
 - **Browser check:** create a test repository with `patchmill setup-test-repo`.
   Start an unattended `patchmill run-once --issue N` and `patchmill serve`. Open
   the issue page in an authenticated browser. Record that new tool calls and
