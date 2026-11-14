@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -24,6 +26,43 @@ function run(command, args, options = {}) {
     });
     child.on("error", reject);
   });
+}
+
+async function verifyDesignSkills(packageRoot, destination) {
+  const require = createRequire(join(packageRoot, "package.json"));
+  const upstream = dirname(require.resolve("mattpocock-skills/package.json"));
+  const manifest = JSON.parse(
+    await readFile(join(destination, "patchmill-skill-pack.json"), "utf8"),
+  );
+  const files = new Map(manifest.files.map((file) => [file.path, file.sha256]));
+  const version = JSON.parse(
+    await readFile(join(upstream, "package.json"), "utf8"),
+  ).version;
+  assert.equal(manifest.sources.mattPocock, version);
+  async function compare(source, path) {
+    const bytes = await readFile(source);
+    assert.deepEqual(await readFile(join(destination, path)), bytes, path);
+    assert.equal(
+      files.get(path),
+      createHash("sha256").update(bytes).digest("hex"),
+      path,
+    );
+  }
+  async function tree(source, relative) {
+    for (const entry of await readdir(source, { withFileTypes: true })) {
+      const from = join(source, entry.name);
+      const path = join(relative, entry.name);
+      if (entry.isDirectory()) await tree(from, path);
+      else await compare(from, path);
+    }
+  }
+  for (const name of ["domain-modeling", "codebase-design"]) {
+    await tree(join(upstream, "skills/engineering", name), name);
+    await compare(join(upstream, "LICENSE"), join(name, "LICENSE"));
+  }
+  console.log(
+    `Design skills ${version}: complete trees, licenses, and hashes verified from ${upstream}`,
+  );
 }
 
 async function main() {
@@ -112,6 +151,10 @@ async function main() {
 
     const patchmillPackageRoot = dirname(
       projectRequire.resolve("patchmill/package.json"),
+    );
+    await verifyDesignSkills(
+      patchmillPackageRoot,
+      join(projectDir, ".patchmill/skills"),
     );
     const compiledPiPackage = await import(
       pathToFileURL(

@@ -77,6 +77,25 @@ The wrappers add Patchmill worktree, artifact, result, and testing-policy rules.
 The upstream Superpowers skills remain installed from the pinned dependency
 rather than vendored as modified copies in Patchmill's package.
 
+## Matt Pocock engineering skills
+
+- Repository: <https://github.com/mattpocock/skills>
+- Package: `mattpocock-skills`, version `1.3.2`
+- Commit: `5863806dd4e15c63174bee4e7515a4256792ecfa`
+- Source directories: `skills/engineering/domain-modeling/` and
+  `skills/engineering/codebase-design/`
+- Installed directories: `.patchmill/skills/domain-modeling/` and
+  `.patchmill/skills/codebase-design/`
+- License: MIT, from `node_modules/mattpocock-skills/LICENSE`
+- Purpose: Domain modeling, architectural specification analysis, and fresh
+  codebase-backed Plan review.
+- Modification status: Selected skill trees remain verbatim, including their
+  supporting resources. The installer also copies the upstream root `LICENSE`
+  into each installed skill directory and records its hash.
+
+Both skills come from one immutable production dependency archive. Planning uses
+the installed files without runtime downloads.
+
 ## SimpleEnglish skill
 
 - Source: <https://github.com/AminBlg/SimpleEnglish/tree/v1.2.0/skills>

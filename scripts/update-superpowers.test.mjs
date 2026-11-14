@@ -135,6 +135,16 @@ async function createFixture() {
       await writeFile(join(dir, "references/example.md"), "old resource\n");
     }
   }
+  const designRoot = join(fixture, "node_modules/mattpocock-skills");
+  await mkdir(designRoot, { recursive: true });
+  await writeJson(join(designRoot, "package.json"), { version: "1.3.2" });
+  await writeFile(join(designRoot, "LICENSE"), "MIT fixture license\n");
+  for (const name of ["domain-modeling", "codebase-design"]) {
+    const dir = join(designRoot, "skills/engineering", name);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "SKILL.md"), `${name} skill\n`);
+    await writeFile(join(dir, "DEEPENING.md"), "fixture resource\n");
+  }
   await installFixture(fixture);
   return fixture;
 }
@@ -262,6 +272,45 @@ test("validate-only no-update checks a synchronized repository without commands"
       ),
       /manifest|files/i,
     );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("validate-only verifies complete design resources and licenses", async () => {
+  const fixture = await createFixture();
+  const validate = () =>
+    runSuperpowersUpgrade(
+      ["--superpowers-version", "6.2.0", "--validate-only"],
+      {
+        rootDir: fixture,
+        fetchImpl: releaseFetch,
+        runCommand: async () => assert.fail("must not run commands"),
+      },
+    );
+  try {
+    await validate();
+    for (const [path, mutation] of [
+      ["codebase-design/DEEPENING.md", "damage"],
+      ["domain-modeling/LICENSE", "remove"],
+    ]) {
+      const installed = join(fixture, ".patchmill/skills", path);
+      assert.ok((await readFile(installed)).length > 0);
+      if (mutation === "remove") await rm(installed);
+      else await writeFile(installed, "corrupted\n");
+      await assert.rejects(validate());
+      await installFixture(fixture);
+    }
+    const manifestPath = join(
+      fixture,
+      ".patchmill/skills/patchmill-skill-pack.json",
+    );
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.files = manifest.files.filter(
+      (file) => file.path !== "codebase-design/DEEPENING.md",
+    );
+    await writeJson(manifestPath, manifest);
+    await assert.rejects(validate(), /manifest|files/i);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
