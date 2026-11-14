@@ -24,6 +24,7 @@ test("bad tokens and duplicate cookies cannot authenticate", () => {
     "token=wrong",
     "token=%zz",
     "token=%FF",
+    "token=secret?extra",
     "token=secret&token=secret",
   ])
     assert.deepEqual(auth.exchange("GET", "/?" + query), { kind: "invalid" });

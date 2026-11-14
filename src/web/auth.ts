@@ -40,7 +40,9 @@ export function createServeAuth(environmentToken?: string): ServeAuth {
       }
     },
     exchange(method, target) {
-      const [path, query = ""] = target.split("?", 2);
+      const separator = target.indexOf("?");
+      const path = separator < 0 ? target : target.slice(0, separator);
+      const query = separator < 0 ? "" : target.slice(separator + 1);
       if (method !== "GET" || path !== "/") return { kind: "none" };
       const params = new URLSearchParams(query);
       if (!params.has("token")) return { kind: "none" };
