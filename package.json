@@ -48,7 +48,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepack": "npm run build",
     "lint": "npm run format:check && npm run lint:ts && npm run lint:md",
-    "lint:ts": "eslint \"{bin,src,test-support}/**/*.ts\" --max-warnings=0",
+    "lint:ts": "eslint \"{bin,src,test-support}/**/*.ts\" \"web/**/*.js\" --max-warnings=0",
     "lint:md": "markdownlint-cli2",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -64,6 +64,7 @@
   "lint-staged": {
     "*.{ts,js,json,md}": "prettier --write",
     "{bin,src,test-support}/**/*.ts": "eslint --max-warnings=0",
+    "web/**/*.js": "eslint --max-warnings=0",
     "*.md": "markdownlint-cli2"
   },
   "overrides": {

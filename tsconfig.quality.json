@@ -2,6 +2,8 @@
   "extends": "./tsconfig.build.json",
   "compilerOptions": {
     "noCheck": false,
+    "allowJs": true,
+    "checkJs": true,
     "noEmit": true,
     "strict": true,
     "exactOptionalPropertyTypes": true,
@@ -15,6 +17,7 @@
     "bin/**/*.ts",
     "src/**/*.ts",
     "test-support/**/*.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "web/**/*.js"
   ]
 }
