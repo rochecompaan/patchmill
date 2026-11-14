@@ -5,6 +5,7 @@ import { renderPage } from "./page.js";
 import { createViewState } from "./view-state.js";
 import { readName, saveName, preferredTheme } from "./preferences.js";
 import { mountArtifactViewer } from "./artifacts.js";
+import { mountSyncStatus } from "./sync-status.js";
 const mount = /** @type {HTMLElement} */ (document.getElementById("app"));
 const notice = /** @type {HTMLElement} */ (document.getElementById("notice"));
 const nameDialog = /** @type {HTMLDialogElement} */ (
@@ -27,6 +28,16 @@ try {
 }
 const viewer = mountArtifactViewer(
   /** @type {HTMLDialogElement} */ (document.getElementById("viewer")),
+);
+const syncStatus = mountSyncStatus(
+  /** @type {HTMLElement} */ (document.getElementById("sync-status")),
+  {
+    now: () => Date.now(),
+    every: (ms, fn) => {
+      const id = window.setInterval(fn, ms);
+      return () => window.clearInterval(id);
+    },
+  },
 );
 let linkedArtifact = "";
 let name = readName(storage) ?? "You";
@@ -63,7 +74,9 @@ function render() {
   if (!current) return;
   const saved = viewState.capture();
   mount.replaceChildren(renderPage(document, current, name, drafts));
-  const repository = current.board?.repository ?? current.issue?.repository;
+  const meta = current.board ?? current.issue;
+  if (meta) syncStatus.update(meta);
+  const repository = meta?.repository;
   document
     .getElementById("repository-name")
     ?.replaceChildren(document.createTextNode(repository?.name ?? ""));
@@ -96,7 +109,10 @@ window.addEventListener("hashchange", route);
 document.addEventListener("visibilitychange", () =>
   controller.visibilityChanged(),
 );
-window.addEventListener("pagehide", () => controller.dispose());
+window.addEventListener("pagehide", () => {
+  controller.dispose();
+  syncStatus.dispose();
+});
 function updateName() {
   document
     .getElementById("me-name")

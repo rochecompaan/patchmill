@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { presentationFor } from "../../web/state.js";
+import { presentationFor, boardMarkers } from "../../web/state.js";
 import { personClass } from "../../web/dom.js";
 import { createSampleRunDataSource } from "./sample-data.ts";
 
@@ -46,6 +46,29 @@ test("status presentation supplies consistent card, metadata, and composer feedb
   }
   const terminal = presentationFor(snapshot.details[263]!.summary);
   assert.match(terminal.composerHint, /terminal.*263/);
+});
+
+test("Live follows explicit ownership, including idle review and blocked cards", async () => {
+  const snapshot = await createSampleRunDataSource().snapshot();
+  for (const status of ["idle", "blocked", "done"] as const) {
+    const issue = { ...snapshot.issues[0]!, status, live: true };
+    assert.deepEqual(
+      boardMarkers(issue).map((marker) => marker.label),
+      ["Live"],
+    );
+  }
+  assert.deepEqual(
+    boardMarkers({ ...snapshot.issues[0]!, status: "working", live: false }),
+    [],
+  );
+  assert.deepEqual(
+    boardMarkers({
+      ...snapshot.issues[0]!,
+      status: "waiting",
+      live: false,
+    }).map((marker) => marker.label),
+    ["Waiting for reply"],
+  );
 });
 
 test("avatar color selection hashes every name without a fixture exception", () => {

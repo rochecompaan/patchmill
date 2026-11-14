@@ -8,6 +8,7 @@ const publicFiles = new Set([
   "app.js",
   "api.js",
   "state.js",
+  "sync-status.js",
   "controller.js",
   "page.js",
   "view-state.js",

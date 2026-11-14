@@ -162,8 +162,8 @@ function renderHeader(doc, detail, name, p) {
   return header;
 }
 
-/** @param {Document} doc @param {IssueSummary} issue @param {string} name @param {string} draft @param {Presentation} p */
-function renderComposer(doc, issue, name, draft, p) {
+/** @param {Document} doc @param {IssueSummary} issue @param {string} name @param {string} draft @param {Presentation} p @param {'sample'|'live'} source */
+function renderComposer(doc, issue, name, draft, p, source) {
   const footer = el(doc, "footer", "composer");
   if (p.composer === "terminal" || p.composer === "finished") {
     footer.append(el(doc, "div", "note-bar", p.composerHint));
@@ -180,7 +180,10 @@ function renderComposer(doc, issue, name, draft, p) {
   input.id = "composer-input";
   input.dataset.issue = String(issue.number);
   input.rows = 1;
-  input.placeholder = "Message the agent as " + name;
+  input.placeholder =
+    source === "live"
+      ? "Live chat is not available yet."
+      : "Message the agent as " + name;
   input.setAttribute("aria-label", "Message the agent");
   input.value = draft;
   input.disabled = disabled;
@@ -201,12 +204,22 @@ function renderComposer(doc, issue, name, draft, p) {
   return footer;
 }
 
-/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft */
-export function renderIssue(doc, detail, name, draft) {
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft @param {'sample'|'live'} [source] */
+export function renderIssue(doc, detail, name, draft, source = "sample") {
   const p = presentationFor(detail.summary);
   const fragment = doc.createDocumentFragment(),
-    thread = renderThread(doc, detail);
-  if (!detail.thread.length) {
+    thread =
+      source === "live"
+        ? el(doc, "section", "thread")
+        : renderThread(doc, detail);
+  if (source === "live") {
+    const empty = el(doc, "div", "empty");
+    empty.append(
+      el(doc, "h2", "", "Thread not available yet"),
+      el(doc, "p", "", "Real issue threads come in a later update."),
+    );
+    thread.append(empty);
+  } else if (!detail.thread.length) {
     const empty = el(doc, "div", "empty");
     empty.append(
       icon(doc, "sym-wheel"),
@@ -221,10 +234,20 @@ export function renderIssue(doc, detail, name, draft) {
     );
     thread.append(empty);
   }
+  /** @type {Presentation} */
+  const composer =
+    source === "live" && p.composer !== "terminal" && p.composer !== "finished"
+      ? {
+          ...p,
+          composer: "disabled",
+          stopReply: false,
+          composerHint: "View only. Messages come with live chat.",
+        }
+      : p;
   fragment.append(
     renderHeader(doc, detail, name, p),
     thread,
-    renderComposer(doc, detail.summary, name, draft, p),
+    renderComposer(doc, detail.summary, name, draft, composer, source),
   );
   return fragment;
 }

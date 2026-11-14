@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Patchmill · sample board</title>
+    <title>Patchmill</title>
     <script src="/theme-init.js"></script>
     <link rel="stylesheet" href="/styles/base.css" />
     <link rel="stylesheet" href="/styles/board.css" />
@@ -261,7 +261,7 @@
       <span class="tb-status"
         ><i class="dot dot-live"></i><span id="server-authority"></span
       ></span>
-      <span class="tb-status faint">Sample data</span>
+      <span class="tb-status faint" id="sync-status"></span>
       <button
         class="theme-switch"
         id="theme-switch"
@@ -310,7 +310,7 @@
     </header>
 
     <main id="app" tabindex="-1">
-      <p class="empty" role="status">Loading sample data…</p>
+      <p class="empty" role="status">Loading issues…</p>
     </main>
     <p id="notice" role="status" hidden></p>
 

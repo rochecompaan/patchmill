@@ -7,7 +7,7 @@ import { el } from "./dom.js";
 /** @param {Document} doc @param {PageState} state */
 function renderStatus(doc, state) {
   const labels = {
-    loading: "Loading sample data…",
+    loading: "Loading issues…",
     "not-found": "Issue not found",
     unauthorized: "Open the printed link",
     error: "Could not load data",
@@ -38,6 +38,7 @@ export function renderPage(doc, state, name, drafts) {
       state.issue.issue,
       name,
       drafts.get(state.issue.issue.summary.number),
+      state.issue.source,
     );
   return renderStatus(doc, state);
 }
