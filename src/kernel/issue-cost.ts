@@ -49,11 +49,17 @@ async function recordedPhases(runDir: string): Promise<Phase[]> {
 export async function readIssueCostReport(
   issueDir: string,
   current?: CostRun,
+  selection?: { runIds: readonly string[] },
 ): Promise<IssueCostReport | undefined> {
   const runs: CostRun[] = [];
   const entries = await fs.readdir(issueDir, { withFileTypes: true });
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!entry.isDirectory() || entry.name === current?.runId) continue;
+    if (
+      !entry.isDirectory() ||
+      entry.name === current?.runId ||
+      (selection && !selection.runIds.includes(entry.name))
+    )
+      continue;
     runs.push({
       runId: entry.name,
       sessions: (await recordedPhases(join(issueDir, entry.name))).map(

@@ -130,6 +130,8 @@ export function createFileRunDataSource(input: {
           String(summary.number),
           {
             summary,
+            body: null,
+            run: null,
             participants: [],
             thread: [],
             artifacts: [],
