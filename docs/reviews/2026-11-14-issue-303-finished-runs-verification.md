@@ -135,6 +135,15 @@ Its cost is unavailable historical, live, archive, or nested detail in this
 slice, not a hidden implementation promise.
 
 Frontend review applies because the delivery changes visible history,
-disclosures, responsive text, and metadata. Its fresh review receipt will be
-recorded before the pull request becomes ready. These checks do not grant
-maintainer approval or merge authority.
+disclosures, responsive text, and metadata. A fresh canonical reviewer inspected
+`b16e4c59f5ab44a0d488a1e13527c9f374131f79` with `openai-codex/gpt-6.1-sol`, high
+thinking. The frontend gate passed with no Critical, Important, or Minor
+findings.
+
+The reviewer inspected all four changed frontend files, related modules, the
+pinned local rules, and nine actual screenshots. It independently ran eight
+browser-client, state, and presentation tests. Its browser assessment used
+committed evidence and logs, not another full interaction run. The image viewer
+downsampled the tall repository-replay screenshot. This receipt changes no
+production or frontend files. These checks do not grant maintainer approval or
+merge authority.
