@@ -65,6 +65,16 @@ removal. Relative paths resolve there. The script needs no executable bit. A
 failing hook keeps all worktrees and branches without changing the done outcome.
 Patchmill reports the error and cleanup log path.
 
+Every real run sweeps local candidates before open-issue selection, including
+non-interactive runs and `--plan-only`. A dry run skips cleanup. Interactive
+merge confirmation also triggers immediate cleanup under the issue lock. After
+the hook, dirty workspaces remain with their branches and an operator notice.
+
+`<runsDir>/issue-N/cleanup.json` records a successful hook step. It prevents
+repetition during partial cleanup retries, but never replaces fresh merge
+verification. Hook output and diagnostics enter `cleanup.log` beside that
+receipt. A corrupt receipt or missing hook directory requires manual inspection.
+
 Use an idempotent script that touches only issue-scoped resources and tolerates
 missing resources. Exit non-zero when resource cleanup is incomplete. Never
 remove Patchmill worktrees, branches, PRs, run state, or lock files from the
