@@ -317,6 +317,77 @@ test("symlinked transcripts and non-generated attempt directories are never read
   assert.equal(detail.finalUsage, null);
 });
 
+test("recovered progress never lets billing follow a symlinked result outside the run root", async (t) => {
+  const f = await issueThreadFixture(t);
+  const { dir } = await f.attempt({
+    messages: [
+      piEntry("priced", "assistant", [{ type: "text", text: "work" }]),
+    ],
+  });
+  const outside = join(f.repoRoot, "private-result.json");
+  await fs.rename(join(dir, "result.json"), outside);
+  await fs.symlink(outside, join(dir, "result.json"));
+  await writeRunProgress(
+    f.issueDir,
+    boardProgress({
+      state: "ended",
+      outcome: { status: "completed", label: "done" },
+    }),
+  );
+  const readFile = fs.readFile;
+  let unconfinedMetadataReads = 0;
+  t.mock.method(
+    fs,
+    "readFile",
+    async (...args: Parameters<typeof fs.readFile>) => {
+      if (String(args[0]) === join(dir, "result.json"))
+        unconfinedMetadataReads++;
+      return readFile(...args);
+    },
+  );
+  const detail = await f.read();
+  assert.equal(unconfinedMetadataReads, 0);
+  assert.equal(detail.finalUsage, null);
+});
+
+test("history-only recovery derives the latest header and total duration from all retained attempts", async (t) => {
+  const f = await issueThreadFixture(t);
+  await f.attempt({
+    messages: [
+      piEntry("first", "assistant", [{ type: "text", text: "planning" }]),
+    ],
+  });
+  const runId = "20261114-130000-bbbb";
+  const dir = join(f.issueDir, runId);
+  await fs.mkdir(dir);
+  const progress = boardProgress({
+    runId,
+    startedAt: "2026-11-14T13:00:00Z",
+    updatedAt: "2026-11-14T13:01:00Z",
+    state: "ended",
+    phase: "implementation",
+    outcome: { status: "stopped", label: "needsInfo" },
+    summary: "Which branch?",
+  });
+  await fs.writeFile(
+    join(dir, "history.jsonl"),
+    JSON.stringify({
+      schemaVersion: 1,
+      issue: 9,
+      runId,
+      sequence: 1,
+      at: progress.updatedAt,
+      kind: "snapshot",
+      progress,
+    }),
+  );
+  const detail = await f.read();
+  assert.equal(detail.thread.filter((e) => e.kind === "divider").length, 2);
+  assert.equal(detail.run?.outcome, "stopped");
+  assert.equal(detail.summary.step, "Implementation");
+  assert.equal(detail.summary.elapsedSeconds, 90);
+});
+
 test("active attempts withhold history and cost, unlocked progress becomes incomplete", async (t) => {
   const f = await issueThreadFixture(t);
   await f.attempt({

@@ -12,7 +12,7 @@ and canonical Issue thread definition.
 ## Validation
 
 - Baseline `npm test`: 1,223 passed, zero failed.
-- Final implementation `npm test`: 1,238 passed, zero failed.
+- Final implementation `npm test`: 1,240 passed, zero failed.
 - `npm run check:types`: passed.
 - `npm run lint`: passed, including formatting, ESLint, and Markdown lint.
 - `CHROMIUM=chromium-browser npm run test:web`: passed.
@@ -101,8 +101,9 @@ without a height limit. Long static threads use browser content visibility.
   modules. Their failure modes differ, while the public detail interface stays
   small. Cost if wrong: limited extra file navigation.
 - History-only recovery occurs only for a selected issue. Board requests never
-  scan private logs. A history-only board cannot show a precise phase until a
-  valid latest projection exists.
+  scan private logs. The detail header uses recovered metadata even when the
+  board still has an older projection. Cost if wrong: a board can temporarily
+  show less complete metadata than the selected issue.
 - Existing view-only controls remain. They do not start, stop, or change runs.
 - The existing visual system takes precedence over generic style preferences.
   Native details supply keyboard support without redundant custom handlers.
@@ -110,6 +111,30 @@ without a height limit. Long static threads use browser content visibility.
 
 ## Independent reviews
 
-Whole-branch and frontend review receipts will be recorded here before the pull
-request becomes ready. Product checks above describe the validated
-implementation, not maintainer approval or merge authority.
+The fresh-context canonical whole-branch reviewer inspected `7dbac529..fa51d0a`
+on `openai-codex/gpt-6.1-sol` with high thinking. It found two Important defects
+and no Critical or Minor findings:
+
+1. Billing could follow a recovered attempt's symlinked result metadata. A
+   regression reproduced the outside-root read. The web reader now supplies
+   confined, validated result metadata to the cost module. Recovered attempts
+   without a validated result do not claim a complete cost.
+2. History-only recovery could leave an old step and duration in the header. A
+   regression reproduced the stale Planning step and 30-second total. Shared
+   metadata projection now uses every recovered attempt. The corrected example
+   shows Implementation and 90 seconds without a board log scan.
+
+Both regressions failed before the corrections and passed afterward. The final
+full suite passed all 1,240 tests. Types, lint, both browser checks, and the
+sanitized source comparison also passed after the correction. The reviewer
+reported no structural blockers or non-blocking human callouts.
+
+The reviewer set aside retired formats, live/chat behavior, closed-issue
+browsing, and nested conversations. Each exclusion follows the approved scope.
+Its cost is unavailable historical, live, archive, or nested detail in this
+slice, not a hidden implementation promise.
+
+Frontend review applies because the delivery changes visible history,
+disclosures, responsive text, and metadata. Its fresh review receipt will be
+recorded before the pull request becomes ready. These checks do not grant
+maintainer approval or merge authority.

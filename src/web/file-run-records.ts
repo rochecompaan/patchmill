@@ -6,6 +6,7 @@ import { object, runFiles, timestamp } from "./run-files.ts";
 
 export const runName = /^\d{8}-\d{6}-[a-f0-9]{4}$/;
 export type IssueRunRecord = {
+  resultRecorded: boolean;
   runId: string;
   startedAt: string;
   finishedAt: string | null;
@@ -50,6 +51,7 @@ function result(
     return;
   const progress = parseRunProgress(v.progress, issue);
   return {
+    resultRecorded: true,
     runId,
     startedAt: v.startedAt,
     finishedAt: v.finishedAt,
@@ -64,6 +66,41 @@ function result(
     sessions: v.sessions.map((s) => ({ phase: (s as { phase: Phase }).phase })),
     progress:
       progress?.runId === runId && progress.state === "ended" ? progress : null,
+  };
+}
+
+export function runRecordMetadata(records: readonly IssueRunRecord[]) {
+  const latest = records.at(-1);
+  const phase =
+    latest?.progress?.phase ?? latest?.sessions.at(-1)?.phase ?? null;
+  const stage = latest?.progress?.facts?.stage ?? null;
+  return {
+    startedAt: records[0]?.startedAt ?? null,
+    finishedAt: latest?.finishedAt ?? null,
+    elapsedSeconds:
+      records.length && records.every((r) => r.finishedAt !== null)
+        ? records.reduce(
+            (sum, r) =>
+              sum +
+              (Date.parse(r.finishedAt!) - Date.parse(r.startedAt)) / 1000,
+            0,
+          )
+        : null,
+    phase,
+    stage,
+    step:
+      phase === "implementation"
+        ? "Implementation"
+        : stage === "spec"
+          ? "Spec"
+          : stage === "plan"
+            ? "Plan"
+            : phase === "planning"
+              ? "Planning"
+              : null,
+    historicalPullRequests: records.flatMap((r) =>
+      r.progress?.facts?.pullRequest ? [r.progress.facts.pullRequest] : [],
+    ),
   };
 }
 
@@ -95,6 +132,7 @@ export async function readIssueRunRecords(input: {
     if (recorded) recorded.progress ??= progress;
     else
       records.push({
+        resultRecorded: false,
         runId: progress.runId,
         startedAt: progress.startedAt,
         finishedAt: progress.state === "ended" ? progress.updatedAt : null,

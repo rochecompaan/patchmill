@@ -5,6 +5,7 @@ import type { IssueDetail, IssueSummary, ThreadEvent } from "./api-types.ts";
 import type { RunObservation } from "./file-run-observations.ts";
 import {
   readIssueRunRecords,
+  runRecordMetadata,
   runName,
   type IssueRunRecord,
 } from "./file-run-records.ts";
@@ -46,6 +47,7 @@ export async function readIssueDetail(input: {
     const p = history.projection;
     if (p)
       records.push({
+        resultRecorded: false,
         runId: p.runId,
         startedAt: p.startedAt,
         finishedAt: p.state === "ended" ? p.updatedAt : null,
@@ -60,10 +62,13 @@ export async function readIssueDetail(input: {
       a.runId.localeCompare(b.runId),
   );
   const latest: IssueRunRecord | undefined = records.at(-1);
+  const metadata = runRecordMetadata(records);
   const summary = {
     ...input.summary,
-    step: input.observation.step ?? input.summary.step,
-    elapsedSeconds: input.observation.elapsedSeconds ?? null,
+    step: input.observation.live ? input.summary.step : metadata.step,
+    elapsedSeconds: input.observation.live
+      ? input.summary.elapsedSeconds
+      : metadata.elapsedSeconds,
   };
   const base: IssueDetail = {
     summary,

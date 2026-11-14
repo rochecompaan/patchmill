@@ -47,6 +47,7 @@ export async function issueFinalUsage(
   try {
     for (const record of records)
       if (
+        !record.resultRecorded ||
         !record.finishedAt ||
         !(await completeUsageTree(
           files,
@@ -56,6 +57,7 @@ export async function issueFinalUsage(
         return null;
     const report = await readIssueCostReport(issueDir, undefined, {
       runIds: records.map((r) => r.runId),
+      records,
     });
     return report
       ? {

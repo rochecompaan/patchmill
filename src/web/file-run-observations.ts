@@ -12,6 +12,7 @@ import {
 import type { StateStore } from "../state/store.ts";
 import {
   readIssueRunRecords,
+  runRecordMetadata,
   type IssueRunRecord,
 } from "./file-run-records.ts";
 import { runFiles, timestamp } from "./run-files.ts";
@@ -72,23 +73,7 @@ export async function readIssueObservation(input: {
     }
   }
   const live = ownership === true;
-  const metadata = {
-    records,
-    startedAt: records[0]?.startedAt ?? null,
-    finishedAt: latest?.finishedAt ?? null,
-    elapsedSeconds:
-      records.length && records.every((r) => r.finishedAt !== null)
-        ? records.reduce(
-            (sum, r) =>
-              sum +
-              (Date.parse(r.finishedAt!) - Date.parse(r.startedAt)) / 1000,
-            0,
-          )
-        : null,
-    historicalPullRequests: records.flatMap((r) =>
-      r.progress?.facts?.pullRequest ? [r.progress.facts.pullRequest] : [],
-    ),
-  };
+  const metadata = { records, ...runRecordMetadata(records) };
   if (live) {
     try {
       const lock = await readLock(join(dir, "lock"));
@@ -98,33 +83,35 @@ export async function readIssueObservation(input: {
         !timestamp(lock.startedAt) ||
         Date.parse(lock.startedAt) > Date.parse(latest.startedAt)
       )
-        return { ...empty(), ...metadata, live };
+        return {
+          ...empty(),
+          ...metadata,
+          phase: null,
+          stage: null,
+          step: null,
+          elapsedSeconds: null,
+          live,
+        };
     } catch {
       input.warn("Could not read optional issue ownership.");
-      return { ...empty(), ...metadata, live };
+      return {
+        ...empty(),
+        ...metadata,
+        phase: null,
+        stage: null,
+        step: null,
+        elapsedSeconds: null,
+        live,
+      };
     }
   }
   if (!latest) return { ...empty(), ...metadata, live };
   const p = latest.progress;
-  const phase = p?.phase ?? latest.sessions.at(-1)?.phase ?? null;
-  const stage = p?.facts?.stage ?? null;
   return {
     ...metadata,
     live,
     state: latest.finishedAt !== null ? "ended" : (p?.state ?? null),
     incomplete: ownership === false && latest.finishedAt === null,
-    phase,
-    stage,
-    step:
-      phase === "implementation"
-        ? "Implementation"
-        : stage === "spec"
-          ? "Spec"
-          : stage === "plan"
-            ? "Plan"
-            : phase === "planning"
-              ? "Planning"
-              : null,
     branch: p?.facts?.branch ?? null,
     specPath: p?.facts?.specPath ?? null,
     planPath: p?.facts?.planPath ?? null,
