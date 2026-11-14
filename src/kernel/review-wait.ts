@@ -5,8 +5,6 @@ import type { HumanChannel } from "./human-channel.ts";
 import { derivePhase } from "./phase.ts";
 import { wrongTarget } from "./pull-request.ts";
 import { closesIssue } from "./verify.ts";
-import { cleanupMergedIssue } from "./merged-cleanup.ts";
-import type { CommandRunner } from "../process/command.ts";
 
 /** D5: an open, ready implementation PR that closes the issue. */
 export function isReviewWait(
@@ -32,8 +30,6 @@ export async function reviewWait(input: {
   host: Host;
   workflow: WorkflowState;
   human: HumanChannel;
-  runner: CommandRunner;
-  repoRoot: string;
   restart: boolean;
   refresh: () => Promise<Facts>;
   publish: () => Promise<void>;
@@ -60,7 +56,6 @@ export async function reviewWait(input: {
       closesIssue(facts.pullRequest.body, issue, repository)
     ) {
       input.update(facts, "done", "The pull request is merged.");
-      await cleanupMergedIssue({ ...input, facts });
       return;
     }
     if (isReviewWait(facts, issue, repository)) continue;

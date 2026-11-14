@@ -78,7 +78,8 @@ When a gate is off, its document goes into the next required planning PR. With
 no later gate, it goes into the implementation PR. Planning PR bodies use
 `Refs #N`, not closing keywords. Only the implementation PR completes the issue.
 Each later branch starts from the fetched base with earlier merged documents.
-Non-interactive runs never delete merged planning branches or worktrees.
+After a confirmed implementation merge and issue closure, all run modes can
+remove retained planning workspaces as part of merged-issue cleanup.
 
 ## Outcome checks
 
@@ -161,12 +162,73 @@ After five seconds, it sends `SIGKILL` if needed. The kernel attempts label
 cleanup and closes the local lock handle in `finally`. A hard crash can still
 leave host labels unchanged.
 
-Non-interactive runs never delete worktrees. After an interactive run confirms
-that the implementation PR merged, the kernel removes the implementation, spec,
-and plan worktrees and local branches of the issue. It keeps each worktree that
-has uncommitted changes and reports the reason in the chat. Otherwise, use the
-human-controlled `patchmill-cleanup` skill for inspected, confirmed cleanup
-under the same lock. Keep permanent lock files and their parent directories
-intact. For independent concurrent issues, allocate separate ports, databases,
-and services. Do not change shared configuration or Git state during active
-runs. See [Git safety](/reference/git-safety/) for host branch protection.
+### Merged-issue cleanup
+
+Every real run sweeps local issue branches and registered worktrees before
+selection. This includes interactive, non-interactive, explicit-issue, and
+`--plan-only` entries. The interactive CLI also sweeps before its initial
+selection. A dry run performs no cleanup or cleanup writes.
+
+The sweep works even when no open issue is eligible. An explicitly named closed
+issue can therefore clean up before normal selection refuses it. Cleanup never
+reclaims or reopens that issue. If an operator quits the Review wait before
+merge, the next real run can clean up later. A confirmed interactive merge also
+cleans up immediately before the run returns.
+
+Each cleanup holds the issue OS lock. Contention skips that issue without
+waiting. Fresh host facts must prove a closed issue and a merged implementation
+PR into the resolved base. Its head must match the implementation branch in the
+push repository, and its body must close this issue. Open replacements,
+closed-unmerged PRs, wrong targets, and planning merges never authorize cleanup.
+Local discovery still works after the host removes the remote branch.
+
+### Hook and removal order
+
+The optional top-level `cleanupHook` runs as `bash <cleanupHook>` from the
+implementation worktree. Patchmill treats its value as one script path, not a
+shell command. Relative paths resolve there. The script needs no executable bit.
+A missing hook is a no-op.
+
+The hook runs before any worktree or branch removal, including when the
+implementation directory is dirty. After hook success, Patchmill inspects each
+workspace again. It keeps every dirty workspace and its local branch and reports
+its absolute path. Clean implementation and optional gated spec/plan workspaces
+can be removed independently. Cleanup never removes remote branches or run
+state.
+
+A non-zero exit or other hook error keeps every worktree and branch. It does not
+change the done outcome. The operator receives the error and the log path. Hook
+stdout, stderr, exit status, and cleanup diagnostics enter
+`<runsDir>/issue-N/cleanup.log`. Immediate cleanup diagnostics also enter the
+current run's `pi.log`.
+
+Use idempotent scripts that touch only resources scoped to the issue or
+worktree. Tolerate missing resources. Exit non-zero when cleanup is incomplete.
+Never remove Patchmill worktrees, branches, PRs, run state, or lock files from
+the hook.
+
+### Retries and manual recovery
+
+After a successful hook step, `<runsDir>/issue-N/cleanup.json` records the merge
+identity. An absent hook also completes that step. Later sweeps can retry dirty
+or partially removed workspaces without repeating a successful hook. Adding or
+changing the hook later does not repeat a completed step for that merge.
+
+The receipt never replaces fresh merge verification or selects a phase. Logs and
+`result.json` do not authorize cleanup. A failed hook creates no success receipt
+and can retry on a later real run. A crash before receipt publication can also
+require a retry, so hook scripts must be idempotent.
+
+A corrupt or mismatched receipt requires manual inspection. A configured hook
+also needs the implementation directory unless a matching receipt already proves
+success. Patchmill preserves targets rather than selecting a different working
+directory or guessing from an invalid receipt. If the log cannot be opened or
+the receipt cannot be written, removal stops. A log error during removal stops
+further removals and reports the targets already removed.
+
+For inspected manual removal, use the human-controlled `patchmill-cleanup`
+skill. It offers the configured hook first and requires explicit consent and the
+same OS lock. Keep permanent lock files and their parent directories intact. For
+independent concurrent issues, allocate separate ports, databases, and services.
+Do not change shared configuration or Git state during active runs. See
+[Git safety](/reference/git-safety/) for host branch protection.
