@@ -296,3 +296,14 @@
   max-width: calc(var(--thread-w) - 48px);
   margin: 0 auto 12px;
 }
+@media (max-width: 760px) {
+  .ihead-top {
+    flex-direction: column;
+  }
+  .ititle {
+    font-size: 19px;
+  }
+  .kbd-hint {
+    display: none;
+  }
+}

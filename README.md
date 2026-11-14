@@ -183,6 +183,21 @@ Use `--host HOST` and `--port PORT` to change the listener. A non-loopback
 listener is for a trusted network or VPN only. HTTP does not encrypt its content
 or token. This command serves sample data, not actual issues or runs.
 
+### Browser regression checks
+
+From a development checkout, use an installed Chrome or Chromium browser:
+
+```sh
+CHROMIUM=/path/to/chromium npm run test:web
+```
+
+CI runs this command and fails if no browser is available. It checks mobile
+layout, message controls, keyboard access, and delayed gallery images. The
+command does not change reference screenshots by default.
+
+To refresh its reference screenshots, set `LAYOUT_SCREENSHOTS=1`. To save its
+measurements, set `LAYOUT_EVIDENCE` to a local JSON path.
+
 ## Commands
 
 | Command                                                                    | What it does                                                                                                                            |

@@ -8,6 +8,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
     let closeCount = 0,
       resolve!: () => void;
     const closed = new Promise<void>((r) => (resolve = r));
+    let closing: Promise<void> | undefined;
     const result = main([], {
       output: {
         stdout: (l) => {
@@ -22,10 +23,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
         url: "http://127.0.0.1:4280/?token=test",
         networkExposed: false,
         closed,
-        close: async () => {
-          closeCount++;
-          resolve();
-        },
+        close: () =>
+          (closing ??= Promise.resolve().then(() => {
+            closeCount++;
+            resolve();
+          })),
       }),
     });
     assert.equal(await result, 0);

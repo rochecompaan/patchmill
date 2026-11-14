@@ -19,12 +19,8 @@ export async function main(
     stderr: console.error,
   };
   let serving: Serving | undefined;
-  let stopped = false;
   const stop = () => {
-    if (!stopped) {
-      stopped = true;
-      void serving?.close().catch(() => {});
-    }
+    void serving?.close().catch(() => {});
   };
   try {
     const flags = parseServeArgs(args);
@@ -57,6 +53,6 @@ export async function main(
   } finally {
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
-    if (!stopped) await serving?.close().catch(() => {});
+    await serving?.close();
   }
 }

@@ -1,137 +1,52 @@
 import { el, icon, externalLink, person, elapsed } from "./dom.js";
 import { renderThread } from "./thread.js";
-import { presentationFor } from "./state.js";
-const phases = [
-  "brainstorm",
-  "spec",
-  "spec-review",
-  "plan",
-  "plan-review",
-  "implement",
-  "code-review",
-];
-const labels = [
-  "Brainstorm",
-  "Spec",
-  "Spec review",
-  "Plan",
-  "Plan review",
-  "Implement",
-  "Code review",
-];
-/** @param {Document} doc @param {string} action @param {string} text @param {string} [className] */
+import { presentationFor, PHASES } from "./state.js";
+/** @typedef {import('../src/web/api-types.ts').IssueDetail} IssueDetail */
+/** @typedef {import('../src/web/api-types.ts').IssueSummary} IssueSummary */
+/** @typedef {import('./state.js').Presentation} Presentation */
+
+/** @param {Document} doc @param {import('./state.js').RunAction|'stop-reply'} action @param {string} text @param {string} [className] */
 function button(doc, action, text, className = "btn") {
   const b = el(doc, "button", className);
   b.type = "button";
   b.dataset.action = action;
-  b.append(
-    icon(
-      doc,
-      "icon-" +
-        ({
-          start: "play",
-          resume: "play",
-          pause: "pause",
-          retry: "retry",
-          "stop-reply": "stop",
-        }[action] ?? "play"),
-    ),
-    doc.createTextNode(text),
-  );
+  const symbol = {
+    start: "play",
+    resume: "play",
+    pause: "pause",
+    retry: "retry",
+    "stop-reply": "stop",
+  }[action];
+  b.append(icon(doc, "icon-" + symbol), doc.createTextNode(text));
   return b;
 }
-/** @param {Document} doc @param {import('../src/web/api-types.ts').IssueDetail} detail @param {string} name @param {string} draft */
-export function renderIssue(doc, detail, name, draft) {
-  const issue = detail.summary,
-    p = presentationFor(issue),
-    fragment = doc.createDocumentFragment(),
-    header = el(doc, "header", "ihead"),
-    inner = el(doc, "div", "ihead-inner");
-  header.dataset.issue = String(issue.number);
-  const back = el(doc, "a", "back", "← Board");
-  back.href = "#/board";
-  inner.append(back);
-  const top = el(doc, "div", "ihead-top"),
-    title = el(doc, "h1", "ititle");
-  title.append(
-    issue.number === 901
-      ? el(doc, "span", "inum", "#901")
-      : externalLink(doc, "#" + issue.number, issue.url, "inum"),
-    doc.createTextNode(issue.title),
-  );
-  const control = el(doc, "div", "control");
-  if (p.header === "terminal")
-    control.append(el(doc, "span", "note-pill", "Running in a terminal"));
-  else if (p.header) {
-    const text = {
-      start: "Start planning",
-      pause: "Pause",
-      resume: "Resume",
-      retry: "Retry",
-    }[p.header];
-    control.append(
-      button(
-        doc,
-        p.header,
-        text,
-        "btn" +
-          (p.header === "start"
-            ? " btn-primary"
-            : p.header === "resume"
-              ? " btn-live"
-              : p.header === "retry"
-                ? " btn-danger"
-                : ""),
-      ),
-    );
-  }
-  top.append(title, control);
-  inner.append(top);
+
+/** @param {Document} doc @param {IssueSummary} issue */
+function renderRail(doc, issue) {
   const rail = el(doc, "ol", "rail");
   rail.setAttribute("aria-label", "Workflow");
-  const phase = phases.indexOf(issue.phase ?? "");
-  phases.forEach((_, index) => {
-    const li = el(
-      doc,
-      "li",
-      index < phase
+  const current = PHASES.findIndex((phase) => phase.id === issue.phase);
+  PHASES.forEach((phase, index) => {
+    const className =
+      index < current
         ? "done"
-        : index === phase
+        : index === current
           ? "current" + (issue.status === "blocked" ? " is-blocked" : "")
-          : "",
-      labels[index],
-    );
-    if (index === phase) li.setAttribute("aria-current", "step");
-    if ([2, 4, 6].includes(index)) li.append(el(doc, "span", "pr-tag", "PR"));
-    rail.append(li);
+          : "";
+    const step = el(doc, "li", className, phase.label);
+    if (index === current) step.setAttribute("aria-current", "step");
+    if (phase.pr) step.append(el(doc, "span", "pr-tag", "PR"));
+    rail.append(step);
   });
-  inner.append(rail);
+  return rail;
+}
+
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {Presentation} p */
+function renderMeta(doc, detail, name, p) {
+  const issue = detail.summary;
   const meta = el(doc, "div", "meta"),
-    statusText = {
-      none: "Not started",
-      working: "Agent working",
-      waiting: "Waiting for reply",
-      idle: "Agent idle",
-      paused: "Paused",
-      blocked: "Blocked",
-      done: "Finished",
-    }[issue.status],
     status = el(doc, "span", "meta-item");
-  status.append(
-    el(
-      doc,
-      "i",
-      "dot" +
-        (issue.status === "working"
-          ? " dot-live"
-          : issue.status === "waiting"
-            ? " dot-wait"
-            : issue.status === "blocked"
-              ? " dot-blocked"
-              : ""),
-    ),
-    el(doc, "b", "", statusText),
-  );
+  status.append(el(doc, "i", p.dotClass), el(doc, "b", "", p.statusLabel));
   meta.append(status);
   if (issue.step)
     meta.append(el(doc, "span", "meta-item mono", "step " + issue.step));
@@ -153,10 +68,10 @@ export function renderIssue(doc, detail, name, draft) {
     meta.append(item);
   }
   if (issue.status === "done" && detail.finalUsage) {
-    const usage = detail.finalUsage,
-      cost = usage.cost
-        ? `${usage.cost.currency === "USD" ? "$" : usage.cost.currency + " "}${usage.cost.amount}`
-        : "not recorded";
+    const usage = detail.finalUsage;
+    const cost = usage.cost
+      ? `${usage.cost.currency === "USD" ? "$" : usage.cost.currency + " "}${usage.cost.amount}`
+      : "not recorded";
     meta.append(
       el(
         doc,
@@ -172,44 +87,125 @@ export function renderIssue(doc, detail, name, draft) {
     presence.append(person(doc, who, true));
   here.append(presence);
   meta.append(here);
-  inner.append(meta);
+  return meta;
+}
+
+/** @param {Document} doc @param {IssueDetail['artifacts']} entries */
+function renderArtifactChips(doc, entries) {
   const artifacts = el(doc, "div", "artifacts");
   for (const [group, kinds] of [
     ["Planning", ["spec", "plan", "mockup", "diagram"]],
     ["Code review", ["shots"]],
   ]) {
-    const entries = detail.artifacts.filter((a) => kinds?.includes(a.kind));
-    if (!entries.length) continue;
+    const items = entries.filter((a) => kinds?.includes(a.kind));
+    if (!items.length) continue;
     const row = el(doc, "div", "art-group");
     row.setAttribute("role", "group");
     row.setAttribute("aria-label", String(group) + " artifacts");
     row.append(el(doc, "span", "art-label", String(group)));
-    for (const a of entries) {
-      const chip = el(doc, "button", "art-chip" + (a.draft ? " is-draft" : ""));
-      chip.type = "button";
-      chip.dataset.artifactId = a.id;
-      chip.setAttribute("aria-haspopup", "dialog");
-      chip.append(
-        icon(doc, "icon-" + a.kind),
-        doc.createTextNode(
-          {
-            spec: "Spec",
-            plan: "Plan",
-            mockup: "Mockup",
-            diagram: "Diagram",
-            shots: "Screenshots",
-          }[a.kind],
-        ),
+    for (const artifact of items) {
+      const chip = el(
+        doc,
+        "button",
+        "art-chip" + (artifact.draft ? " is-draft" : ""),
       );
-      if (a.draft) chip.append(el(doc, "span", "art-draft", "draft"));
+      chip.type = "button";
+      chip.dataset.artifactId = artifact.id;
+      chip.setAttribute("aria-haspopup", "dialog");
+      const label = {
+        spec: "Spec",
+        plan: "Plan",
+        mockup: "Mockup",
+        diagram: "Diagram",
+        shots: "Screenshots",
+      }[artifact.kind];
+      chip.append(
+        icon(doc, "icon-" + artifact.kind),
+        doc.createTextNode(label),
+      );
+      if (artifact.draft) chip.append(el(doc, "span", "art-draft", "draft"));
       row.append(chip);
     }
     artifacts.append(row);
   }
-  inner.append(artifacts);
+  return artifacts;
+}
+
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {Presentation} p */
+function renderHeader(doc, detail, name, p) {
+  const issue = detail.summary;
+  const header = el(doc, "header", "ihead"),
+    inner = el(doc, "div", "ihead-inner");
+  header.dataset.issue = String(issue.number);
+  const back = el(doc, "a", "back", "← Board");
+  back.href = "#/board";
+  inner.append(back);
+  const top = el(doc, "div", "ihead-top"),
+    title = el(doc, "h1", "ititle");
+  title.append(
+    externalLink(doc, "#" + issue.number, issue.url, "inum"),
+    doc.createTextNode(issue.title),
+  );
+  const control = el(doc, "div", "control");
+  if (p.header === "terminal")
+    control.append(el(doc, "span", "note-pill", "Running in a terminal"));
+  else if (p.header && p.control)
+    control.append(button(doc, p.header, p.control.label, p.control.className));
+  top.append(title, control);
+  inner.append(
+    top,
+    renderRail(doc, issue),
+    renderMeta(doc, detail, name, p),
+    renderArtifactChips(doc, detail.artifacts),
+  );
   header.append(inner);
-  fragment.append(header);
-  const thread = renderThread(doc, detail);
+  return header;
+}
+
+/** @param {Document} doc @param {IssueSummary} issue @param {string} name @param {string} draft @param {Presentation} p */
+function renderComposer(doc, issue, name, draft, p) {
+  const footer = el(doc, "footer", "composer");
+  if (p.composer === "terminal" || p.composer === "finished") {
+    footer.append(el(doc, "div", "note-bar", p.composerHint));
+    return footer;
+  }
+  const disabled = p.composer === "disabled";
+  const form = el(
+    doc,
+    "form",
+    "composer-box" + (disabled ? " is-disabled" : ""),
+  );
+  form.id = "composer";
+  const input = el(doc, "textarea");
+  input.id = "composer-input";
+  input.dataset.issue = String(issue.number);
+  input.rows = 1;
+  input.placeholder = "Message the agent as " + name;
+  input.setAttribute("aria-label", "Message the agent");
+  input.value = draft;
+  input.disabled = disabled;
+  form.append(input);
+  if (p.stopReply)
+    form.append(button(doc, "stop-reply", "Stop reply", "btn btn-stop"));
+  const send = el(doc, "button", "btn btn-primary", "Send");
+  send.type = "submit";
+  send.disabled = disabled;
+  form.append(send);
+  const hint = el(doc, "p", "composer-hint");
+  hint.append(
+    el(doc, "i", p.dotClass),
+    el(doc, "span", "", p.composerHint),
+    el(doc, "span", "kbd-hint", "Enter to send · Shift+Enter for a new line"),
+  );
+  footer.append(form, hint);
+  return footer;
+}
+
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft */
+export function renderIssue(doc, detail, name, draft) {
+  const p = presentationFor(detail.summary);
+  const fragment = doc.createDocumentFragment(),
+    thread = renderThread(doc, detail);
   if (!detail.thread.length) {
     const empty = el(doc, "div", "empty");
     empty.append(
@@ -225,73 +221,10 @@ export function renderIssue(doc, detail, name, draft) {
     );
     thread.append(empty);
   }
-  fragment.append(thread);
-  const footer = el(doc, "footer", "composer");
-  if (p.composer === "terminal" || p.composer === "finished") {
-    footer.append(
-      el(
-        doc,
-        "div",
-        "note-bar",
-        p.composer === "terminal"
-          ? `View only. This run was started in a terminal with patchmill run-once --issue ${issue.number}.`
-          : "This run has finished. Review continues on the implementation pull request.",
-      ),
-    );
-  } else {
-    const disabled = p.composer === "disabled",
-      form = el(doc, "form", "composer-box" + (disabled ? " is-disabled" : ""));
-    form.id = "composer";
-    const input = el(doc, "textarea");
-    input.id = "composer-input";
-    input.dataset.issue = String(issue.number);
-    input.rows = 1;
-    input.placeholder = "Message the agent as " + name;
-    input.setAttribute("aria-label", "Message the agent");
-    input.value = draft;
-    input.disabled = disabled;
-    form.append(input);
-    if (p.stopReply)
-      form.append(button(doc, "stop-reply", "Stop reply", "btn btn-stop"));
-    const send = el(doc, "button", "btn btn-primary", "Send");
-    send.type = "submit";
-    send.disabled = disabled;
-    form.append(send);
-    footer.append(form);
-    const hint = el(doc, "p", "composer-hint");
-    hint.append(
-      el(
-        doc,
-        "i",
-        "dot" +
-          (issue.status === "working"
-            ? " dot-live"
-            : issue.status === "waiting"
-              ? " dot-wait"
-              : issue.status === "blocked"
-                ? " dot-blocked"
-                : ""),
-      ),
-      el(
-        doc,
-        "span",
-        "",
-        issue.status === "none"
-          ? "Click Start planning to brainstorm this issue with an agent."
-          : issue.status === "paused"
-            ? "This run is paused. Click Resume to keep chatting."
-            : issue.status === "blocked"
-              ? "This run is blocked. Fix the cause, then click Retry."
-              : issue.status === "waiting"
-                ? "The agent is waiting for your reply."
-                : issue.status === "working"
-                  ? "The agent is working. Your message reaches it after its current tool call."
-                  : "The agent is idle. Your message starts a new turn.",
-      ),
-      el(doc, "span", "kbd-hint", "Enter to send · Shift+Enter for a new line"),
-    );
-    footer.append(hint);
-  }
-  fragment.append(footer);
+  fragment.append(
+    renderHeader(doc, detail, name, p),
+    thread,
+    renderComposer(doc, detail.summary, name, draft, p),
+  );
   return fragment;
 }

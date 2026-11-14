@@ -15,6 +15,8 @@ export default tseslint.config(
       ".worktrees/**",
     ],
   },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     files: ["web/**/*.js"],
     languageOptions: { globals: globals.browser },
@@ -26,8 +28,6 @@ export default tseslint.config(
     },
   },
   { files: ["web/theme-init.js"], languageOptions: { sourceType: "script" } },
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
   {
     files: ["**/*.ts"],
     languageOptions: {

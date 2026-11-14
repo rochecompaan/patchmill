@@ -28,14 +28,21 @@ export function createSampleRunDataSource(): RunDataSource {
     syncedAt: null,
     issues,
     details: Object.fromEntries(
-      issues.map((summary) => [
-        String(summary.number),
-        {
-          summary,
-          ...sampleThreads[String(summary.number)]!,
-          artifacts: sampleArtifacts[String(summary.number)] ?? [],
-        },
-      ]),
+      issues.map((summary) => {
+        const thread = sampleThreads[String(summary.number)];
+        if (!thread)
+          throw new Error(
+            `Missing sample thread for issue #${summary.number}.`,
+          );
+        return [
+          String(summary.number),
+          {
+            summary,
+            ...thread,
+            artifacts: sampleArtifacts[String(summary.number)] ?? [],
+          },
+        ];
+      }),
     ),
   };
   freeze(snapshot);

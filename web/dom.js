@@ -31,7 +31,7 @@ export function externalLink(doc, text, url, className = "") {
 export function personClass(name) {
   let hash = 0;
   for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
-  return "who-" + (name === "roche" ? 1 : 2 + (hash % 4));
+  return "who-" + (1 + (hash % 5));
 }
 /** @param {Document} doc @param {string} name @param {boolean} [small] */
 export function person(doc, name, small = false) {

@@ -16,11 +16,15 @@ export function createPageController({ api, onState, visible, clock }) {
     busy = false;
   /** @type {AbortController|undefined} */ let active;
   /** @type {(()=>void)|undefined} */ let cancel;
+  let published = "";
   function stopTimer() {
     cancel?.();
     cancel = undefined;
   }
   function publish() {
+    const next = JSON.stringify(state);
+    if (next === published) return;
+    published = next;
     onState({ ...state });
   }
   async function load() {

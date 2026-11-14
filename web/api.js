@@ -4,11 +4,7 @@
 export class ApiRequestError extends Error {
   /** @param {number} status */
   constructor(status) {
-    super(
-      status === 401
-        ? "Open the link printed by patchmill serve."
-        : "Could not load data.",
-    );
+    super(`HTTP request failed (${status}).`);
     this.status = status;
   }
 }

@@ -1,10 +1,9 @@
 import { createApi } from "./api.js";
 import { createPageController } from "./controller.js";
 import { parseRoute, createDraftStore } from "./state.js";
-import { renderBoard } from "./board.js";
-import { renderIssue } from "./issue.js";
+import { renderPage } from "./page.js";
+import { createViewState } from "./view-state.js";
 import { readName, saveName, preferredTheme } from "./preferences.js";
-import { el } from "./dom.js";
 import { mountArtifactViewer } from "./artifacts.js";
 const mount = /** @type {HTMLElement} */ (document.getElementById("app"));
 const notice = /** @type {HTMLElement} */ (document.getElementById("notice"));
@@ -30,120 +29,47 @@ const viewer = mountArtifactViewer(
   /** @type {HTMLDialogElement} */ (document.getElementById("viewer")),
 );
 let linkedArtifact = "";
-let name = readName(storage) ?? "You",
-  renderKey = "";
+let name = readName(storage) ?? "You";
 const drafts = createDraftStore();
+const viewState = createViewState(mount, drafts);
+const { captureDraft } = viewState;
 /** @type {import('./controller.js').PageState|undefined} */ let current;
-/** @type {Map<string,Set<string>>} */ const openTools = new Map();
 /** @param {string} [text] */
 function showNote(text = "This comes with live chat. Nothing changed.") {
   notice.hidden = false;
   notice.textContent = text;
 }
-function captureDraft() {
-  const input = document.querySelector("textarea");
-  if (input?.dataset.issue)
-    drafts.set(Number(input.dataset.issue), input.value);
+/** @param {import('./controller.js').PageState} state */
+function openLinkedArtifact(state) {
+  if (
+    state.status !== "ready" ||
+    !state.issue ||
+    state.route.view !== "issue" ||
+    !state.route.artifactId
+  )
+    return;
+  const artifactId = state.route.artifactId;
+  const key = `${state.route.number}:${artifactId}`;
+  const artifact = state.issue.issue.artifacts.find((a) => a.id === artifactId);
+  const origin = [...mount.querySelectorAll("button")].find(
+    (b) => b.dataset.artifactId === artifact?.id,
+  );
+  if (artifact && origin && linkedArtifact !== key) {
+    linkedArtifact = key;
+    viewer.open(artifact, origin);
+  }
 }
 function render() {
   if (!current) return;
-  const state = current;
-  const key =
-    state.status === "ready"
-      ? `${state.route.view}:${state.issue?.issue.summary.number ?? ""}:${state.board?.revision ?? state.issue?.revision}:${name}`
-      : state.status + ":" + JSON.stringify(state.route);
-  if (key === renderKey) return;
-  const oldIssue = mount.querySelector(".ihead")?.getAttribute("data-issue");
-  if (oldIssue)
-    openTools.set(
-      oldIssue,
-      new Set(
-        [...mount.querySelectorAll("details[open]")].map(
-          (n) => n.getAttribute("data-key") ?? "",
-        ),
-      ),
-    );
-  const focused =
-    document.activeElement instanceof HTMLTextAreaElement
-      ? document.activeElement
-      : null;
-  const selection = focused
-    ? { start: focused.selectionStart, end: focused.selectionEnd }
-    : null;
-  captureDraft();
-  renderKey = key;
-  if (state.status === "ready" && state.board)
-    mount.replaceChildren(renderBoard(document, state.board));
-  else if (state.status === "ready" && state.issue) {
-    mount.replaceChildren(
-      renderIssue(
-        document,
-        state.issue.issue,
-        name,
-        drafts.get(state.issue.issue.summary.number),
-      ),
-    );
-    const currentStep = mount.querySelector("[aria-current=step]");
-    currentStep?.scrollIntoView({ block: "nearest", inline: "center" });
-  } else {
-    const view = el(document, "section", "empty"),
-      heading = el(
-        document,
-        "h1",
-        "",
-        state.status === "loading"
-          ? "Loading sample data…"
-          : state.status === "not-found"
-            ? "Issue not found"
-            : state.status === "unauthorized"
-              ? "Open the printed link"
-              : "Could not load data",
-      );
-    view.append(heading);
-    if (state.message) view.append(el(document, "p", "", state.message));
-    const back = el(document, "a", "back", "← Board");
-    back.href = "#/board";
-    view.append(back);
-    if (state.status === "error") {
-      const retry = el(document, "button", "btn", "Retry");
-      retry.type = "button";
-      retry.dataset.action = "reload";
-      view.append(retry);
-    }
-    mount.replaceChildren(view);
-  }
+  const saved = viewState.capture();
+  mount.replaceChildren(renderPage(document, current, name, drafts));
+  const repository = current.board?.repository ?? current.issue?.repository;
+  document
+    .getElementById("repository-name")
+    ?.replaceChildren(document.createTextNode(repository?.name ?? ""));
   (mount.querySelector(".composer") ?? mount).prepend(notice);
-  const issueNumber = current.issue?.issue.summary.number;
-  if (issueNumber)
-    for (const details of mount.querySelectorAll("details"))
-      if (openTools.get(String(issueNumber))?.has(details.dataset.key ?? ""))
-        details.open = true;
-  if (
-    state.status === "ready" &&
-    state.issue &&
-    state.route.view === "issue" &&
-    state.route.artifactId
-  ) {
-    const artifactId = state.route.artifactId;
-    const key = `${state.route.number}:${artifactId}`;
-    const artifact = state.issue.issue.artifacts.find(
-      (a) => a.id === artifactId,
-    );
-    const origin = [...mount.querySelectorAll("button")].find(
-      (b) => b.dataset.artifactId === artifact?.id,
-    );
-    if (artifact && origin && linkedArtifact !== key) {
-      linkedArtifact = key;
-      viewer.open(artifact, origin);
-    }
-  }
-  if (focused && selection) {
-    const input = mount.querySelector("textarea");
-    if (input && !input.disabled) {
-      input.focus({ preventScroll: true });
-      input.setSelectionRange(selection.start, selection.end);
-    }
-  }
+  viewState.restore(saved);
+  openLinkedArtifact(current);
 }
 const controller = createPageController({
   api: createApi(),

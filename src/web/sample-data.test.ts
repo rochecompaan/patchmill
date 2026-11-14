@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSampleRunDataSource } from "./sample-data.ts";
+import { sampleThreads } from "./samples/threads.ts";
 
 test("sample projection covers every state without exposing mutable fixtures", async () => {
   const source = createSampleRunDataSource();
@@ -57,12 +58,15 @@ test("every board summary has matching detail and valid artifacts", async () => 
   );
   assert.ok(prs.has("spec") && prs.has("plan"));
 });
-test("sample subscription is inert and unsubscribe is idempotent", async () => {
-  let count = 0;
-  const source = createSampleRunDataSource();
-  const unsubscribe = source.subscribe(() => count++);
-  await source.snapshot();
-  unsubscribe();
-  unsubscribe();
-  assert.equal(count, 0);
+test("missing sample threads fail at the projection boundary with the issue number", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(sampleThreads, "227")!;
+  Reflect.deleteProperty(sampleThreads, "227");
+  try {
+    assert.throws(
+      () => createSampleRunDataSource(),
+      /Missing sample thread for issue #227/,
+    );
+  } finally {
+    Object.defineProperty(sampleThreads, "227", descriptor);
+  }
 });

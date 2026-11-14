@@ -58,6 +58,7 @@
     "test": "npm run check:types && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\" \"scripts/*.test.mjs\"",
     "check:types": "tsc -p tsconfig.quality.json",
     "test:cli": "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test bin/*.test.ts src/cli/main.test.ts",
+    "test:web": "node scripts/check-serve-layout.mjs",
     "site:dev": "npm --prefix site run dev",
     "site:build": "npm --prefix site run build",
     "site:preview": "npm --prefix site run preview"

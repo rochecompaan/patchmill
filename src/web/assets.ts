@@ -9,6 +9,8 @@ const publicFiles = new Set([
   "api.js",
   "state.js",
   "controller.js",
+  "page.js",
+  "view-state.js",
   "dom.js",
   "board.js",
   "issue.js",
@@ -66,12 +68,11 @@ export function publicPath(target: string): string | null {
     return null;
   }
 }
+/** Read a path already normalized by publicPath; never decode it a second time. */
 export async function readWebAsset(
   webRoot: string,
-  target: string,
+  path: string,
 ): Promise<WebAsset | null> {
-  const path = publicPath(target);
-  if (path === null) return null;
   const file = path === "/" ? "index.html" : path.slice(1);
   if (!publicFiles.has(file)) return null;
   try {

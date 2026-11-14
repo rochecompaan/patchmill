@@ -1,14 +1,13 @@
-const previews = new Set([
-  "/samples/board.html",
-  "/samples/design-review.html",
-  "/samples/planning-flow.html",
-  "/samples/board-columns.png",
-  "/samples/blocked-card.png",
-  "/samples/board-mobile.png",
-]);
-/** @param {string} value @returns {string|null} */
+/** Root-relative previews only; the server owns the concrete asset allowlist.
+ * @param {string} value @returns {string|null} */
 export function safePreviewUrl(value) {
-  return previews.has(value) ? value : null;
+  if (!value.startsWith("/samples/") || /[\\\\%?#\s]/.test(value)) return null;
+  const path = new URL(value, "http://preview.invalid").pathname;
+  return path === value &&
+    /\.(?:html|png)$/.test(path) &&
+    !path.split("/").some((part) => part.startsWith("."))
+    ? path
+    : null;
 }
 
 /** @param {string} value @returns {string|null} */

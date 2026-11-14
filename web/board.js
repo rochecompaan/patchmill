@@ -1,4 +1,5 @@
 import { el, icon, externalLink } from "./dom.js";
+import { presentationFor } from "./state.js";
 /** @typedef {import('../src/web/api-types.ts').BoardResponse} BoardResponse */
 const columns = [
   ["triage", "Triage", "No workflow label, or needs-info"],
@@ -11,17 +12,11 @@ const columns = [
 ];
 /** @param {Document} doc @param {import('../src/web/api-types.ts').IssueSummary} issue */
 function card(doc, issue) {
+  const p = presentationFor(issue);
   const node = el(
     doc,
     "article",
-    "card" +
-      (issue.status === "working"
-        ? " is-live"
-        : issue.status === "waiting"
-          ? " is-waiting"
-          : issue.status === "blocked"
-            ? " is-blocked"
-            : ""),
+    "card" + (p.cardClass ? " " + p.cardClass : ""),
   );
   const main = el(doc, "a", "card-main");
   main.href = "#/issue/" + issue.number;
@@ -30,30 +25,17 @@ function card(doc, issue) {
     el(doc, "div", "card-title", issue.title),
   );
   node.append(main);
-  if (
-    issue.step &&
-    ["working", "waiting", "idle", "paused"].includes(issue.status)
-  )
+  if (issue.step && p.showStep)
     node.append(el(doc, "div", "card-step", issue.step));
   if (issue.blockedReason)
     node.append(el(doc, "div", "card-error", "− " + issue.blockedReason));
   const markers = el(doc, "div", "card-row");
-  if (issue.status === "working" || issue.status === "waiting") {
-    const marker = el(
-      doc,
-      "span",
-      "mk " + (issue.status === "working" ? "mk-live" : "mk-wait"),
-    );
-    marker.append(
-      el(doc, "i"),
-      doc.createTextNode(
-        issue.status === "working" ? "Live" : "Waiting for reply",
-      ),
-    );
+  if (p.marker) {
+    const marker = el(doc, "span", p.marker.className);
+    if (p.marker.dot) marker.append(el(doc, "i"));
+    marker.append(doc.createTextNode(p.marker.label));
     markers.append(marker);
   }
-  if (issue.status === "paused")
-    markers.append(el(doc, "span", "mk mk-paused", "Paused"));
   if (issue.terminal) markers.append(el(doc, "span", "mk mk-term", "Terminal"));
   for (const pr of issue.pullRequests) {
     const label = el(doc, "span", "card-pr");

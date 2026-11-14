@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
-import { readWebAsset, resolveWebRoot } from "./assets.ts";
+import { readWebAsset, resolveWebRoot, publicPath } from "./assets.ts";
 test("public assets resolve from package roots and never escape through paths or symlinks", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "serve-assets-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -22,6 +22,10 @@ test("public assets resolve from package roots and never escape through paths or
     (await readWebAsset(join(root, "web"), "/"))?.contentType,
     "text/html; charset=utf-8",
   );
+  const resolved = publicPath("/%69ndex.html?view=board");
+  assert.equal(resolved, "/index.html");
+  assert.ok(await readWebAsset(join(root, "web"), resolved!));
+  assert.equal(await readWebAsset(join(root, "web"), "/%69ndex.html"), null);
   for (const path of [
     "/../package.json",
     "/%2e%2e/package.json",

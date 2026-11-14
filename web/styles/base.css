@@ -332,3 +332,20 @@ main:focus-visible {
 .who-5 {
   --who: var(--who-5);
 }
+@media (max-width: 760px) {
+  .tb-repo,
+  .tb-status.faint {
+    display: none;
+  }
+}
+/* Phones: the wheel alone stands for the brand. */
+@media (max-width: 520px) {
+  .topbar {
+    gap: 10px;
+    padding: 0 14px;
+  }
+  .brand-word,
+  .tb-sep {
+    display: none;
+  }
+}

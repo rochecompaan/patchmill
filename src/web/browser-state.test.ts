@@ -87,6 +87,40 @@ test("stale successes cannot replace a newer issue or restore data after auth lo
   c.dispose();
   d.dispose();
 });
+test("unchanged responses do not redraw while changed payload data still publishes", async () => {
+  const s = await createSampleRunDataSource().snapshot();
+  let board: BoardResponse = {
+    schemaVersion: 1,
+    source: s.source,
+    repository: s.repository,
+    revision: s.revision,
+    syncedAt: null,
+    issues: s.issues,
+  };
+  const states: PageState[] = [];
+  const controller = createPageController({
+    api: {
+      board: async () => structuredClone(board),
+      issue: async () => assert.fail(),
+    },
+    onState: (state) => states.push(state),
+    visible: () => false,
+    clock: { after: () => () => {} },
+  });
+  await controller.navigate({ view: "board" });
+  const initial = states.length;
+  await controller.retry();
+  assert.equal(states.length, initial);
+  board = {
+    ...board,
+    repository: { ...board.repository, name: "other/repository" },
+  };
+  await controller.retry();
+  assert.equal(states.length, initial + 1);
+  assert.equal(states.at(-1)?.board?.repository.name, "other/repository");
+  controller.dispose();
+});
+
 test("board polling stops while hidden, resumes once, and disposes its timer", async () => {
   const s = await createSampleRunDataSource().snapshot();
   let calls = 0,

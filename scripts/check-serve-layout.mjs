@@ -9,11 +9,21 @@ import { createServeAuth } from "../src/web/auth.ts";
 import { createSampleRunDataSource } from "../src/web/sample-data.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const sample = createSampleRunDataSource();
 const server = await startServeServer({
   host: "127.0.0.1",
   port: 0,
   auth: createServeAuth(),
-  source: createSampleRunDataSource(),
+  source: {
+    ...sample,
+    snapshot: async () => ({
+      ...(await sample.snapshot()),
+      repository: {
+        name: "example/sample",
+        url: "https://github.com/example/sample",
+      },
+    }),
+  },
 });
 const profile = await fs.mkdtemp("/tmp/patchmill-layout-chrome-");
 const browser = spawn(
@@ -202,6 +212,12 @@ try {
   await until(
     'document.querySelectorAll(".col").length===7 && document.querySelector("#name-dialog")?.open',
   );
+  check(
+    await evaluate(
+      'document.querySelector(".tb-repo").textContent === "example/sample"',
+    ),
+    "The API payload must own the repository name",
+  );
   // Invalid names must remain editable in the dialog; Cancel must still work.
   await evaluate("document.querySelector('#name-input').value='   '");
   await click("#name-form [value=save]");
@@ -336,6 +352,76 @@ try {
     await evaluate("location.hash='#/board'");
     await until('document.querySelectorAll(".col").length===7');
   }
+  // Both themes retain every state-dependent header and composer.
+  const cases = [
+    [206, "Start planning", true],
+    [250, "Pause", false],
+    [227, "Pause", false],
+    [901, "Resume", true],
+    [210, "Pause", false],
+    [276, "Pause", false],
+    [263, "Running in a terminal", null],
+    [231, "", null],
+    [247, "Retry", true],
+  ];
+  for (const theme of ["light", "dark"]) {
+    if (
+      await evaluate(
+        `document.documentElement.dataset.theme !== ${JSON.stringify(theme)}`,
+      )
+    )
+      await click("#theme-switch");
+    for (const [number, control, disabled] of cases) {
+      await evaluate(`location.hash='#/issue/${number}'`);
+      await until(
+        `document.querySelector('.ihead')?.dataset.issue==='${number}'`,
+      );
+      const view = await evaluate(
+        `({control:document.querySelector('.control').innerText.trim(),disabled:document.querySelector('#composer-input')?.disabled??null,steps:document.querySelectorAll('.rail li').length})`,
+      );
+      check(
+        view.control === control &&
+          view.disabled === disabled &&
+          view.steps === 7,
+        `${theme} #${number}: header, composer, and workflow rail must match the issue state`,
+      );
+      if (
+        await evaluate("Boolean(document.querySelector('.control button'))")
+      ) {
+        const before = await evaluate(
+          "document.querySelector('.thread').innerText",
+        );
+        await click(".control button");
+        check(
+          (await evaluate("document.querySelector('.thread').innerText")) ===
+            before,
+          `${theme} #${number}: header controls must not change the thread`,
+        );
+      }
+    }
+  }
+
+  // A redraw preserves the current issue's draft, tool state, focus, and selection.
+  await evaluate("location.hash='#/issue/227'");
+  await until("document.querySelector('.ihead')?.dataset.issue==='227'");
+  await evaluate(`(()=>{
+    const input=document.querySelector('#composer-input');
+    input.value='Retained selection'; input.dispatchEvent(new Event('input',{bubbles:true}));
+    document.querySelector('details.tool').open=true;
+    input.focus(); input.setSelectionRange(2,7);
+    document.querySelector('#name-input').value='Updated reviewer';
+    document.querySelector('#name-form').requestSubmit(document.querySelector('#name-form [value=save]'));
+  })()`);
+  await settled();
+  check(
+    await evaluate(`(()=>{
+    const input=document.querySelector('#composer-input');
+    return input.value==='Retained selection' && document.activeElement===input &&
+      input.selectionStart===2 && input.selectionEnd===7 && document.querySelector('details.tool').open;
+  })()`),
+    "A redraw must preserve the issue's editable view state",
+  );
+
   // The first keyboard stop must bypass the topbar without changing the route.
   await evaluate("location.hash='#/issue/227'");
   await until("document.querySelector('.ihead')?.dataset.issue==='227'");

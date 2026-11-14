@@ -37,6 +37,15 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Test serve browser regressions
+        run: |
+          browser="$(command -v google-chrome || command -v chromium || true)"
+          if [ -z "$browser" ]; then
+            echo "::error::Chrome or Chromium is required for the serve browser regressions."
+            exit 1
+          fi
+          CHROMIUM="$browser" npm run test:web
+
       - name: Smoke test npm package install
         run: node scripts/smoke-packed-artifact.mjs
 
