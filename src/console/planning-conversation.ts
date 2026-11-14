@@ -24,23 +24,26 @@ export class PlanningConversation {
   ): Promise<PhaseRun> {
     this.launch = launch;
     this.gate = launch.planningGate;
-    return recordPlanningUsage(this.session, launch.sessionDir, () =>
-      aborted
-        ? Promise.resolve(aborted)
-        : new Promise((resolve) => {
-            this.pending = resolve;
-            const reason =
-              this.gate?.required && !this.gate.pullRequest
-                ? "\n\nThis gate offers chat approval only: a planning PR would carry the earlier unmerged document. Keep later documents on the implementation branch."
-                : "";
-            this.pi.sendUserMessage(
-              (feedback === undefined
-                ? launch.envelope
-                : `Patchmill could not accept the planning result:\n\n${feedback}\n\nFix it and submit again.`) +
-                reason,
-              { deliverAs: "followUp" },
-            );
-          }),
+    const reason =
+      this.gate?.required && !this.gate.pullRequest
+        ? "\n\nThis gate offers chat approval only: a planning PR would carry the earlier unmerged document. Keep later documents on the implementation branch."
+        : "";
+    const prompt =
+      (feedback === undefined
+        ? launch.envelope
+        : `Patchmill could not accept the planning result:\n\n${feedback}\n\nFix it and submit again.`) +
+      reason;
+    return recordPlanningUsage(
+      this.session,
+      launch.sessionDir,
+      () =>
+        aborted
+          ? Promise.resolve(aborted)
+          : new Promise((resolve) => {
+              this.pending = resolve;
+              this.pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+            }),
+      { prompt },
     );
   }
 

@@ -9,6 +9,70 @@ import { fakeExtensionApi } from "../../test-support/fake-extension-api.ts";
 import { readSessionUsage, sumSessionUsage } from "../kernel/pi-cost.ts";
 import { readIssueCostReport } from "../kernel/issue-cost.ts";
 import type { PhaseLaunch } from "../kernel/launch.ts";
+import { recordPlanningUsage } from "./planning-usage.ts";
+
+test("planning copies include prompt, human messages and tool results without thinking or attachments", async (t) => {
+  const root = await fs.mkdtemp(join(tmpdir(), "planning-copy-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const session = SessionManager.inMemory();
+  session.appendMessage({
+    role: "user",
+    content: "earlier-private-chat",
+    timestamp: 0,
+  });
+  const result = {
+    result: {
+      ok: true as const,
+      result: { status: "done" as const, summary: "done" },
+    },
+    session: { exitCode: 0, timedOut: false, aborted: false },
+  };
+  await recordPlanningUsage(
+    session,
+    root,
+    async () => {
+      session.appendMessage({
+        role: "user",
+        content: "plan prompt",
+        timestamp: 1,
+      });
+      session.appendMessage({
+        role: "toolResult",
+        toolCallId: "call1",
+        toolName: "read",
+        content: [
+          { type: "text", text: "<b>output</b>" },
+          { type: "image", data: "private-image", mimeType: "image/png" },
+        ],
+        isError: false,
+        timestamp: 2,
+      });
+      return result;
+    },
+    { prompt: "plan prompt" },
+  );
+  const text = await fs.readFile(join(root, "console-planning.jsonl"), "utf8");
+  const records = text
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.deepEqual(
+    records.filter((r) => r.type === "message").map((r) => r.message.role),
+    ["user", "toolResult"],
+  );
+  assert.equal(records[0].patchmillPrompt, true);
+  assert.doesNotMatch(text, /earlier-private-chat|private-image/);
+  const warnings: string[] = [];
+  const file = join(root, "not-a-directory");
+  await fs.writeFile(file, "x");
+  assert.equal(
+    await recordPlanningUsage(session, file, async () => result, {
+      warn: (s) => warnings.push(s),
+    }),
+    result,
+  );
+  assert.equal(warnings.length, 1);
+});
 
 for (const ending of ["submit", "shutdown"] as const) {
   test(`console planning usage excludes earlier chat and survives ${ending} and feedback`, async (t) => {

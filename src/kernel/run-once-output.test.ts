@@ -81,6 +81,22 @@ test("each phase is visible and implementation produces one final ready-PR resul
   assert.match(text, /agent-done/);
   assert.equal(text.split("Final result:").length - 1, 1);
   assert.match(text, /Cost: 200 in \/ 40 out tokens, \$0.10/);
+  const { dir, result } = await c.records();
+  assert.equal(result.progress.state, "ended");
+  assert.equal(result.progress.outcome.label, "done");
+  const history = (await fs.readFile(`${dir}/history.jsonl`, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const progress = history
+    .filter((r) => r.kind === "progress")
+    .map((r) => r.text);
+  assert.deepEqual(progress, c.output);
+  assert.deepEqual(
+    history.filter((r) => r.kind === "session").map((r) => r.phase),
+    ["planning", "implementation"],
+  );
+  assert.equal(history.at(-1).progress.state, "ended");
 });
 
 test("no eligible issue has a readable result instead of silent success", async (t) => {

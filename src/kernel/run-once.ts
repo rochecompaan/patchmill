@@ -37,6 +37,7 @@ import { verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { projectRunProgress, writeRunProgress } from "./run-progress.ts";
+import { createRunHistory } from "./run-history.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue } from "./merged-cleanup.ts";
@@ -159,15 +160,26 @@ export async function runOneIssue(
   const runId = newRunId(started);
   const startedAt = started.toISOString();
   const runDir = join(issueDir, runId);
+  const history = createRunHistory({
+    issue: issueNumber,
+    runId,
+    runDir,
+    now,
+    warn: output.stderr,
+  });
+  const progressOutput = async (stream: "stdout" | "stderr", text: string) => {
+    await history.progress(stream, text);
+    output[stream](text);
+  };
   const snapshot = runSnapshot(
     { issue: issueNumber, runId, runDir, startedAt },
     deps.observe,
     (line) => output.stderr(line),
-    (record) =>
-      writeRunProgress(
-        issueDir,
-        projectRunProgress(record, !!deps.human, now()),
-      ),
+    async (record) => {
+      const progress = projectRunProgress(record, !!deps.human, now());
+      await history.snapshot(progress);
+      await writeRunProgress(issueDir, progress);
+    },
   );
   const sessions: {
     phase: Phase;
@@ -224,7 +236,7 @@ export async function runOneIssue(
       if (issue.state !== "open" || issue.status !== "inProgress")
         return { status: "claimed-elsewhere", issue: issueNumber };
       await fs.mkdir(runDir, { recursive: true });
-      output.stderr(formatRunStart(issue));
+      await progressOutput("stderr", formatRunStart(issue));
       let sessionNumber = 0;
       let sinceHuman = 0;
       let feedback: string | undefined;
@@ -291,7 +303,12 @@ export async function runOneIssue(
         sessionNumber++;
         sinceHuman++;
         await snapshot.phase(phase, sessionNumber);
-        output.stderr(formatPhaseStart(phase, sessionNumber));
+        await history.session({
+          number: sessionNumber,
+          phase,
+          stage: facts.stage,
+        });
+        await progressOutput("stderr", formatPhaseStart(phase, sessionNumber));
         const run = await launchPhase(
           launch,
           launcher,
@@ -305,7 +322,8 @@ export async function runOneIssue(
           sinceHuman = 0;
         const phaseUsage = await sumSessionUsage(launch.sessionDir);
         totalOutputTokens += phaseUsage?.outputTokens ?? 0;
-        output.stderr(
+        await progressOutput(
+          "stderr",
           formatPhaseComplete(
             phaseUsage,
             totalOutputTokens,
@@ -445,12 +463,29 @@ export async function runOneIssue(
           finishedAt: now().toISOString(),
           outcome,
           sessions,
+          progress: projectRunProgress(
+            {
+              issue: issueNumber,
+              runId,
+              runDir,
+              startedAt,
+              state: "ended",
+              session: sessions.length,
+              ...(sessions.at(-1) ? { phase: sessions.at(-1)!.phase } : {}),
+              ...(displayFacts ? { facts: displayFacts } : {}),
+              summary: stop.summary,
+              outcome: { status: outcome.status, label: stop.label },
+            },
+            !!deps.human,
+            now(),
+          ),
         },
         null,
         2,
       ),
     );
-    output.stdout(
+    await progressOutput(
+      "stdout",
       formatRunResult({
         label:
           outcome.status === "completed"
