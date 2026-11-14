@@ -4062,7 +4062,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         if (a.doc)
           return `<div class="vw-body"><article class="md-body">${a.doc}</article></div>`;
         if (a.html)
-          return `<div class="vw-body is-frame"><iframe class="art-frame" title="${esc(a.title)}" sandbox="" srcdoc="${esc(a.html)}"></iframe><p class="vw-note">Sample preview. Scripts are off. The file cannot read this page or act as you.</p></div>`;
+          return `<div class="vw-body is-frame"><iframe class="art-frame" title="${esc(a.title)}" sandbox="allow-same-origin" srcdoc="${esc(a.html)}"></iframe><p class="vw-note">Sample preview. Scripts are off. The file cannot read this page or act as you.</p></div>`;
         const s = a.shots[idx];
         const thumbs = a.shots
           .map(

@@ -702,12 +702,17 @@ values, not paths that the server opens.
   and tables. The page constructs safe elements instead of parsing Markdown or
   injecting HTML from JSON.
 - Mockups and diagrams use a small set of authored HTML sample pages under
-  `web/`. The drawer loads them in an iframe with an empty sandbox attribute. No
-  scripts, forms, top navigation, popups, or same-origin privilege are enabled.
-  They are packaged samples, not arbitrary provider HTML.
+  `web/`. The drawer uses `sandbox="allow-same-origin"`. It does not allow
+  scripts, forms, top navigation, or popups. These are packaged samples, not
+  arbitrary provider HTML.
+- During plan preparation, the maintainer selected this same-origin-only
+  sandbox. Chromium treats stylesheet requests from an opaque sandbox as
+  cross-site and omits the Strict cookie. Same-origin permission lets those
+  authenticated requests work without script permission.
 - Sample preview pages use external same-origin CSS and no inline scripts. Their
-  own CSP tightens `script-src` and `connect-src` to `'none'`. Preview pages use
-  system fonts. They load no font files or foreign assets.
+  own CSP sets `script-src 'none'`, `connect-src 'none'`, and
+  `sandbox allow-same-origin`. This also restricts previews opened in a new tab.
+  Preview pages use system fonts. They load no font files or foreign assets.
 - Screenshots use packaged raster images, captions, thumbnails, previous/next
   buttons, and an announced image count. Keyboard arrows change the image.
 - “Open in new tab” uses the same allowlisted local preview URL with no opener.
