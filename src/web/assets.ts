@@ -23,6 +23,7 @@ const publicFiles = new Set([
   "styles/thread.css",
   "styles/artifacts.css",
   "images/grain.svg",
+  "images/mark.svg",
   "fonts/atkinson-hyperlegible-next.woff2",
   "fonts/atkinson-hyperlegible-mono.woff2",
   "samples/board.html",

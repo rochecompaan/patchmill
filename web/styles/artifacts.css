@@ -1,0 +1,494 @@
+/* ---------- artifacts ---------- */
+.artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 22px;
+  margin-top: 10px;
+}
+.art-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.art-label {
+  margin-right: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.art-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  font: 500 13px var(--font-ui);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.art-chip:hover {
+  border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+}
+.art-chip.is-draft {
+  border-style: dashed;
+}
+.art-chip svg,
+.art-card-icon svg {
+  flex: none;
+  color: var(--brass);
+}
+.art-count {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.art-draft {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--brass);
+  background: var(--brass-soft);
+}
+.ev-art {
+  margin: 8px 0;
+}
+.ev-art .gutter::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--line);
+}
+.art-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 560px;
+  padding: 10px 10px 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+}
+.art-card-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-s);
+  background: var(--brass-soft);
+}
+.art-card-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+}
+.art-card-text b {
+  font-weight: 500;
+}
+.art-card-text code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* ---------- artifact viewer ---------- */
+dialog.viewer {
+  inset: 0 0 0 auto;
+  width: min(860px, 100vw);
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg-raise);
+}
+/* The panel spans the whole screen here, so its edge line has nothing to separate. */
+@media (max-width: 860px) {
+  dialog.viewer {
+    border-left: 0;
+  }
+}
+dialog.viewer[open] {
+  display: flex;
+  animation: slide-in 0.2s ease-out;
+}
+body:has(dialog.viewer[open]) {
+  overflow: hidden;
+}
+.vw {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.vw-head {
+  position: relative;
+  padding: 16px 64px 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.vw-kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+dialog.viewer h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+  font-size: 19px;
+}
+dialog.viewer h2 svg {
+  color: var(--brass);
+}
+.vw-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: 13px;
+  color: var(--dim);
+}
+.vw-meta code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.vw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.vw-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: transparent;
+  color: var(--dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.vw-close:hover {
+  color: var(--text);
+  border-color: var(--line-hover);
+}
+.vw-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 28px 36px;
+}
+.vw-body.is-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+.art-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: #fff;
+}
+.vw-note {
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.md-body {
+  max-width: 72ch;
+  font-size: 15px;
+}
+.md-body h1 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 1.25;
+}
+dialog.viewer .md-body h2 {
+  display: block;
+  margin: 24px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 17px;
+}
+dialog.viewer .md-body p {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 15px;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.md-body li {
+  margin: 3px 0;
+}
+.md-body li::marker {
+  color: var(--faint);
+}
+.md-body table {
+  width: 100%;
+  margin: 4px 0 12px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.md-body th,
+.md-body td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.md-body th {
+  color: var(--dim);
+  font-weight: 500;
+}
+.md-body td.num,
+.md-body th.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.md-body .md-meta {
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.gallery {
+  margin: 0;
+}
+.shot {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--panel-2);
+}
+.shot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 56vh;
+  border-radius: var(--r-s);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.gallery figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-top: 10px;
+}
+.gallery figcaption b {
+  font-weight: 500;
+}
+.gallery figcaption code {
+  font-size: 12px;
+  color: var(--dim);
+}
+/* When the thumbnails do not fit beside the arrows, they move to their own row. */
+.gal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 10px;
+  margin-top: 14px;
+}
+.gal-count {
+  min-width: 4ch;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--dim);
+  text-align: center;
+}
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+.thumb {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 54px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-s);
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.thumb svg {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+.thumb[aria-current="true"] {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 2px var(--brass-soft);
+}
+
+dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  padding: 22px 22px 18px;
+  width: min(420px, 92vw);
+}
+dialog::backdrop {
+  background: var(--scrim);
+}
+dialog h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+dialog p {
+  margin: 0 0 14px;
+  color: var(--dim);
+  font-size: 14px;
+}
+dialog input {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  color: var(--text);
+  font: 15px var(--font-ui);
+}
+dialog menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+/* Theme change: the new theme opens as a circle from the switch (see applyTheme). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--live) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 0%, transparent);
+  }
+}
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+@media (max-width: 760px) {
+  .tb-repo,
+  .tb-status.faint {
+    display: none;
+  }
+  .ihead-top {
+    flex-direction: column;
+  }
+  .ititle {
+    font-size: 19px;
+  }
+  .kbd-hint {
+    display: none;
+  }
+}
+/* Phones: the wheel alone stands for the brand. */
+@media (max-width: 520px) {
+  .topbar {
+    gap: 10px;
+    padding: 0 14px;
+  }
+  .brand-word,
+  .tb-sep {
+    display: none;
+  }
+  .thumbs {
+    margin-left: 0;
+  }
+}
