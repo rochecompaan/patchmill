@@ -186,9 +186,9 @@ Extend `scripts/update-superpowers.test.mjs` fixtures with the package-local
 Matt Pocock dependency, nested source trees, and upstream root license. They
 copy the real installer, so all upgrade and rollback cases need this fourth
 source before fixture installation. Extend the existing validate-only behavior
-case to accept the complete pack, then reject corrupted design resources,
-missing copied licenses, and omitted manifest entries. Preserve the existing
-no-update, upgrade, and rollback cases. These tests call
+case to accept the complete pack. Require rejection of corrupted design
+resources, missing copied licenses, and omitted manifest entries. Preserve the
+existing no-update, upgrade, and rollback cases. These tests call
 `runSuperpowersUpgrade(args, dependencies)` with isolated fixtures and mock
 release data, not the live upgrade command.
 
@@ -234,8 +234,8 @@ Record the actual dependency version in `sources.mattPocock`.
 
 Extend private `assertSynchronizedRepository` in
 `scripts/update-superpowers.mjs` to validate the same fourth source. Resolve its
-package locally, traverse `skills/engineering/<name>`, include both root-license
-copies in the expected file set, and compare the actual source version with
+package locally. Traverse `skills/engineering/<name>`. Include both root-license
+copies in the expected file set. Compare the actual source version with
 `metadata.sources.mattPocock`. Preserve strict duplicate, omitted, stray-file,
 hash, and installed-byte checks. No new provider registry or installer export is
 necessary.
@@ -590,10 +590,11 @@ Two fresh, read-only canonical `reviewer` sessions reviewed this plan with
 confirmation.
 
 - **Source/specification revision:** `1b3c25914aa0d0f32ed566fb6159879f349ffdf8`.
+- **Reviewed plan revision:** `65b86a9`.
 - **Reviewed plan body SHA-256:**
   `9f20f1888baab372e8eea49fdbe0acea972bda40a9f05e22ff608557ed2ee51a`.
-- **Identity scope:** All bytes before this `## Plan review` heading. The
-  receipt does not enter its own hash.
+- **Identity scope:** All bytes before `## Plan review` at the reviewed plan
+  revision. The receipt does not enter its own hash.
 - **Guidance:** The exact-pinned upstream references informed review without
   installing dependencies in this planning worktree.
 
@@ -612,5 +613,6 @@ blocker or substantive builder question. No product behavior, dependency
 installation, test suite, model scenario, or build ran during this planning
 review. The later implementation session must provide that evidence.
 
-Only this receipt changed after confirmation. Human approval remains separate
-from reviewer readiness.
+After confirmation, only this receipt and two nonmaterial sentence splits
+changed. Task and architecture decisions remain unchanged. Human approval
+remains separate from reviewer readiness.
