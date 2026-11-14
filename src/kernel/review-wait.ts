@@ -37,13 +37,17 @@ export async function reviewWait(input: {
   restart: boolean;
   refresh: () => Promise<Facts>;
   publish: () => Promise<void>;
-  update: (facts: Facts, label: "done" | "needsInfo", summary: string) => void;
+  update: (
+    facts: Facts,
+    label: "done" | "needsInfo",
+    summary: string,
+  ) => void | Promise<void>;
 }): Promise<void> {
   const { issue, host, workflow, human } = input;
   let facts = input.facts;
   if (input.restart) await workflow.setStatus(issue, { status: "done" });
   else await input.publish();
-  input.update(facts, "done", "The pull request was verified.");
+  await input.update(facts, "done", "The pull request was verified.");
   while (
     (await human.awaitContinue({
       kind: "review",
@@ -59,12 +63,12 @@ export async function reviewWait(input: {
       facts.pullRequest &&
       closesIssue(facts.pullRequest.body, issue, repository)
     ) {
-      input.update(facts, "done", "The pull request is merged.");
+      await input.update(facts, "done", "The pull request is merged.");
       await cleanupMergedIssue({ ...input, facts });
       return;
     }
     if (isReviewWait(facts, issue, repository)) continue;
-    input.update(
+    await input.update(
       facts,
       "needsInfo",
       `The pull request no longer proves implementation completion for issue #${issue}.`,

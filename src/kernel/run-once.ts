@@ -36,6 +36,7 @@ import type { OutcomeLabel } from "./verify.ts";
 import { verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
+import { projectRunProgress, writeRunProgress } from "./run-progress.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 
@@ -152,6 +153,11 @@ export async function runOneIssue(
     { issue: issueNumber, runId, runDir, startedAt },
     deps.observe,
     (line) => output.stderr(line),
+    (record) =>
+      writeRunProgress(
+        issueDir,
+        projectRunProgress(record, !!deps.human, now()),
+      ),
   );
   const sessions: {
     phase: Phase;
@@ -183,7 +189,7 @@ export async function runOneIssue(
     );
   };
   const review = async (facts: Facts, restart: boolean) => {
-    snapshot.wait("review-wait");
+    await snapshot.wait("review-wait");
     await reviewWait({
       facts,
       issue: issueNumber,
@@ -193,10 +199,10 @@ export async function runOneIssue(
       restart,
       publish,
       refresh: () => collectReviewFacts(workflow, issueNumber, facts, collect),
-      update: (facts, nextLabel, nextSummary) => {
+      update: async (facts, nextLabel, nextSummary) => {
         published = true;
         displayFacts = facts;
-        snapshot.facts(facts);
+        await snapshot.facts(facts);
         stop = { ...stop, label: nextLabel, summary: nextSummary };
       },
     });
@@ -214,7 +220,7 @@ export async function runOneIssue(
       let feedback: string | undefined;
       let resume: { facts: Facts; text: string } | undefined;
       while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
-        snapshot.deriving();
+        await snapshot.deriving();
         issue = await workflow.issue(issueNumber);
         const before = resume
           ? { kind: "facts" as const, facts: resume.facts }
@@ -225,7 +231,7 @@ export async function runOneIssue(
         }
         const facts = before.facts;
         displayFacts = facts;
-        snapshot.facts(facts);
+        await snapshot.facts(facts);
         const decision = phaseDecision(facts, feedback, !!resume);
         if (decision.kind === "stop") {
           stop = {
@@ -274,7 +280,7 @@ export async function runOneIssue(
         );
         sessionNumber++;
         sinceHuman++;
-        snapshot.phase(phase, sessionNumber);
+        await snapshot.phase(phase, sessionNumber);
         output.stderr(formatPhaseStart(phase, sessionNumber));
         const run = await launchPhase(
           launch,
@@ -312,7 +318,7 @@ export async function runOneIssue(
           break;
         }
         displayFacts = after.facts;
-        snapshot.facts(after.facts);
+        await snapshot.facts(after.facts);
         const verified = await verifyPlanningApproval(
           {
             issue: issueNumber,
@@ -451,7 +457,10 @@ export async function runOneIssue(
         elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
       }),
     );
-    snapshot.ended(stop.summary);
+    await snapshot.ended(stop.summary, {
+      status: outcome.status,
+      label: stop.label,
+    });
     return outcome;
   } finally {
     await lock.release();

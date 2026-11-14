@@ -7,7 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mock, test, type TestContext } from "node:test";
 import fsExt from "fs-ext";
-import { acquireLock, LockHeldError, readLock } from "./lock.ts";
+import {
+  acquireLock,
+  LockHeldError,
+  readLock,
+  probeIssueLock,
+} from "./lock.ts";
 
 async function location(t: TestContext) {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-lock-"));
@@ -55,6 +60,29 @@ function child(t: TestContext, mode: string, path: string) {
     },
   };
 }
+
+test("read-only ownership probes ignore stale PIDs and never create absent locks", async (t) => {
+  const path = await location(t);
+  assert.equal(await probeIssueLock(path), false);
+  await assert.rejects(fs.stat(path), { code: "ENOENT" });
+  const owner = await acquireLock(path);
+  assert.equal(await probeIssueLock(path), true);
+  await fs.writeFile(path, "damaged diagnostics");
+  assert.equal(await probeIssueLock(path), true);
+  await owner.release();
+  await fs.writeFile(
+    path,
+    JSON.stringify({ pid: process.pid, startedAt: "old" }),
+  );
+  assert.equal(await probeIssueLock(path), false);
+  const proc = child(t, "publication-gap", path);
+  await proc.next("paused");
+  assert.equal(await probeIssueLock(path), true);
+  const exited = once(proc.proc, "exit");
+  proc.proc.kill("SIGKILL");
+  await exited;
+  assert.equal(await probeIssueLock(path), false);
+});
 
 test("acquire publishes diagnostics and independently opened handles contend in one process", async (t) => {
   const path = await location(t);

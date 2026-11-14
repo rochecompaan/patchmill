@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, mock } from "node:test";
+import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { runSnapshot } from "./run-snapshot.ts";
 import { join } from "node:path";
 import {
   setupRun,
@@ -12,6 +15,98 @@ import {
 } from "../../test-support/run-once-fixture.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import type { RunSnapshot, RunState } from "./run-snapshot.ts";
+
+test("durable observations settle before console delivery and isolate disk errors", async () => {
+  let release!: () => void;
+  const saved: string[] = [];
+  const observed: string[] = [];
+  const warnings: string[] = [];
+  const snapshot = runSnapshot(
+    {
+      issue: 9,
+      runId: "20261114-120000-abcd",
+      runDir: "/unused",
+      startedAt: "2026-11-14T12:00:00Z",
+    },
+    (s) => observed.push(s.state),
+    (line) => warnings.push(line),
+    async (s) => {
+      if (s.state === "planning")
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      else throw new Error("disk unavailable");
+      saved.push(s.state);
+    },
+  );
+  const phase = snapshot.phase("planning", 1);
+  assert.deepEqual(observed, []);
+  release();
+  await phase;
+  assert.deepEqual(saved, ["planning"]);
+  assert.deepEqual(observed, ["planning"]);
+  await snapshot.ended("complete", { status: "completed", label: "done" });
+  assert.deepEqual(observed, ["planning", "ended"]);
+  assert.equal(warnings.length, 1);
+});
+
+test("final progress is durable before observer delivery and dry runs write nothing", async (t) => {
+  const c = await setupRun(t, [implement]);
+  await c.seed({ [spec]: "s", [plan]: "p" });
+  const path = join(
+    c.repoRoot,
+    c.config.paths.runsDir,
+    "issue-9",
+    "progress.json",
+  );
+  let finalSeen = false;
+  await c.run(
+    { issue: 9 },
+    {
+      observe: (s) => {
+        if (s.state === "ended") {
+          const record = JSON.parse(readFileSync(path, "utf8"));
+          assert.equal(record.state, "ended");
+          assert.equal(record.outcome.label, "done");
+          finalSeen = true;
+        }
+      },
+    },
+  );
+  assert.equal(finalSeen, true);
+  const before = await fs.readFile(path, "utf8");
+  await c.run({ issue: 9, dryRun: true });
+  assert.equal(await fs.readFile(path, "utf8"), before);
+});
+
+test("progress write failures do not change a verified run outcome or lose observations", async (t) => {
+  const c = await setupRun(t, [implement]);
+  await c.seed({ [spec]: "s", [plan]: "p" });
+  const rename = fs.rename;
+  const patch = mock.method(
+    fs,
+    "rename",
+    async (...args: Parameters<typeof fs.rename>) => {
+      if (String(args[1]).endsWith("/progress.json"))
+        throw Error("projection unavailable");
+      return rename(...args);
+    },
+  );
+  t.after(() => patch.mock.restore());
+  const states: string[] = [];
+  assert.equal(
+    (await c.run({ issue: 9 }, { observe: (s) => states.push(s.state) }))
+      .status,
+    "completed",
+  );
+  assert.equal(states.at(-1), "ended");
+  assert.ok(c.output.some((line) => line.includes("projection unavailable")));
+  assert.ok(
+    kernelComments(c).every(
+      (comment) => !comment.body.includes("projection unavailable"),
+    ),
+  );
+});
 
 // Missing/reordered transitions and missing cumulative session updates are bugs.
 test("observe receives each state of an interactive run in order", async (t) => {
