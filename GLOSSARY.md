@@ -58,6 +58,10 @@ A later Run attempt may resume the same Issue run. _Avoid_: Issue run
 **Interactive Issue run**: An Issue run that takes human input through a console
 instead of issue comments. It uses the same Run-once workflow.
 
+**Issue thread**: The chronological view of an Issue run's main-agent messages,
+tool calls, and progress. Dividers distinguish its Run attempts and workflow
+steps. _Avoid_: Event ledger, Subagent transcript
+
 **Console session**: The Pi session that holds the maintainer's conversation for
 one or more Interactive Issue runs. It never decides a phase.
 
