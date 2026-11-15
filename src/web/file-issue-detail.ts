@@ -69,14 +69,9 @@ export async function readIssueDetail(input: {
     ...input.summary,
     step: input.observation.live ? input.summary.step : metadata.step,
     elapsedSeconds: input.observation.live
-      ? ended.every((r) => r.finishedAt !== null)
-        ? ended.reduce(
-            (sum, r) =>
-              sum +
-              (Date.parse(r.finishedAt!) - Date.parse(r.startedAt)) / 1000,
-            0,
-          )
-        : null
+      ? ended.length
+        ? runRecordMetadata(ended).elapsedSeconds
+        : 0
       : metadata.elapsedSeconds,
   };
   const base: IssueDetail = {

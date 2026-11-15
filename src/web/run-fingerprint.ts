@@ -20,6 +20,7 @@ export async function issueFingerprint(input: {
   };
   await add(join(dir, "progress.json"));
   const lock = join(dir, "lock");
+  await add(lock);
   if (await files.metadata(lock)) parts.push(await probeIssueLock(lock));
   for (const attempt of await files.list(dir)) {
     if (!attempt.isDirectory() || !runName.test(attempt.name)) continue;

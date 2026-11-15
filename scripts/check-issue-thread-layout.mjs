@@ -477,6 +477,11 @@ try {
       }
     }
   }
+  await evaluate("location.hash='#/issue/11'");
+  await until(
+    'document.querySelector(".ihead")?.dataset.issue === "11" && document.querySelector("[data-live-elapsed]") && document.querySelector(".connection-state")?.textContent === "Live"',
+  );
+  const liveOrigin = await evaluate("performance.timeOrigin");
   await fs.writeFile(
     join(activeRun, "result.json"),
     JSON.stringify({
@@ -494,13 +499,23 @@ try {
     }),
   );
   await lock.release();
-  await evaluate("location.hash='#/issue/11'");
   await until(
     'document.querySelector(".ihead")?.dataset.issue === "11" && !document.querySelector("[data-live-elapsed]")',
   );
-  assert.match(
+  const finalMeta = await evaluate(
+    'document.querySelector(".meta").textContent',
+  );
+  assert.match(finalMeta, /Finished/);
+  assert.match(finalMeta, /Planning/);
+  assert.match(finalMeta, /\$0\.5000/);
+  assert.equal(await evaluate("performance.timeOrigin"), liveOrigin);
+  const frozenElapsed = await evaluate(
+    'document.querySelector(".meta").textContent',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.equal(
     await evaluate('document.querySelector(".meta").textContent'),
-    /Finished/,
+    frozenElapsed,
   );
   for (const width of [1440, 390]) {
     await send("Emulation.setDeviceMetricsOverride", {

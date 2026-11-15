@@ -3,7 +3,7 @@
 ## Automated checks
 
 - Baseline `npm test`: 1,240 tests passed.
-- Implementation `npm test`: 1,252 tests passed.
+- Implementation `npm test`: 1,253 tests passed.
 - `npm run check:types`: passed.
 - `npm run lint`: passed.
 - `CAPTURE_ISSUE_THREADS=1 node scripts/check-issue-thread-layout.mjs`: passed.
@@ -11,10 +11,12 @@
   covers desktop and 390px layouts in both themes.
 
 The fixture check appended tool calls after the page loaded. Display latencies
-were 984, 981, 984, and 976 ms. The elapsed text counted up. An expanded tool
+were 984, 982, 985, and 987 ms. The elapsed text counted up. An expanded tool
 stayed open, and a reader away from the bottom kept the same scroll position.
-The end transition showed Finished without a reload. No script exceptions or
-HTML execution occurred. The check only sent GET requests.
+The repaired end-transition check subscribes to the active issue before lock
+release. Without navigation, it observed Finished, the Planning step, $0.5000,
+and a frozen elapsed value. No script exceptions or HTML execution occurred. The
+check only sent GET requests.
 
 ## Real run blocker
 
@@ -47,5 +49,9 @@ The fixture captures are committed under `docs/screenshots/`:
 - `issue-thread-live-ended-{desktop,mobile}-{dark,light}.png`
 
 They show synthetic, non-secret content. They are not evidence of a real agent
-run. Independent code review and frontend review are still required before a
-ready pull request handoff.
+run. Independent code review found three Important issues: duplicated duration
+logic, lock turnover absent from the fingerprint, and an incomplete
+terminal-transition browser assertion. All three were accepted and repaired. The
+turnover regression failed before the repair and passed after it. Duration
+calculation now reuses the existing metadata function. Frontend review is
+pending.
