@@ -46,6 +46,99 @@ const launch: PhaseLaunch = {
   timeoutMs: 1000,
 };
 
+for (const failStatus of [false, true]) {
+  test(
+    failStatus
+      ? "a failing status bar does not block shutdown"
+      : "the Issue run segment shows in the status bar and shutdown clears it",
+    async (t) => {
+      const api = fakeExtensionApi();
+      await createPatchmillExtension({
+        firstIssue: 9,
+        startRun: async (_issue, human, observe) => {
+          observe({
+            issue: 9,
+            title: "Polls",
+            runId: "r",
+            runDir: "r",
+            startedAt: "now",
+            state: "planning",
+            phase: "planning",
+            session: 1,
+          });
+          await human.awaitContinue({ kind: "gate", message: "Merge" });
+          return { status: "no-work" };
+        },
+      })(api);
+      t.after(() => api.fire("session_shutdown"));
+      await api.fire("session_start");
+      assert.equal(
+        api.statuses.get("patchmill"),
+        "#9 Polls \u00a0·\u00a0 01 planning",
+      );
+      api.failStatus = failStatus;
+      await api.fire("session_shutdown");
+      if (!failStatus) assert.equal(api.statuses.get("patchmill"), undefined);
+    },
+  );
+}
+
+test("resize refreshes the title and shutdown removes its listener", async (t) => {
+  const api = fakeExtensionApi();
+  const before = process.stdout.listenerCount("resize");
+  const oldColumns = Object.getOwnPropertyDescriptor(process.stdout, "columns");
+  t.after(() => {
+    if (oldColumns)
+      Object.defineProperty(process.stdout, "columns", oldColumns);
+    else Reflect.deleteProperty(process.stdout, "columns");
+  });
+  Object.defineProperty(process.stdout, "columns", {
+    configurable: true,
+    writable: true,
+    value: 80,
+  });
+  await createPatchmillExtension({
+    firstIssue: 9,
+    startRun: async (_issue, human, observe) => {
+      observe({
+        issue: 9,
+        title: "A title much too long for the narrow terminal",
+        runId: "r",
+        runDir: "r",
+        startedAt: "now",
+        state: "implementation",
+        phase: "implementation",
+        session: 2,
+      });
+      await human.awaitContinue({ kind: "gate", message: "Merge" });
+      return { status: "no-work" };
+    },
+  })(api);
+  t.after(() => api.fire("session_shutdown"));
+  await api.fire("session_start");
+  assert.equal(process.stdout.listenerCount("resize"), before + 1);
+  assert.equal(
+    api.statuses.get("patchmill"),
+    "#9 A title much too long for the narrow terminal \u00a0·\u00a0 02 implementation",
+  );
+  process.stdout.columns = 30;
+  process.stdout.emit("resize");
+  assert.equal(
+    api.statuses.get("patchmill"),
+    "#9 A ti… \u00a0·\u00a0 02 implementation",
+  );
+  await api.fire("session_shutdown");
+  assert.equal(process.stdout.listenerCount("resize"), before);
+});
+
+test("shutdown before session_start is safe", async () => {
+  const api = fakeExtensionApi();
+  await createPatchmillExtension({
+    startRun: async () => ({ status: "no-work" }),
+  })(api);
+  await api.fire("session_shutdown");
+});
+
 test("the first Issue run starts after stray workers are stopped", async () => {
   let active = true;
   const bus = fakeSubagents({

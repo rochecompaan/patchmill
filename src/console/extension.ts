@@ -7,6 +7,7 @@ import { SubagentsClient, type EventBus } from "./subagents-client.ts";
 import { createWorkerLauncher } from "./worker-launcher.ts";
 import { stopWorkers } from "./stray-workers.ts";
 import { registerConsoleTools } from "./tools.ts";
+import { createRunStatus, type RunStatus } from "./run-status.ts";
 
 export function createPatchmillExtension(options: {
   firstIssue?: number;
@@ -18,6 +19,8 @@ export function createPatchmillExtension(options: {
   return (pi) => {
     let controller: ConsoleController | undefined;
     let client: SubagentsClient | undefined;
+    let runStatus: RunStatus | undefined;
+    const onResize = () => runStatus?.refresh();
     let startBlocked: string | undefined =
       "Stray-worker cleanup is pending. Patchmill will not start the Issue run.";
     const getController = () => {
@@ -50,12 +53,20 @@ export function createPatchmillExtension(options: {
     });
     pi.on("session_start", async (_event, ctx) => {
       if (controller) return;
+      if (ctx.hasUI) {
+        runStatus = createRunStatus({
+          setStatus: (key, text) => ctx.ui.setStatus(key, text),
+          columns: () => process.stdout.columns || 80,
+        });
+        process.stdout.on("resize", onResize);
+      }
       client = options.client?.(pi.events) ?? new SubagentsClient(pi.events);
       controller = new ConsoleController({
         pi,
         session: ctx.sessionManager,
         workers: createWorkerLauncher(client),
         startRun: options.startRun,
+        ...(runStatus ? { runStatus } : {}),
       });
       try {
         const stopped = await stopWorkers(client);
@@ -79,6 +90,8 @@ export function createPatchmillExtension(options: {
         try {
           await controller?.shutdown();
         } finally {
+          process.stdout.off("resize", onResize);
+          runStatus?.clear();
           client?.dispose();
         }
       })());

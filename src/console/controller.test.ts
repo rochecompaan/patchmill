@@ -45,7 +45,7 @@ function setup(
     pi,
     workers,
     startRun,
-    runStatus,
+    ...(runStatus ? { runStatus } : {}),
   });
   return { pi, controller, workers, stops: () => stops };
 }

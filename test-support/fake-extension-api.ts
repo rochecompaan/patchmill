@@ -16,9 +16,14 @@ export function fakeExtensionApi(events = fakeSubagents()) {
   const tools = new Map<string, ToolDefinition>();
   type Handler = (
     event: unknown,
-    ctx: { sessionManager: SessionManager },
+    ctx: {
+      sessionManager: SessionManager;
+      hasUI: boolean;
+      ui: { setStatus(key: string, text: string | undefined): void };
+    },
   ) => Promise<void>;
   const handlers = new Map<string, Handler[]>();
+  const statuses = new Map<string, string | undefined>();
   const userMessages: { text: unknown; options: unknown }[] = [];
   const messages: {
     message: { content: string; customType: string; display: boolean };
@@ -51,7 +56,9 @@ export function fakeExtensionApi(events = fakeSubagents()) {
       messages.push({ message, options });
     },
   } as unknown as ExtensionAPI;
-  return Object.assign(api, {
+  const fake = Object.assign(api, {
+    statuses,
+    failStatus: false,
     tools,
     commands,
     async callCommand(
@@ -69,7 +76,19 @@ export function fakeExtensionApi(events = fakeSubagents()) {
     selections,
     async fire(event: "session_start" | "session_shutdown") {
       for (const handler of handlers.get(event) ?? [])
-        await handler({}, { sessionManager: SessionManager.inMemory() });
+        await handler(
+          {},
+          {
+            sessionManager: SessionManager.inMemory(),
+            hasUI: true,
+            ui: {
+              setStatus: (key, text) => {
+                if (fake.failStatus) throw new Error("Stale UI context");
+                statuses.set(key, text);
+              },
+            },
+          },
+        );
     },
     async callTool(
       name: string,
@@ -102,4 +121,5 @@ export function fakeExtensionApi(events = fakeSubagents()) {
         .join("");
     },
   });
+  return fake;
 }
