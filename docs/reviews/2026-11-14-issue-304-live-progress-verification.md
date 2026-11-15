@@ -98,7 +98,7 @@ recorded usage; it is not an estimated price. The page's navigation time origin
 did not change. All eight measured tool appends and both progress appends
 reached the page.
 
-### Remaining blocker
+### Test-run stop
 
 Authentication succeeded, but the test run returned `needs-input`. Its planner
 could not perform its required independent plan review. The exact reported
@@ -118,8 +118,14 @@ maintainer cleanup.
 
 The retry verifies real live tool display, two progress appends, elapsed time,
 and stopped-run metadata. It does **not** establish a successful completed run
-or a third progress sample. Per the maintainer's instruction for a failed run,
-the handoff remains `needs-input`. No pull request was created.
+or a third progress sample.
+
+### Maintainer acceptance
+
+The maintainer accepted this real-run evidence as meeting #304's browser
+acceptance: eight tool calls appeared in 111–955 ms and two progress appends in
+123 and 852 ms. The test run's nested-reviewer stop is unrelated to #304 and
+does not block delivery. No further real-run samples are required.
 
 ## Visual evidence
 
@@ -156,9 +162,8 @@ the existing metadata function.
 
 The last full suite reports 1,253 passing tests. Type checks and lint also pass.
 The retry resolved authentication through an approved existing-agent-directory
-reference. Real-run acceptance remains incomplete because the test planner
-lacked review fanout and only two new progress appends were measured. No ready
-pull request is claimed.
+reference. The maintainer accepted the real-run evidence as sufficient for #304.
+Interactive transcript streaming remains deferred to #305.
 
 ### Rulings
 
