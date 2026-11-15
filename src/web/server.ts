@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 import { once } from "node:events";
 import { networkInterfaces } from "node:os";
 import { isIP } from "node:net";
@@ -13,6 +13,7 @@ export type ServeOptions = {
   source: RunDataSource;
   auth: ServeAuth;
   webRoot?: string;
+  keepAliveMs?: number;
 };
 export type Serving = {
   origin: string;
@@ -28,9 +29,11 @@ export async function startServeServer(
   const webRoot = options.webRoot ?? resolveWebRoot();
   const server = createServer();
   let closing: Promise<void> | undefined;
+  const streams = new Set<ServerResponse>();
   const close = () =>
     (closing ??= new Promise<void>((resolve, reject) => {
       if (!server.listening) return resolve();
+      for (const stream of streams) stream.end();
       server.close((error) => (error ? reject(error) : resolve()));
       server.closeIdleConnections();
     }));
@@ -63,6 +66,9 @@ export async function startServeServer(
         source: options.source,
         auth: options.auth,
         policy,
+        streams,
+        closing: () => closing !== undefined,
+        keepAliveMs: options.keepAliveMs ?? 15000,
       }),
     );
     server.on("upgrade", (_req, socket) => socket.destroy());

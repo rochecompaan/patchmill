@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { setResponseHeaders } from "./response-headers.ts";
 import { readWebAsset, publicPath } from "./assets.ts";
 import { apiResponse } from "./api.ts";
+import { issueEventsPath, serveIssueEvents } from "./event-stream.ts";
 import type { RunDataSource } from "./run-data.ts";
 import type { ServeAuth } from "./auth.ts";
 import type { RequestPolicy } from "./request-policy.ts";
@@ -11,6 +12,9 @@ type RequestContext = {
   source: RunDataSource;
   auth: ServeAuth;
   policy: RequestPolicy;
+  streams: Set<ServerResponse>;
+  closing(): boolean;
+  keepAliveMs: number;
 };
 function send(
   res: ServerResponse,
@@ -31,6 +35,9 @@ export function createRequestHandler({
   source,
   auth,
   policy,
+  streams,
+  closing,
+  keepAliveMs,
 }: RequestContext) {
   return (req: IncomingMessage, res: ServerResponse) => {
     const method = req.method ?? "GET",
@@ -61,12 +68,24 @@ export function createRequestHandler({
           401,
           "Open the link printed by patchmill serve.",
         );
+      const path = publicPath(target);
+      if (path === null) return send(res, method, 404, "Not found.");
+      const rawNumber = issueEventsPath(path);
+      if (rawNumber !== null)
+        return serveIssueEvents({
+          req,
+          res,
+          method,
+          rawNumber,
+          source,
+          streams,
+          closing,
+          keepAliveMs,
+        });
       if (method !== "GET" && method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");
         return send(res, method, 405, "Method not allowed.");
       }
-      const path = publicPath(target);
-      if (path === null) return send(res, method, 404, "Not found.");
       const api = await apiResponse(path, source);
       if (api)
         return send(
