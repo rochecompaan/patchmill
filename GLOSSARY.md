@@ -19,6 +19,11 @@ does not unlock it. _Avoid_: Approval label
 its specification and the existing codebase. It supplies evidence, not human
 approval of a Spec gate or Plan gate. _Avoid_: Plan gate, Planner self-review
 
+**Planning visualization**: A visual explanation of the concepts, relationships,
+or execution order in a specification or implementation plan. It explains the
+reasoning rather than depicting the proposed user interface. _Avoid_: UI mockup,
+Implementation screenshot
+
 **Planning pull request**: A pull request for documents that must merge before
 the next required stage. It does not complete the issue. _Avoid_: Implementation
 PR

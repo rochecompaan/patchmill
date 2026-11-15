@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-11-14T03:40:30.557Z",
+  "installedAt": "2026-11-14T20:22:22.243Z",
   "sources": {
     "patchmill": "1.0.0",
     "superpowers": "7.0.2",
@@ -113,7 +113,7 @@
     },
     {
       "path": "patchmill-cleanup/SKILL.md",
-      "sha256": "2b748ca2d16ccc00e677f85e6126160868f37ba38f798a8a3b2e9b5c1064ad8d"
+      "sha256": "bbdeec56cb8ae00e850805742c2375b2ff0853ccfb442104eb6bed78f1c3a580"
     },
     {
       "path": "patchmill-frontend-review/LICENSE",
@@ -149,15 +149,15 @@
     },
     {
       "path": "patchmill-plan/SKILL.md",
-      "sha256": "2a0b1ed8327b54d1c300bf54be7b16bff5946d57c441a6eea98c25e90dbf4155"
+      "sha256": "fd7f3d353fe9e3715ab9c51fb7425b5c298314316ea5f06f16b9f60f26309604"
     },
     {
       "path": "patchmill-planning/plan-review.md",
-      "sha256": "ded93f16e91565b8252a1534df5b2540b38c9e72be2bb42745991c4a2c237d27"
+      "sha256": "144de0704c7f12494cd47708cd1f0ce9d9f6a1a01b762c2d1206233f850cc7a1"
     },
     {
       "path": "patchmill-planning/SKILL.md",
-      "sha256": "21b4fcc6f09ac480b34bffa0ee0c39133968b0a43bb9254c0dc41a8e5f97063f"
+      "sha256": "e7cb9ccbbb8cd19e20283daa3c3ad171a97a45162dcb3565e9e58cd413b4629b"
     },
     {
       "path": "patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",
@@ -178,6 +178,18 @@
     {
       "path": "requesting-code-review/SKILL.md",
       "sha256": "2180e14a448e9410bec88e6646a2d1f0ce7fdd58de27388c1e052e929679d2bc"
+    },
+    {
+      "path": "show-me/agents/openai.yaml",
+      "sha256": "a1499d95abd8447558c535fe5554adcc3c9b988a0a39264a6283d430effe1e94"
+    },
+    {
+      "path": "show-me/LICENSE",
+      "sha256": "5f13c18ea00ea5c1384f41745feeca774079164f7f59a92e4ac0899ad217b26f"
+    },
+    {
+      "path": "show-me/SKILL.md",
+      "sha256": "434a2346cc95e313b0d367d477dda2e23ba642dd2181757415a09500664af100"
     },
     {
       "path": "simple-english/references/checklist.md",

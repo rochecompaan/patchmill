@@ -18,6 +18,7 @@
   ],
   "ignores": [
     "skills/frontend-design/SKILL.md",
+    "skills/show-me/SKILL.md",
     "skills/patchmill-frontend-review/references/upstream-web-design-guidelines.md",
     "skills/patchmill-frontend-review/references/web-interface-guidelines.md",
     "vendor/**",

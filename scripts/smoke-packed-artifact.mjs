@@ -66,6 +66,30 @@ async function verifyDesignSkills(packageRoot, destination) {
   );
 }
 
+async function verifyShowMeSkill(packageRoot, destination) {
+  const manifest = JSON.parse(
+    await readFile(join(destination, "patchmill-skill-pack.json"), "utf8"),
+  );
+  const files = new Map(manifest.files.map((file) => [file.path, file.sha256]));
+  for (const resource of ["SKILL.md", "agents/openai.yaml", "LICENSE"]) {
+    const path = join("show-me", resource);
+    const installed = await readFile(join(destination, path));
+    assert.deepEqual(
+      installed,
+      await readFile(join(packageRoot, "skills", path)),
+      path,
+    );
+    assert.equal(
+      files.get(path),
+      createHash("sha256").update(installed).digest("hex"),
+      path,
+    );
+  }
+  console.log(
+    "Show-me: complete vendored tree, license, and installed hashes verified",
+  );
+}
+
 async function main() {
   const smokeDir = await mkdtemp(join(tmpdir(), "patchmill-smoke-"));
   const homeDir = join(smokeDir, "home");
@@ -159,6 +183,10 @@ async function main() {
       projectRequire.resolve("patchmill/package.json"),
     );
     await verifyDesignSkills(
+      patchmillPackageRoot,
+      join(projectDir, ".patchmill/skills"),
+    );
+    await verifyShowMeSkill(
       patchmillPackageRoot,
       join(projectDir, ".patchmill/skills"),
     );

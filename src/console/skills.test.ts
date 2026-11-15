@@ -9,7 +9,7 @@ import { installSkills } from "../cli/commands/init/skill-installer.ts";
 import { provisionAgentDir } from "../cli/commands/init/agent-dir.ts";
 import { consoleSkillPaths } from "./skills.ts";
 
-test("discovers installed design siblings from configured pack paths", async (t) => {
+test("discovers design and explicit show-me siblings from configured pack paths", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "console-real-skills-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await installSkills({
@@ -35,11 +35,15 @@ test("discovers installed design siblings from configured pack paths", async (t)
   });
   await loader.reload();
   const loaded = loader.getSkills().skills;
-  for (const name of ["domain-modeling", "codebase-design"]) {
+  for (const name of ["domain-modeling", "codebase-design", "show-me"]) {
     const skill = loaded.find((entry) => entry.name === name);
     assert.ok(skill, `Missing installed skill ${name}`);
     assert.equal(skill.filePath, join(root, "custom/pack", name, "SKILL.md"));
   }
+  assert.equal(
+    loaded.find((skill) => skill.name === "show-me")!.disableModelInvocation,
+    true,
+  );
   await provisionAgentDir(root, "agent", paths);
   const worker = await readFile(
     join(root, "agent/agents/patchmill-implementation.md"),
@@ -59,9 +63,11 @@ test("discovers installed design siblings from configured pack paths", async (t)
     join(root, "agent/agents"),
   );
   assert.deepEqual(resolved.missing, []);
-  for (const name of ["domain-modeling", "codebase-design"])
-    assert.ok(
-      resolved.resolved.some((skill: { name: string }) => skill.name === name),
+  for (const name of ["domain-modeling", "codebase-design", "show-me"])
+    assert.equal(
+      resolved.resolved.find((skill: { name: string }) => skill.name === name)
+        ?.path,
+      join(root, "custom/pack", name, "SKILL.md"),
     );
 });
 
