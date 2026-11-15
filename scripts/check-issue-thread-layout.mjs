@@ -435,7 +435,10 @@ try {
             `document.querySelector('[data-live-elapsed]').textContent !== ${JSON.stringify(elapsedBefore)}`,
           );
           await evaluate(
-            'document.querySelector(".tool").open=true;scrollTo(0,0)',
+            'document.querySelector(".tool").open=true;document.querySelector(".tool summary").focus({preventScroll:true});document.querySelector(".rail").scrollLeft=80;scrollTo(0,0)',
+          );
+          const railScroll = await evaluate(
+            'document.querySelector(".rail").scrollLeft',
           );
           await fs.appendFile(
             join(activeRun, "history.jsonl"),
@@ -460,6 +463,28 @@ try {
           assert.equal(
             await evaluate('document.querySelector(".tool").open'),
             true,
+          );
+          assert.equal(
+            await evaluate(
+              'document.activeElement === document.querySelector(".tool summary")',
+            ),
+            true,
+          );
+          assert.equal(
+            await evaluate('document.querySelector(".rail").scrollLeft'),
+            railScroll,
+          );
+          for (const type of ["keyDown", "keyUp"])
+            await send("Input.dispatchKeyEvent", {
+              type,
+              key: "Enter",
+              code: "Enter",
+              windowsVirtualKeyCode: 13,
+              ...(type === "keyDown" ? { text: "\r" } : {}),
+            });
+          assert.equal(
+            await evaluate('document.querySelector(".tool").open'),
+            false,
           );
         } else {
           assert.equal(
