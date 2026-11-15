@@ -206,6 +206,41 @@ export class GitHubHost implements Host, RepositorySetupHost {
     ]);
     return mapIssue(parseJson(result.stdout, "gh issue view") as RawIssue);
   }
+  async parentIssue(issue: Issue): Promise<number | undefined> {
+    const repository = (url: string) => {
+      try {
+        const path = new URL(url).pathname.match(
+          /^\/([^/]+)\/([^/]+)\/issues\/\d+$/,
+        );
+        return path ? `${path[1]}/${path[2]}`.toLowerCase() : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const ownRepository = repository(issue.url);
+    if (!ownRepository) throw new Error("Issue URL is not an issue URL");
+    const args = ["api", `repos/{owner}/{repo}/issues/${issue.number}/parent`];
+    const result = await this.gh(args);
+    if (result.code !== 0) {
+      if ((result.stdout + result.stderr).includes("No parent issue found"))
+        return undefined;
+      throw new CommandFailedError("gh", args, result);
+    }
+    const raw = parseJson(result.stdout, "gh api parent") as {
+      number?: number;
+      html_url?: string;
+    } | null;
+    const parentRepository =
+      typeof raw?.html_url === "string" ? repository(raw.html_url) : undefined;
+    if (
+      !raw ||
+      !Number.isSafeInteger(raw.number) ||
+      raw.number! <= 0 ||
+      !parentRepository
+    )
+      throw new Error("gh api parent returned an invalid parent");
+    return ownRepository === parentRepository ? raw.number : undefined;
+  }
   async listIssueDependencies(n: number): Promise<IssueDependency[]> {
     const result = await this.ghOk([
       "api",

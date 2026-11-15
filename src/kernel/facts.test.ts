@@ -44,6 +44,7 @@ async function setup(t: TestContext) {
     listOpenIssues: unexpected,
     listOpenPullRequests: unexpected,
     viewIssue: unexpected,
+    parentIssue: async () => undefined,
     listIssueDependencies: unexpected,
     addIssueDependency: unexpected,
     listLabels: unexpected,

@@ -14,6 +14,8 @@ export type FakeHostState = {
   pushRepository?: string;
   issues: Issue[];
   dependencies: Record<string, IssueDependency[]>;
+  parents?: Record<string, number>;
+  parentError?: string;
   labels: string[];
   pullRequests: PullRequest[];
   calls: string[];
@@ -62,6 +64,13 @@ export class FakeHost implements Host {
     const issue = state.issues.find((issue) => issue.number === n);
     if (!issue) throw new Error(`Issue ${n} was not found`);
     return issue;
+  }
+
+  async parentIssue(issue: Issue): Promise<number | undefined> {
+    return this.call("parentIssue", (state) => {
+      if (state.parentError) throw new Error(state.parentError);
+      return state.parents?.[String(issue.number)];
+    });
   }
 
   async checkCli() {

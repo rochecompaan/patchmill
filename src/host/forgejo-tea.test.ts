@@ -73,6 +73,34 @@ function fixture(
   };
 }
 
+test("parent lookup reads only a leading Part of line without API calls", async () => {
+  for (const [body, expected] of [
+    ["Part of #356", 356],
+    ["\n\nPart of #356.\nMore", 356],
+    ["part of #356", undefined],
+    ["See #1\nPart of #356", undefined],
+    ["", undefined],
+    ["Part of #357", undefined],
+    ["Part of #0", undefined],
+    ["Part of #99999999999999999999", undefined],
+  ] as const) {
+    const { runner, host } = fixture();
+    const issue = {
+      number: 357,
+      title: "Child",
+      body,
+      labels: [],
+      state: "open" as const,
+      url: "https://host/357",
+      author: "tester",
+      createdAt: "today",
+      comments: [],
+    };
+    assert.equal(await host.parentIssue(issue), expected, body);
+    assert.deepEqual(runner.calls, []);
+  }
+});
+
 test("native dependency reads paginate and preserve cross-repository identity", async () => {
   const runner = recordingRunner([
     { match: /^git /, result: { stdout: "git@host:owner/repo.git" } },

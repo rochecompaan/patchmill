@@ -5,6 +5,101 @@ import { CommandFailedError } from "../process/command.ts";
 import { createHostForProvider } from "./factory.ts";
 import { GitHubHost } from "./github-gh.ts";
 
+const childIssue = {
+  number: 357,
+  title: "Child",
+  body: "Part of #1",
+  labels: [],
+  state: "open" as const,
+  url: "https://github.com/Owner/Repo/issues/357",
+  author: "tester",
+  createdAt: "today",
+  comments: [],
+};
+
+test("parent lookup returns the same-repository parent", async () => {
+  const runner = recordingRunner([
+    {
+      match: /gh api /,
+      result: {
+        stdout: JSON.stringify({
+          number: 356,
+          html_url: "https://github.com/owner/repo/issues/356",
+        }),
+      },
+    },
+  ]);
+  assert.equal(
+    await new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue(childIssue),
+    356,
+  );
+  assert.deepEqual(runner.calls, [
+    ["gh", "api", "repos/{owner}/{repo}/issues/357/parent"],
+  ]);
+});
+
+test("parent lookup treats only No parent issue found as no parent", async () => {
+  for (const stderr of [
+    "gh: No parent issue found (HTTP 404)",
+    "gh: Not Found (HTTP 404)",
+  ]) {
+    const runner = recordingRunner([
+      { match: /gh api /, result: { code: 1, stderr } },
+    ]);
+    const result = new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue(
+      childIssue,
+    );
+    if (stderr.includes("No parent")) assert.equal(await result, undefined);
+    else await assert.rejects(result, CommandFailedError);
+  }
+});
+
+test("parent lookup ignores a parent in another repository", async () => {
+  const runner = recordingRunner([
+    {
+      match: /gh api /,
+      result: {
+        stdout: JSON.stringify({
+          number: 5,
+          html_url: "https://github.com/other/repo/issues/5",
+        }),
+      },
+    },
+  ]);
+  assert.equal(
+    await new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue(childIssue),
+    undefined,
+  );
+});
+
+test("parent lookup rejects a malformed response", async () => {
+  for (const raw of [
+    { number: "x" },
+    { number: 356 },
+    null,
+    { number: 0, html_url: childIssue.url },
+  ]) {
+    const runner = recordingRunner([
+      { match: /gh api /, result: { stdout: JSON.stringify(raw) } },
+    ]);
+    await assert.rejects(
+      new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue(childIssue),
+      /gh api parent returned an invalid parent/,
+    );
+  }
+});
+
+test("parent lookup rejects an issue without an issue URL before calling gh", async () => {
+  const runner = recordingRunner([]);
+  await assert.rejects(
+    new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue({
+      ...childIssue,
+      url: "https://github.com/owner/repo",
+    }),
+  );
+  assert.deepEqual(runner.calls, []);
+});
+
 test("open PRs include every host page without losing head identity", async () => {
   const raw = (number: number) => ({
     number,
