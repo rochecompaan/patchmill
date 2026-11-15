@@ -388,7 +388,7 @@ test("history-only recovery derives the latest header and total duration from al
   assert.equal(detail.summary.elapsedSeconds, 90);
 });
 
-test("active attempts withhold history and cost, unlocked progress becomes incomplete", async (t) => {
+test("active attempts show history without cost, unlocked progress becomes incomplete", async (t) => {
   const f = await issueThreadFixture(t);
   await f.attempt({
     messages: [
@@ -410,7 +410,7 @@ test("active attempts withhold history and cost, unlocked progress becomes incom
   });
   t.after(() => lock.release());
   assert.equal((await f.read()).run?.outcome, "active");
-  assert.deepEqual((await f.read()).thread, []);
+  assert.match(texts(await f.read()), /old-history/);
   assert.equal((await f.read()).finalUsage, null);
   await lock.release();
   const ended = await f.read();

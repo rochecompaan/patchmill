@@ -50,5 +50,20 @@ export function createSampleRunDataSource(): RunDataSource {
     ),
   };
   freeze(snapshot);
-  return { snapshot: async () => snapshot, subscribe: () => () => {} };
+  return {
+    snapshot: async () => snapshot,
+    subscribe: ({ issue }, listener) => {
+      const detail = snapshot.details[String(issue)];
+      listener(
+        detail
+          ? {
+              kind: "reset",
+              id: "00000000-1",
+              issue: { schemaVersion: 1, ...snapshot, issue: detail },
+            }
+          : { kind: "unavailable", id: "00000000-1" },
+      );
+      return () => {};
+    },
+  };
 }

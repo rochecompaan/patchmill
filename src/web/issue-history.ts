@@ -16,6 +16,7 @@ export async function readHistory(
   dir: string,
   issue: number,
   runId: string,
+  active = false,
 ) {
   const sessions = new Map<number, Session>();
   const progress: { session: number; event: ThreadEvent }[] = [];
@@ -23,7 +24,9 @@ export async function readHistory(
   let sequence = 0;
   let current = 0;
   let found = false;
-  for await (const r of files.lines(join(dir, "history.jsonl"))) {
+  for await (const r of files.lines(join(dir, "history.jsonl"), {
+    complete: active,
+  })) {
     if (
       !object(r) ||
       r.schemaVersion !== 1 ||
@@ -80,9 +83,16 @@ export async function readAttemptThread(input: {
   issue: number;
   record: IssueRunRecord;
   seen: Set<string>;
+  active?: boolean;
 }): Promise<ThreadEvent[]> {
   const { files, dir, record } = input;
-  const history = await readHistory(files, dir, input.issue, record.runId);
+  const history = await readHistory(
+    files,
+    dir,
+    input.issue,
+    record.runId,
+    input.active,
+  );
   const events: ThreadEvent[] = [];
   const notice = (text: string, suffix: string): ThreadEvent => ({
     kind: "progress",
@@ -133,7 +143,9 @@ export async function readAttemptThread(input: {
     for (const entry of await files.list(sessionDir)) {
       if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
       const records: unknown[] = [];
-      for await (const r of files.lines(join(sessionDir, entry.name)))
+      for await (const r of files.lines(join(sessionDir, entry.name), {
+        complete: !!input.active,
+      }))
         records.push(r);
       const normalized = projectPiThread({
         records,
@@ -141,6 +153,7 @@ export async function readAttemptThread(input: {
         ...(session?.at ? { cutoff: session.at } : {}),
         collapseFirstUser: entry.name !== "console-planning.jsonl",
         seen: input.seen,
+        active: !!input.active,
       });
       if (normalized.length) hasTranscript = true;
       projected.push(...normalized);
@@ -170,14 +183,32 @@ export async function readAttemptThread(input: {
         .map(({ e }) => e),
     );
   }
-  if (!hasTranscript)
+  if (!hasTranscript && !input.active)
     events.push(
       notice(
         "Agent transcript not recorded for this attempt.",
         "missing-transcript",
       ),
     );
-  if (record.outcome?.label === "needsInfo" || !record.finishedAt)
+  if (
+    input.active &&
+    record.progress?.interactive &&
+    !events.some(
+      (e) =>
+        ["message", "tool", "prompt"].includes(e.kind) &&
+        e.id.startsWith(`${record.runId}:${numbers.at(-1)}:`),
+    )
+  )
+    events.push(
+      notice(
+        "Agent messages appear when this interactive session ends.",
+        "interactive-pending",
+      ),
+    );
+  if (
+    !input.active &&
+    (record.outcome?.label === "needsInfo" || !record.finishedAt)
+  )
     events.push({
       kind: "error",
       id: `${record.runId}:error`,

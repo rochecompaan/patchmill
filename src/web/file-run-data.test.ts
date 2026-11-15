@@ -128,8 +128,11 @@ test("file-backed snapshots classify current fixture files, preserve immutabilit
   });
   assert.deepEqual(first.details, {});
   const selected = await f.source.snapshot({ issue: 3 });
-  assert.deepEqual(selected.details["3"]?.summary, first.issues[2]);
-  assert.deepEqual(selected.details["3"]?.thread, []);
+  assert.deepEqual(selected.details["3"]?.summary, {
+    ...first.issues[2],
+    elapsedSeconds: 0,
+  });
+  assert.ok(selected.details["3"]?.thread.length);
   assert.equal((await f.source.snapshot()).revision, first.revision);
   await f.locks[2]!.release();
   const next = await f.source.snapshot();
@@ -151,12 +154,12 @@ test("both authenticated HTTP APIs share the provider cache and unknown callers 
   assert.equal(board.status, 200);
   assert.equal(detail.status, 200);
   assert.equal(JSON.parse(board.body).source, "live");
-  assert.deepEqual(
-    JSON.parse(detail.body).issue.summary,
-    JSON.parse(board.body).issues.find(
+  assert.deepEqual(JSON.parse(detail.body).issue.summary, {
+    ...JSON.parse(board.body).issues.find(
       (i: { number: number }) => i.number === 3,
     ),
-  );
+    elapsedSeconds: 0,
+  });
   assert.equal(f.calls(), 1);
 });
 

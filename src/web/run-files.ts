@@ -53,6 +53,17 @@ export function runFiles(root: string, warn: (message: string) => void) {
   }
   return {
     directory: (path: string) => safe(path, true),
+    async metadata(path: string) {
+      if (!(await safe(path, false))) return null;
+      try {
+        const stat = await fs.lstat(path);
+        return stat.isFile() && !stat.isSymbolicLink()
+          ? [stat.size, stat.mtimeMs]
+          : null;
+      } catch {
+        return null;
+      }
+    },
     async list(path: string) {
       if (!(await safe(path, true))) return [];
       try {
@@ -81,7 +92,10 @@ export function runFiles(root: string, warn: (message: string) => void) {
         await file?.close();
       }
     },
-    async *lines(path: string): AsyncGenerator<unknown> {
+    async *lines(
+      path: string,
+      options: { complete?: boolean } = {},
+    ): AsyncGenerator<unknown> {
       let file;
       try {
         file = await open(path);
@@ -123,6 +137,7 @@ export function runFiles(root: string, warn: (message: string) => void) {
           if (!oversized)
             pending = Buffer.concat([pending, buffer.subarray(start)]);
         }
+        if (options.complete) return;
         if (oversized) {
           warning();
           yield null;

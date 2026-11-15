@@ -19,6 +19,7 @@ import { runFiles, timestamp } from "./run-files.ts";
 
 export type RunObservation = {
   live: boolean;
+  activeRunId?: string | null;
   incomplete: boolean;
   state: RunState | null;
   phase: Phase | null;
@@ -39,6 +40,7 @@ export type RunObservation = {
 };
 const empty = (): RunObservation => ({
   live: false,
+  activeRunId: null,
   incomplete: false,
   state: null,
   phase: null,
@@ -110,6 +112,7 @@ export async function readIssueObservation(input: {
   return {
     ...metadata,
     live,
+    activeRunId: live && !latest.finishedAt ? latest.runId : null,
     state: latest.finishedAt !== null ? "ended" : (p?.state ?? null),
     incomplete: ownership === false && latest.finishedAt === null,
     branch: p?.facts?.branch ?? null,

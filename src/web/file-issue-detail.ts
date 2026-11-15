@@ -63,11 +63,20 @@ export async function readIssueDetail(input: {
   );
   const latest: IssueRunRecord | undefined = records.at(-1);
   const metadata = runRecordMetadata(records);
+  const active = records.find((r) => r.runId === input.observation.activeRunId);
+  const ended = records.filter((r) => r !== active);
   const summary = {
     ...input.summary,
     step: input.observation.live ? input.summary.step : metadata.step,
     elapsedSeconds: input.observation.live
-      ? input.summary.elapsedSeconds
+      ? ended.every((r) => r.finishedAt !== null)
+        ? ended.reduce(
+            (sum, r) =>
+              sum +
+              (Date.parse(r.finishedAt!) - Date.parse(r.startedAt)) / 1000,
+            0,
+          )
+        : null
       : metadata.elapsedSeconds,
   };
   const base: IssueDetail = {
@@ -83,13 +92,12 @@ export async function readIssueDetail(input: {
     return { ...base, body: input.issue.body };
   const run: NonNullable<IssueDetail["run"]> = {
     startedAt: records[0]?.startedAt ?? "",
-    activeSince: null,
+    activeSince: active?.startedAt ?? null,
     finishedAt: input.observation.live ? null : (latest?.finishedAt ?? null),
     outcome: input.observation.live
       ? "active"
       : (latest?.outcome?.status ?? "incomplete"),
   };
-  if (input.observation.live) return { ...base, run };
   const thread: ThreadEvent[] = [];
   const seen = new Set<string>();
   for (const [index, record] of records.entries()) {
@@ -107,6 +115,7 @@ export async function readIssueDetail(input: {
         issue: input.issue.number,
         record,
         seen,
+        active: record === active,
       })),
     );
   }
@@ -114,6 +123,8 @@ export async function readIssueDetail(input: {
     ...base,
     run,
     thread,
-    finalUsage: await issueFinalUsage(files, dir, records),
+    finalUsage: input.observation.live
+      ? null
+      : await issueFinalUsage(files, dir, records),
   };
 }
