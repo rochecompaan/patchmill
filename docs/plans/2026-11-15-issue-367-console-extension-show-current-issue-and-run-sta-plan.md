@@ -295,3 +295,35 @@ No mockup applies (terminal footer text, no browser layout).
   the footer shows `#N <title>  ·  01 planning`. Narrow the terminal and confirm
   the title shortens with `…` while the state stays visible. Quit and confirm
   the console exits normally.
+
+## Plan review
+
+- **Reviewer:** fresh-context canonical `reviewer`, `claude-opus-5-5` (high),
+  read-only. Initial review at `72c5246`; scoped confirmation at `be79fe2`.
+- **Architecture survey:** The reviewer confirmed these points against the
+  source:
+  - The title is fetched before the first emission (`run-once.ts`
+    `workflow.issue` before `snapshot.deriving()`).
+  - `progress.json` excludes the title (`projectRunProgress` lists its fields).
+  - The controller's `.finally` runs before `close()` completes.
+  - Pi's footer sanitizes, sorts, joins, and cuts statuses as the spec says.
+  - The no-break-space separator keeps a visible width of 5.
+  - `patchmill` sorts before the pi-subagents status keys.
+  - The `RunStatusUi` seam has real production and test adapters. Dependencies
+    point from console to kernel.
+- **B1 (accepted, fixed):** The planned regex missed C1 controls and left ANSI
+  sequence bodies visible. Title cleaning now uses `cleanValue`, the filter that
+  `formatRunStart` uses. A C1/ANSI test case is added. The confirmation review
+  ran the cleaning against the real module and found that it passes.
+- **Optional suggestions (accepted):**
+  - A known-limitation note for co-statuses.
+  - A note that `patchmill_run_status` output gains `title`.
+  - Listener and status declared at factory scope.
+  - `trimEnd()` before `…`.
+  - Tests for a throwing `columns()` and for an edited title.
+  - The glossary term "console output".
+- **Residual, not blocking:** a C1 CSI leaves its parameter text visible (for
+  example `31m`). This matches the behavior of `formatRunStart`.
+- **Inspection limits:** The reviewer did not run tests or lint. It read the
+  compiled Pi `dist` output, not the Pi TypeScript sources.
+- **Readiness:** No blockers remain. The plan is ready for the maintainer gate.
