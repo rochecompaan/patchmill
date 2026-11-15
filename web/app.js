@@ -6,6 +6,8 @@ import { createViewState } from "./view-state.js";
 import { readName, saveName, preferredTheme } from "./preferences.js";
 import { mountArtifactViewer } from "./artifacts.js";
 import { mountSyncStatus } from "./sync-status.js";
+import { liveElapsedSeconds } from "./live-issue.js";
+import { elapsed } from "./dom.js";
 const mount = /** @type {HTMLElement} */ (document.getElementById("app"));
 const notice = /** @type {HTMLElement} */ (document.getElementById("notice"));
 const nameDialog = /** @type {HTMLDialogElement} */ (
@@ -39,6 +41,10 @@ const syncStatus = mountSyncStatus(
     },
   },
 );
+const announcement = document.createElement("p");
+announcement.className = "visually-hidden";
+announcement.setAttribute("role", "status");
+mount.after(announcement);
 let linkedArtifact = "";
 let name = readName(storage) ?? "You";
 const drafts = createDraftStore();
@@ -73,6 +79,12 @@ function openLinkedArtifact(state) {
 function render() {
   if (!current) return;
   const saved = viewState.capture();
+  const sameIssue =
+    saved.issue !== null &&
+    current.issue?.issue.summary.number === Number(saved.issue);
+  const scrollY = window.scrollY;
+  const follow =
+    window.innerHeight + scrollY >= document.documentElement.scrollHeight - 120;
   mount.classList.toggle(
     "live-issue",
     current.status === "ready" && current.issue?.source === "live",
@@ -85,14 +97,31 @@ function render() {
     .getElementById("repository-name")
     ?.replaceChildren(document.createTextNode(repository?.name ?? ""));
   (mount.querySelector(".composer") ?? mount).prepend(notice);
-  viewState.restore(saved);
+  viewState.restore(saved, { keepScroll: sameIssue });
+  if (sameIssue)
+    window.scrollTo({
+      top: follow ? document.documentElement.scrollHeight : scrollY,
+      behavior: "instant",
+    });
   openLinkedArtifact(current);
 }
 const controller = createPageController({
   api: createApi(),
+  events: (url) => new EventSource(url),
   onState: (state) => {
     const previousBoard = current?.board;
+    const wasActive = current?.issue?.issue.run?.outcome === "active";
     current = state;
+    if (
+      wasActive &&
+      state.issue?.issue.run &&
+      state.issue.issue.run.outcome !== "active"
+    ) {
+      announcement.textContent =
+        state.issue.issue.run.outcome === "completed"
+          ? "Run finished"
+          : "Run stopped";
+    }
     if (
       previousBoard &&
       state.board &&
@@ -112,6 +141,14 @@ const controller = createPageController({
     },
   },
 });
+const elapsedTimer = window.setInterval(() => {
+  const detail = current?.issue?.issue;
+  const node = mount.querySelector("[data-live-elapsed]");
+  if (detail && node) {
+    const seconds = liveElapsedSeconds(detail, Date.now());
+    if (seconds !== null) node.textContent = "elapsed " + elapsed(seconds);
+  }
+}, 1000);
 function route() {
   viewer.close();
   linkedArtifact = "";
@@ -125,6 +162,7 @@ document.addEventListener("visibilitychange", () =>
 );
 window.addEventListener("pagehide", () => {
   controller.dispose();
+  window.clearInterval(elapsedTimer);
   syncStatus.dispose();
 });
 function updateName() {

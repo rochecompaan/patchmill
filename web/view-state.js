@@ -28,15 +28,16 @@ export function createViewState(mount, drafts) {
         : null;
     return { issue, selection };
   }
-  /** @param {ReturnType<typeof capture>} saved */
-  function restore(saved) {
+  /** @param {ReturnType<typeof capture>} saved @param {{keepScroll?:boolean}} [options] */
+  function restore(saved, options = {}) {
     const issue = issueNumber();
     for (const details of mount.querySelectorAll("details"))
       if (issue && openTools.get(issue)?.has(details.dataset.key ?? ""))
         details.open = true;
-    mount
-      .querySelector("[aria-current=step]")
-      ?.scrollIntoView({ block: "nearest", inline: "center" });
+    if (!options.keepScroll)
+      mount
+        .querySelector("[aria-current=step]")
+        ?.scrollIntoView({ block: "nearest", inline: "center" });
     const input = mount.querySelector("textarea");
     if (saved.issue === issue && saved.selection && input && !input.disabled) {
       input.focus({ preventScroll: true });

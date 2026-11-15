@@ -1,9 +1,11 @@
 import { ApiRequestError } from "./api.js";
+import { applyIssueUpdate } from "./live-issue.js";
+/** @typedef {{readyState:number,close:()=>void,addEventListener:(name:string,fn:(event:{data?:string})=>void)=>void}} EventSourceLike */
 /** @typedef {import('./api.js').ApiClient} ApiClient */
 /** @typedef {import('./state.js').Route} Route */
-/** @typedef {{route:Route,status:'loading'|'ready'|'unauthorized'|'not-found'|'error',board:import('./api.js').BoardResponse|null,issue:import('./api.js').IssueResponse|null,message:string|null}} PageState */
-/** @param {{api:ApiClient,onState:(state:PageState)=>void,visible:()=>boolean,clock:{after:(ms:number,fn:()=>void)=>(()=>void)}}} options */
-export function createPageController({ api, onState, visible, clock }) {
+/** @typedef {{route:Route,status:'loading'|'ready'|'unauthorized'|'not-found'|'error',board:import('./api.js').BoardResponse|null,issue:import('./api.js').IssueResponse|null,message:string|null,connection?:'connecting'|'live'|'reconnecting'|null}} PageState */
+/** @param {{api:ApiClient,onState:(state:PageState)=>void,visible:()=>boolean,clock:{after:(ms:number,fn:()=>void)=>(()=>void)},events?:(url:string)=>EventSourceLike}} options */
+export function createPageController({ api, onState, visible, clock, events }) {
   /** @type {PageState} */ let state = {
     route: { view: "board" },
     status: "loading",
@@ -17,6 +19,68 @@ export function createPageController({ api, onState, visible, clock }) {
   /** @type {AbortController|undefined} */ let active;
   /** @type {(()=>void)|undefined} */ let cancel;
   let published = "";
+  /** @type {EventSourceLike|undefined} */ let stream;
+  function closeStream() {
+    const previous = stream;
+    stream = undefined;
+    previous?.close();
+    state = { ...state, connection: null };
+  }
+  function connect() {
+    if (
+      !events ||
+      stream ||
+      state.issue?.source !== "live" ||
+      state.issue.issue.run?.outcome !== "active"
+    )
+      return;
+    const socket = events(
+      `/api/issues/${state.issue.issue.summary.number}/events`,
+    );
+    stream = socket;
+    state = { ...state, connection: "connecting" };
+    const current = () => !disposed && stream === socket;
+    socket.addEventListener("open", () => {
+      if (current()) {
+        state = { ...state, connection: "live" };
+        publish();
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (!current()) return;
+      if (socket.readyState === 2) {
+        closeStream();
+        void load();
+      } else {
+        state = { ...state, connection: "reconnecting" };
+        publish();
+      }
+    });
+    for (const kind of ["reset", "header", "thread", "unavailable"])
+      socket.addEventListener(kind, (event) => {
+        if (!current() || !state.issue) return;
+        try {
+          const update =
+            /** @type {import('../src/web/api-types.ts').IssueUpdate} */ (
+              JSON.parse(event.data ?? "")
+            );
+          if (update.kind === "unavailable") {
+            closeStream();
+            publish();
+            return;
+          }
+          state = { ...state, issue: applyIssueUpdate(state.issue, update) };
+          if (state.issue?.issue.run?.outcome !== "active") {
+            closeStream();
+            publish();
+            void load();
+          } else publish();
+        } catch {
+          closeStream();
+          void load();
+        }
+      });
+  }
   function stopTimer() {
     cancel?.();
     cancel = undefined;
@@ -61,6 +125,7 @@ export function createPageController({ api, onState, visible, clock }) {
           message: null,
         };
       }
+      connect();
       publish();
     } catch (error) {
       if (sequence !== generation || disposed) return;
@@ -99,6 +164,7 @@ export function createPageController({ api, onState, visible, clock }) {
   return {
     /** @param {Route} route */ async navigate(route) {
       stopTimer();
+      closeStream();
       active?.abort();
       generation++;
       busy = false;
@@ -121,6 +187,7 @@ export function createPageController({ api, onState, visible, clock }) {
     },
     dispose() {
       disposed = true;
+      closeStream();
       generation++;
       active?.abort();
       stopTimer();

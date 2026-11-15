@@ -1,6 +1,7 @@
 import { el, icon, externalLink, person, elapsed } from "./dom.js";
 import { renderThread } from "./thread.js";
 import { presentationFor, PHASES } from "./state.js";
+import { liveElapsedSeconds } from "./live-issue.js";
 /** @typedef {import('../src/web/api-types.ts').IssueDetail} IssueDetail */
 /** @typedef {import('../src/web/api-types.ts').IssueSummary} IssueSummary */
 /** @typedef {import('./state.js').Presentation} Presentation */
@@ -50,15 +51,17 @@ function renderMeta(doc, detail, name, p) {
   meta.append(status);
   if (issue.step)
     meta.append(el(doc, "span", "meta-item mono", "step " + issue.step));
-  if (issue.elapsedSeconds !== null)
-    meta.append(
-      el(
-        doc,
-        "span",
-        "meta-item mono",
-        "elapsed " + elapsed(issue.elapsedSeconds),
-      ),
+  const seconds = liveElapsedSeconds(detail, Date.now());
+  if (seconds !== null) {
+    const item = el(
+      doc,
+      "span",
+      "meta-item mono",
+      "elapsed " + elapsed(seconds),
     );
+    if (detail.run?.outcome === "active") item.dataset.liveElapsed = "";
+    meta.append(item);
+  }
   for (const pr of issue.pullRequests) {
     const item = el(doc, "span", "meta-item");
     item.append(
@@ -254,8 +257,15 @@ function renderComposer(doc, issue, name, draft, p, source) {
   return footer;
 }
 
-/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft @param {'sample'|'live'} [source] */
-export function renderIssue(doc, detail, name, draft, source = "sample") {
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft @param {'sample'|'live'} [source] @param {import('./controller.js').PageState['connection']} [connection] */
+export function renderIssue(
+  doc,
+  detail,
+  name,
+  draft,
+  source = "sample",
+  connection = null,
+) {
   const p = presentationFor(detail.summary);
   if (source === "live") {
     p.statusLabel = !detail.run
@@ -270,26 +280,17 @@ export function renderIssue(doc, detail, name, draft, source = "sample") {
   }
   const fragment = doc.createDocumentFragment();
   const active = source === "live" && detail.run?.outcome === "active";
-  const thread = active
-    ? el(doc, "section", "thread")
-    : renderThread(doc, detail);
+  const thread = renderThread(doc, detail);
   thread.setAttribute("aria-label", "Issue thread");
   if (source === "live") {
     thread.classList.add("is-recorded");
     if (detail.body !== null)
       thread.append(el(doc, "div", "issue-body", detail.body));
-    if (active || !detail.run) {
+    if (!detail.run) {
       const empty = el(doc, "div", "empty");
       empty.append(
-        el(doc, "h2", "", active ? "Run active" : "No run yet"),
-        el(
-          doc,
-          "p",
-          "",
-          active
-            ? "Live progress comes in a later update."
-            : "This issue has no recorded Issue run.",
-        ),
+        el(doc, "h2", "", "No run yet"),
+        el(doc, "p", "", "This issue has no recorded Issue run."),
       );
       thread.append(empty);
     }
@@ -318,8 +319,23 @@ export function renderIssue(doc, detail, name, draft, source = "sample") {
           composerHint: "View only. Messages come with live chat.",
         }
       : p;
+  const header = renderHeader(doc, detail, name, p);
+  if (active && connection) {
+    const status = el(
+      doc,
+      "span",
+      "meta-item connection-state",
+      connection === "reconnecting"
+        ? "Reconnecting…"
+        : connection === "connecting"
+          ? "Connecting…"
+          : "Live",
+    );
+    if (connection === "live") status.prepend(el(doc, "i", "dot dot-live"));
+    header.querySelector(".meta")?.append(status);
+  }
   fragment.append(
-    renderHeader(doc, detail, name, p),
+    header,
     thread,
     renderComposer(doc, detail.summary, name, draft, composer, source),
   );

@@ -329,3 +329,19 @@
     display: none;
   }
 }
+
+/* Live replacement must not move readers through browser scroll anchoring. */
+body:has([data-live-elapsed]) {
+  overflow-anchor: none;
+}
+.connection-state {
+  color: var(--muted);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

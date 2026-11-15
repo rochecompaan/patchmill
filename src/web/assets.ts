@@ -15,6 +15,7 @@ const publicFiles = new Set([
   "dom.js",
   "board.js",
   "issue.js",
+  "live-issue.js",
   "thread.js",
   "artifacts.js",
   "preferences.js",
