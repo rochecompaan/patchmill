@@ -6,6 +6,7 @@ import {
   cleanValue,
   renderTerminalDocument,
   type TerminalSection,
+  type TerminalListItem,
   type TerminalResultSeverity,
 } from "./terminal-layout.ts";
 
@@ -86,7 +87,8 @@ export function formatRunResult(
         },
       ],
     });
-  const artifacts = [
+  const parentSpec = display.facts?.parentSpec;
+  const artifacts: TerminalListItem[] = [
     ["Specification", display.facts?.specPath],
     ["Implementation plan", display.facts?.planPath],
   ].flatMap(([label, text]) =>
@@ -99,6 +101,14 @@ export function formatRunResult(
         ]
       : [],
   );
+  if (parentSpec)
+    artifacts.unshift({
+      value: { text: "Parent specification" },
+      details: [
+        { value: { text: parentSpec.path, role: "path" as const } },
+        { value: { text: `from #${parentSpec.issue}` } },
+      ],
+    });
   if (artifacts.length)
     sections.push({
       heading: "Artifacts",

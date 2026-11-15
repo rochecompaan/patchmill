@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-11-14T20:22:22.243Z",
+  "installedAt": "2026-11-15T14:45:17.685Z",
   "sources": {
     "patchmill": "1.0.0",
     "superpowers": "7.0.2",
@@ -157,7 +157,7 @@
     },
     {
       "path": "patchmill-planning/SKILL.md",
-      "sha256": "e7cb9ccbbb8cd19e20283daa3c3ad171a97a45162dcb3565e9e58cd413b4629b"
+      "sha256": "af5a2b8c3377fd9880b15c4b90e85cdaff8c4a4b99baece86871ab5279e92ad0"
     },
     {
       "path": "patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",

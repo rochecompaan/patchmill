@@ -151,6 +151,20 @@ for (const closed of [false, true]) {
   });
 }
 
+test("a parent lookup failure stops with needs-info and its message without starting Pi", async (t) => {
+  const c = await setupRun(t);
+  await c.mutate((s) => {
+    s.parentError = "parent boom";
+  });
+  const result = await c.run();
+  assert.equal(result.status, "stopped");
+  if (result.status === "stopped") {
+    assert.equal(result.label, "needsInfo");
+    assert.match(result.summary, /parent boom/);
+  }
+  await assert.rejects(fs.access(join(c.dir, "pi.pid")), { code: "ENOENT" });
+});
+
 test("claimed errors become needs-info and cleanup host errors cannot leak ownership", async (t) => {
   const c = await setupRun(t);
   c.deps.git.fetch = async () => {

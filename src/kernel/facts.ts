@@ -19,6 +19,7 @@ export type Facts = {
   baseBranch: string;
   specPath?: string;
   planPath?: string;
+  parentSpec?: { issue: number; path: string };
   expectedSpecPath: string;
   expectedPlanPath: string;
   pullRequest?: PullRequest;
@@ -153,6 +154,14 @@ async function observe(
     );
   const specPath = await artifacts.find(config.paths.specsDir, "spec");
   let planPath = await artifacts.find(config.paths.plansDir, "plan");
+  const parent = await deps.host.parentIssue(issue);
+  const parentPath =
+    parent === undefined
+      ? undefined
+      : await refArtifacts(git, worktree, `origin/${baseBranch}`, parent).find(
+          config.paths.specsDir,
+          "spec",
+        );
   // A hardlink would otherwise let one document satisfy both gates.
   if (specPath && planPath && (await artifacts.sameFile(specPath, planPath)))
     planPath = undefined;
@@ -176,6 +185,9 @@ async function observe(
       baseBranch,
       ...(specPath === undefined ? {} : { specPath }),
       ...(planPath === undefined ? {} : { planPath }),
+      ...(parentPath === undefined
+        ? {}
+        : { parentSpec: { issue: parent!, path: parentPath } }),
       expectedSpecPath: expectedPath(config.paths.specsDir, "spec"),
       expectedPlanPath: expectedPath(config.paths.plansDir, "plan"),
       ...(pullRequest === undefined ? {} : { pullRequest }),

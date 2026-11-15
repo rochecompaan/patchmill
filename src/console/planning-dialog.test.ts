@@ -15,6 +15,25 @@ const highlights = [
   "Restores votes and the browser vote lock",
 ];
 
+test("a parent spec appears above the spec and fits narrow viewports", () => {
+  const parentSpec = { issue: 356, path: "docs/specs/p-design.md" };
+  const dialog = renderPlanningDialog({ ...facts, parentSpec }, undefined, []);
+  assert.ok(
+    dialog.title.includes(
+      "  Parent   docs/specs/p-design.md (#356)\n  Spec     docs/specs/polls-design.md",
+    ),
+  );
+  const narrow = renderPlanningDialog({ ...facts, parentSpec }, undefined, [], {
+    columns: 25,
+    rows: 50,
+  });
+  const parentLine = narrow.title
+    .split("\n")
+    .find((line) => line.includes("Parent"))!;
+  assert.ok(parentLine.endsWith("…"));
+  assert.ok(parentLine.length <= 23);
+});
+
 test("required spec review presents trustworthy details and highlights, not the agent summary", () => {
   const submittedFacts = { ...facts, summary: "UNTRUSTED SUMMARY" };
   const dialog = renderPlanningDialog(

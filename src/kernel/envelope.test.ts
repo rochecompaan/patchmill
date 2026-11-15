@@ -13,6 +13,104 @@ test("the non-interactive envelope is unchanged", () => {
   }
 });
 
+test("a parent spec adds a read-only fact after the Spec line and base read command", () => {
+  const text = renderRunEnvelope({
+    ...input,
+    facts: {
+      ...input.facts,
+      parentSpec: { issue: 356, path: "docs/specs/p-design.md" },
+    },
+  });
+  assert.ok(
+    text.includes(
+      "- Spec: expected: docs/specs/2026-10-15-issue-9-x-design.md\n- Parent spec: docs/specs/p-design.md on origin/main (from issue #356; approved and read-only; read it with `git show 'origin/main:docs/specs/p-design.md'`, because the worktree copy can be missing or old)\n- Plan:",
+    ),
+  );
+});
+
+test("parent read commands quote complete ref paths with spaces and apostrophes", async (t) => {
+  const { createGitFixture } =
+    await import("../../test-support/git-fixture.ts");
+  const fs = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { runCommand } = await import("../process/command.ts");
+  const fixture = await createGitFixture();
+  t.after(() => fs.rm(fixture.dir, { recursive: true, force: true }));
+  const path = "docs/parent's specs/2026-10-15-issue-5-p-design.md";
+  await fs.mkdir(join(fixture.repoRoot, "docs/parent's specs"), {
+    recursive: true,
+  });
+  await fs.writeFile(join(fixture.repoRoot, path), "approved design");
+  for (const args of [
+    ["add", "."],
+    ["commit", "-m", "Parent spec"],
+    ["push", "origin", "HEAD:main"],
+    ["fetch", "origin"],
+  ]) {
+    assert.equal(
+      (
+        await runCommand("git", args, {
+          cwd: fixture.repoRoot,
+          env: fixture.env,
+        })
+      ).code,
+      0,
+    );
+  }
+  const envelope = renderRunEnvelope({
+    ...input,
+    facts: { ...input.facts, parentSpec: { issue: 5, path } },
+  });
+  const command = envelope.match(/read it with `([^`]+)`/)![1]!;
+  const result = await runCommand("bash", ["-c", command], {
+    cwd: fixture.repoRoot,
+    env: fixture.env,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout, "approved design");
+});
+
+test("planning with a parent spec states the parent spec rules", () => {
+  const facts = {
+    ...input.facts,
+    parentSpec: { issue: 356, path: "docs/specs/p-design.md" },
+  };
+  const unattended = renderRunEnvelope({ ...input, facts });
+  assert.ok(
+    unattended.includes(
+      "The parent spec is the approved design for this issue.",
+    ),
+  );
+  assert.ok(unattended.includes("stop and return `needs-input`"));
+  const interactive = renderRunEnvelope({ ...input, facts, interactive: true });
+  assert.ok(interactive.includes("ask the maintainer in this chat"));
+  assert.ok(!interactive.includes("stop and return `needs-input`"));
+});
+
+test("implementation with a parent spec shows the fact and one stop rule", () => {
+  const facts = {
+    ...input.facts,
+    parentSpec: { issue: 356, path: "docs/specs/p-design.md" },
+  };
+  const text = renderRunEnvelope({ ...input, facts, phase: "implementation" });
+  assert.ok(text.includes("- Parent spec:"));
+  assert.ok(
+    text.includes(
+      "If the parent spec must change, do not change it; stop and return `needs-input`.",
+    ),
+  );
+  assert.ok(!text.includes("The parent spec is the approved design"));
+  assert.equal(
+    text,
+    renderRunEnvelope({
+      ...input,
+      facts,
+      phase: "implementation",
+      interactive: true,
+    }),
+  );
+});
+
 test("interactive planning asks the maintainer and submits through the tool", () => {
   const text = renderRunEnvelope({ ...input, interactive: true });
   assert.match(text, /A maintainer is present in this chat/);

@@ -25,6 +25,7 @@ function fakeHost(existing: LabelDefinition[]) {
     listOpenIssues: unexpected,
     listOpenPullRequests: unexpected,
     viewIssue: unexpected,
+    parentIssue: async () => undefined,
     listIssueDependencies: unexpected,
     addIssueDependency: unexpected,
     setLabels: unexpected,

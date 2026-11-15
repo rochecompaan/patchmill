@@ -48,6 +48,8 @@ export interface Host {
   listIssuesSince(since?: string): Promise<Issue[]>;
   listCommentsSince(since?: string): Promise<SyncedComment[]>;
   viewIssue(n: number): Promise<Issue>; // comments populated
+  /** Same-repository parent issue number, or undefined when there is none. */
+  parentIssue(issue: Issue): Promise<number | undefined>;
   listIssueDependencies(n: number): Promise<IssueDependency[]>;
   addIssueDependency(n: number, blocker: number): Promise<void>;
   listLabels(): Promise<string[]>;

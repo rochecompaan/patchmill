@@ -208,6 +208,15 @@ export class ForgejoHost implements Host, RepositorySetupHost {
       })),
     );
   }
+  async parentIssue(issue: Issue): Promise<number | undefined> {
+    const firstLine = issue.body.trimStart().split(/\r?\n/, 1)[0]!;
+    const match = firstLine.match(/^Part of #(\d+)\b/);
+    if (!match) return undefined;
+    const parent = Number(match[1]);
+    return Number.isSafeInteger(parent) && parent > 0 && parent !== issue.number
+      ? parent
+      : undefined;
+  }
   async listIssueDependencies(n: number): Promise<IssueDependency[]> {
     const entries = await this.pages<{
       number: number;

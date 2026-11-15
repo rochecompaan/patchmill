@@ -46,6 +46,34 @@ test("readable results wrap narrow terminals and do not render untrusted termina
   }
 });
 
+test("artifacts list the parent specification before the specification", () => {
+  const text = formatRunResult(
+    {
+      label: "Done",
+      severity: "success",
+      issue,
+      facts: {
+        stage: "implementation",
+        branch: "agent/issue-9-x",
+        remoteBranchExists: true,
+        worktree: "/tmp/tree",
+        baseBranch: "main",
+        expectedSpecPath: "s",
+        expectedPlanPath: "p",
+        specPath: "docs/specs/child.md",
+        parentSpec: { issue: 356, path: "docs/specs/p-design.md" },
+      },
+    },
+    { width: 120, color: false },
+  );
+  assert.ok(text.includes("Parent specification"));
+  assert.ok(text.includes("docs/specs/p-design.md"));
+  assert.ok(text.includes("from #356"));
+  assert.ok(
+    text.indexOf("Parent specification") < text.indexOf("• Specification"),
+  );
+});
+
 test("selection progress keeps issue-supplied text on one plain line", () => {
   const text = formatRunStart(issue);
   assert.equal(text, "issue #9 · Login red second line 界");

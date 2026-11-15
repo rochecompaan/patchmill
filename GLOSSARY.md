@@ -19,6 +19,14 @@ does not unlock it. _Avoid_: Approval label
 its specification and the existing codebase. It supplies evidence, not human
 approval of a Spec gate or Plan gate. _Avoid_: Plan gate, Planner self-review
 
+**Sub-issue**: An issue whose host records a parent issue in the same
+repository: a native sub-issue on GitHub, or a leading `Part of #N` body line on
+Forgejo and Gitea. _Avoid_: Child issue, slice
+
+**Parent spec**: The newest specification of a Sub-issue's parent on the base
+branch. It is the approved design that the Sub-issue's own spec extends and
+never changes. _Avoid_: Inherited spec, shared spec
+
 **Planning visualization**: A visual explanation of the concepts, relationships,
 or execution order in a specification or implementation plan. It explains the
 reasoning rather than depicting the proposed user interface. _Avoid_: UI mockup,

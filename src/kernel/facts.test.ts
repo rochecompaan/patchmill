@@ -25,7 +25,10 @@ const issue: Issue = {
   comments: [],
 };
 
-async function setup(t: TestContext) {
+async function setup(
+  t: TestContext,
+  parentIssue: Host["parentIssue"] = async () => undefined,
+) {
   const fixture = await createGitFixture();
   t.after(() => fs.rm(fixture.dir, { recursive: true, force: true }));
   const runner: CommandRunner = (command, args, options) =>
@@ -44,6 +47,7 @@ async function setup(t: TestContext) {
     listOpenIssues: unexpected,
     listOpenPullRequests: unexpected,
     viewIssue: unexpected,
+    parentIssue,
     listIssueDependencies: unexpected,
     addIssueDependency: unexpected,
     listLabels: unexpected,
@@ -91,6 +95,82 @@ async function setup(t: TestContext) {
     nowCalls: () => nowCalls,
   };
 }
+
+test("a parent spec on base becomes the parentSpec fact without replacing the child spec", async (t) => {
+  const c = await setup(t, async () => 5);
+  const seed = join(c.dir, "seed");
+  const first = "custom/specs/2026-10-01-issue-5-p-design.md";
+  await fs.mkdir(join(seed, "custom/specs"), { recursive: true });
+  await fs.writeFile(join(seed, first), "parent");
+  await c.git(["add", "."], seed);
+  await c.git(["commit", "-m", "Parent spec"], seed);
+  await c.git(["push", "origin", "HEAD:main"], seed);
+  const facts = await c.provision();
+  assert.deepEqual(facts.parentSpec, { issue: 5, path: first });
+  assert.equal(facts.specPath, undefined);
+  const newest = "custom/specs/2026-10-02-issue-5-q-design.md";
+  await fs.writeFile(join(seed, newest), "new parent");
+  await c.git(["add", "."], seed);
+  await c.git(["commit", "-m", "New parent spec"], seed);
+  await c.git(["push", "origin", "HEAD:main"], seed);
+  const child = "custom/specs/2026-10-03-issue-9-x-design.md";
+  await fs.writeFile(join(facts.worktree, child), "child");
+  const observed = await c.provision();
+  assert.deepEqual(observed.parentSpec, { issue: 5, path: newest });
+  assert.equal(observed.specPath, child);
+});
+
+test("a parent spec only on a branch or in the worktree is not a parentSpec", async (t) => {
+  const c = await setup(t, async () => 5);
+  const seed = join(c.dir, "seed");
+  const path = "custom/specs/2026-10-01-issue-5-p-design.md";
+  await fs.mkdir(join(seed, "custom/specs"), { recursive: true });
+  await fs.writeFile(join(seed, path), "unapproved parent");
+  await c.git(["add", "."], seed);
+  await c.git(["commit", "-m", "Unapproved"], seed);
+  await c.git(["push", "origin", "HEAD:agent/issue-5-p"], seed);
+  const facts = await c.provision();
+  await fs.mkdir(join(facts.worktree, "custom/specs"), { recursive: true });
+  await fs.writeFile(join(facts.worktree, path), "unapproved");
+  assert.equal("parentSpec" in (await c.provision()), false);
+});
+
+test("a child branch predating the parent spec still reports the base spec", async (t) => {
+  const c = await setup(t, async () => 5);
+  await c.git(["push", "origin", "HEAD:agent/issue-9-x"]);
+  const seed = join(c.dir, "seed");
+  const path = "custom/specs/2026-10-01-issue-5-p-design.md";
+  await fs.mkdir(join(seed, "custom/specs"), { recursive: true });
+  await fs.writeFile(join(seed, path), "parent");
+  await c.git(["add", "."], seed);
+  await c.git(["commit", "-m", "Parent"], seed);
+  await c.git(["push", "origin", "HEAD:main"], seed);
+  const facts = await c.provision();
+  assert.deepEqual(facts.parentSpec, { issue: 5, path });
+  await assert.rejects(fs.access(join(facts.worktree, path)), {
+    code: "ENOENT",
+  });
+});
+
+test("no parent omits parentSpec and queries the host once per observation", async (t) => {
+  let calls = 0;
+  const c = await setup(t, async () => {
+    calls++;
+    return undefined;
+  });
+  const result = await collectFacts(c.deps, issue);
+  assert.equal(result.kind, "facts");
+  if (result.kind === "facts")
+    assert.equal("parentSpec" in result.facts, false);
+  assert.equal(calls, 1);
+});
+
+test("parent lookup errors remain visible", async (t) => {
+  const c = await setup(t, async () => {
+    throw new Error("parent boom");
+  });
+  await assert.rejects(c.provision(), /parent boom/);
+});
 
 test("zero remote branches creates today's paths on remote HEAD, not local HEAD", async (t) => {
   const c = await setup(t);

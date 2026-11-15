@@ -62,7 +62,10 @@ for (const row of [
       aggregateLogPath: "a",
       timeoutMs: 1000,
       planningGate: row.gate,
-      planningReview: review,
+      planningReview: {
+        ...review,
+        parentSpec: { issue: 5, path: "docs/specs/p.md" },
+      },
     };
     const pending = controller.runPlanning(launch);
     const questions: string[] = [];
@@ -108,6 +111,7 @@ for (const row of [
       questions[0]!,
       /Branch {3}agent\/issue-6--spec @ [0-9a-f]{7,}/,
     );
+    assert.match(questions[0]!, /Parent {3}docs\/specs\/p.md \(#5\)/);
     assert.doesNotMatch(questions[0]!, /approved in chat/);
     assert.match(questions[0]!, /Mockup {3}docs\/mockups\/polls.html/);
     if (row.gate.required) assert.match(questions[0]!, /Approve/);
