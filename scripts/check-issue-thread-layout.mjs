@@ -346,6 +346,9 @@ try {
   const screenshot = async (name) => {
     if (!process.env.CAPTURE_ISSUE_THREADS) return;
     await fs.mkdir(resolve("docs/screenshots"), { recursive: true });
+    await evaluate(
+      'document.querySelectorAll(".ev").forEach(n=>n.style.contentVisibility="visible");new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
+    );
     const image = await send("Page.captureScreenshot", {
       format: "png",
       captureBeyondViewport: true,
