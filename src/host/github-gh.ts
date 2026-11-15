@@ -219,14 +219,31 @@ export class GitHubHost implements Host, RepositorySetupHost {
     };
     const ownRepository = repository(issue.url);
     if (!ownRepository) throw new Error("Issue URL is not an issue URL");
-    const args = ["api", `repos/{owner}/{repo}/issues/${issue.number}/parent`];
+    const args = [
+      "api",
+      "--include",
+      `repos/{owner}/{repo}/issues/${issue.number}/parent`,
+    ];
     const result = await this.gh(args);
+    const response = result.stdout.match(
+      /^HTTP\/[\d.]+ (\d+)[^\n]*\n[\s\S]*?\r?\n\r?\n([\s\S]*)$/,
+    );
     if (result.code !== 0) {
-      if ((result.stdout + result.stderr).includes("No parent issue found"))
+      if (
+        result.code === 1 &&
+        response?.[1] === "404" &&
+        (
+          parseJson(response[2]!, "gh api parent") as {
+            message?: string;
+          } | null
+        )?.message === "No parent issue found"
+      )
         return undefined;
       throw new CommandFailedError("gh", args, result);
     }
-    const raw = parseJson(result.stdout, "gh api parent") as {
+    if (!response)
+      throw new Error("gh api parent returned an invalid HTTP response");
+    const raw = parseJson(response[2]!, "gh api parent") as {
       number?: number;
       html_url?: string;
     } | null;

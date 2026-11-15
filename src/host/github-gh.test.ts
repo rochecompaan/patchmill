@@ -22,10 +22,12 @@ test("parent lookup returns the same-repository parent", async () => {
     {
       match: /gh api /,
       result: {
-        stdout: JSON.stringify({
-          number: 356,
-          html_url: "https://github.com/owner/repo/issues/356",
-        }),
+        stdout:
+          "HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n" +
+          JSON.stringify({
+            number: 356,
+            html_url: "https://github.com/owner/repo/issues/356",
+          }),
       },
     },
   ]);
@@ -34,7 +36,7 @@ test("parent lookup returns the same-repository parent", async () => {
     356,
   );
   assert.deepEqual(runner.calls, [
-    ["gh", "api", "repos/{owner}/{repo}/issues/357/parent"],
+    ["gh", "api", "--include", "repos/{owner}/{repo}/issues/357/parent"],
   ]);
 });
 
@@ -44,7 +46,20 @@ test("parent lookup treats only No parent issue found as no parent", async () =>
     "gh: Not Found (HTTP 404)",
   ]) {
     const runner = recordingRunner([
-      { match: /gh api /, result: { code: 1, stderr } },
+      {
+        match: /gh api /,
+        result: {
+          code: 1,
+          stderr,
+          stdout:
+            "HTTP/2.0 404 Not Found\r\nContent-Type: application/json\r\n\r\n" +
+            JSON.stringify({
+              message: stderr.includes("No parent")
+                ? "No parent issue found"
+                : "Not Found",
+            }),
+        },
+      },
     ]);
     const result = new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue(
       childIssue,
@@ -54,15 +69,41 @@ test("parent lookup treats only No parent issue found as no parent", async () =>
   }
 });
 
+test("parent absence diagnostics never hide non-404 or process failures", async () => {
+  for (const result of [
+    {
+      code: 1,
+      stdout:
+        'HTTP/2.0 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{"message":"No parent issue found"}',
+      stderr: "gh: No parent issue found (HTTP 500)",
+    },
+    {
+      code: -1,
+      stdout:
+        'HTTP/2.0 404 Not Found\r\nContent-Type: application/json\r\n\r\n{"message":"No parent issue found"}',
+      stderr: "",
+    },
+    { code: 1, stdout: "", stderr: "gh: No parent issue found (HTTP 404)" },
+  ]) {
+    const runner = recordingRunner([{ match: /gh api /, result }]);
+    await assert.rejects(
+      new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue(childIssue),
+      CommandFailedError,
+    );
+  }
+});
+
 test("parent lookup ignores a parent in another repository", async () => {
   const runner = recordingRunner([
     {
       match: /gh api /,
       result: {
-        stdout: JSON.stringify({
-          number: 5,
-          html_url: "https://github.com/other/repo/issues/5",
-        }),
+        stdout:
+          "HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n" +
+          JSON.stringify({
+            number: 5,
+            html_url: "https://github.com/other/repo/issues/5",
+          }),
       },
     },
   ]);
@@ -80,7 +121,14 @@ test("parent lookup rejects a malformed response", async () => {
     { number: 0, html_url: childIssue.url },
   ]) {
     const runner = recordingRunner([
-      { match: /gh api /, result: { stdout: JSON.stringify(raw) } },
+      {
+        match: /gh api /,
+        result: {
+          stdout:
+            "HTTP/2.0 200 OK\nContent-Type: application/json\n\n" +
+            JSON.stringify(raw),
+        },
+      },
     ]);
     await assert.rejects(
       new GitHubHost({ runner, repoRoot: "/repo" }).parentIssue(childIssue),

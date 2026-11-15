@@ -92,7 +92,7 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     branch: facts.branch,
     base: facts.baseBranch,
     parentSpec: facts.parentSpec
-      ? `\n- Parent spec: ${facts.parentSpec.path} on origin/${facts.baseBranch} (from issue #${facts.parentSpec.issue}; approved and read-only; read it with \`git show origin/${facts.baseBranch}:${facts.parentSpec.path}\`, because the worktree copy can be missing or old)`
+      ? `\n- Parent spec: ${facts.parentSpec.path} on origin/${facts.baseBranch} (from issue #${facts.parentSpec.issue}; approved and read-only; read it with \`git show '${`origin/${facts.baseBranch}:${facts.parentSpec.path}`.replaceAll("'", "'\\''")}'\`, because the worktree copy can be missing or old)`
       : "",
     parentSpecRules: facts.parentSpec
       ? input.phase === "planning"
