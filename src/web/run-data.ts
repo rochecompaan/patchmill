@@ -1,8 +1,16 @@
-import type { Repository, IssueSummary, IssueDetail } from "./api-types.ts";
+import type {
+  Repository,
+  IssueSummary,
+  IssueDetail,
+  IssueUpdate,
+} from "./api-types.ts";
 
 export interface RunDataSource {
   snapshot(selection?: { issue: number }): Promise<RunDataSnapshot>;
-  subscribe(listener: (change: RunDataChange) => void): () => void;
+  subscribe(
+    selection: { issue: number; lastEventId: string | null },
+    listener: (update: IssueUpdate) => void,
+  ): () => void;
 }
 
 export interface RunDataSnapshot {
@@ -12,8 +20,4 @@ export interface RunDataSnapshot {
   readonly syncedAt: string | null;
   readonly issues: readonly IssueSummary[];
   readonly details: Readonly<Record<string, IssueDetail>>;
-}
-
-export interface RunDataChange {
-  readonly revision: string;
 }

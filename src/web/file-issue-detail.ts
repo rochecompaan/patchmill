@@ -83,6 +83,7 @@ export async function readIssueDetail(input: {
     return { ...base, body: input.issue.body };
   const run: NonNullable<IssueDetail["run"]> = {
     startedAt: records[0]?.startedAt ?? "",
+    activeSince: null,
     finishedAt: input.observation.live ? null : (latest?.finishedAt ?? null),
     outcome: input.observation.live
       ? "active"

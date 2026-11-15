@@ -21,11 +21,7 @@ import type {
   Repository,
 } from "./api-types.ts";
 import { readIssueDetail } from "./file-issue-detail.ts";
-import type {
-  RunDataSource,
-  RunDataSnapshot,
-  RunDataChange,
-} from "./run-data.ts";
+import type { RunDataSource, RunDataSnapshot } from "./run-data.ts";
 
 export type BoardRepository = {
   repository: Repository;
@@ -53,8 +49,6 @@ export function createFileRunDataSource(input: {
   const store = new StateStore(stateDir(repoRoot), () =>
     warn("Could not read optional local workflow data."),
   );
-  const listeners = new Set<(change: RunDataChange) => void>();
-  let previousRevision: string | undefined;
   const pending = new Map<number | null, Promise<RunDataSnapshot>>();
   async function snapshot(selection?: {
     issue: number;
@@ -152,17 +146,6 @@ export function createFileRunDataSource(input: {
       details,
     };
     freeze(result);
-    const changed =
-      previousRevision !== undefined && previousRevision !== boardRevision;
-    previousRevision = boardRevision;
-    if (changed)
-      for (const listener of listeners) {
-        try {
-          listener({ revision: boardRevision });
-        } catch {
-          warn("Board change listener failed.");
-        }
-      }
     return result;
   }
   return {
@@ -177,11 +160,8 @@ export function createFileRunDataSource(input: {
       }
       return work;
     },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
+    subscribe() {
+      return () => {};
     },
   };
 }

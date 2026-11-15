@@ -54,10 +54,6 @@ test("selected snapshots keep private detail out of boards and revisions track o
       ]),
     ],
   });
-  let changes = 0;
-  f.source.subscribe(() => {
-    changes++;
-  });
   const board = await f.source.snapshot();
   assert.deepEqual(board.details, {});
   assert.doesNotMatch(
@@ -89,7 +85,6 @@ test("selected snapshots keep private detail out of boards and revisions track o
     (await f.source.snapshot({ issue: 9 })).revision,
     changed.revision,
   );
-  assert.equal(changes, 0);
   assert.equal(f.calls(), 1);
   assert.ok(Object.isFrozen(changed.details["9"]!.thread));
 });

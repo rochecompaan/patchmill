@@ -100,13 +100,6 @@ async function fixture(t: import("node:test").TestContext, local = false) {
 
 test("file-backed snapshots classify current fixture files, preserve immutability, and refresh local data inside a warm host period", async (t) => {
   const f = await fixture(t);
-  let changes = 0;
-  const unsubscribe = f.source.subscribe(() => {
-    changes++;
-  });
-  f.source.subscribe(() => {
-    throw Error("listener unavailable");
-  });
   const first = await f.source.snapshot();
   assert.deepEqual(
     first.issues.map((i) => [i.number, i.column]),
@@ -144,9 +137,6 @@ test("file-backed snapshots classify current fixture files, preserve immutabilit
   assert.equal(next.issues.find((i) => i.number === 5)?.live, false);
   assert.notEqual(next.revision, first.revision);
   assert.equal(f.calls(), 1);
-  assert.equal(changes, 1);
-  unsubscribe();
-  unsubscribe();
 });
 
 test("both authenticated HTTP APIs share the provider cache and unknown callers cannot trigger it", async (t) => {
