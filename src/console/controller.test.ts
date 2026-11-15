@@ -27,7 +27,10 @@ const result: PhaseRun = {
   result: { ok: true, result: { status: "done", summary: "ok" } },
   session: { exitCode: 0, timedOut: false, aborted: false },
 };
-function setup(startRun: StartRun = async () => ({ status: "no-work" })) {
+function setup(
+  startRun: StartRun = async () => ({ status: "no-work" }),
+  runStatus?: { show(snapshot: RunSnapshot): void; clear(): void },
+) {
   const pi = fakeExtensionApi();
   let stops = 0;
   const workers = {
@@ -38,9 +41,85 @@ function setup(startRun: StartRun = async () => ({ status: "no-work" })) {
       stops++;
     },
   };
-  const controller = new ConsoleController({ pi, workers, startRun });
+  const controller = new ConsoleController({
+    pi,
+    workers,
+    startRun,
+    runStatus,
+  });
   return { pi, controller, workers, stops: () => stops };
 }
+
+function recordingStatus() {
+  const calls: string[][] = [];
+  return {
+    calls,
+    show: (snapshot: RunSnapshot) => {
+      calls.push(["show", snapshot.state]);
+    },
+    clear: () => {
+      calls.push(["clear"]);
+    },
+  };
+}
+function statusSnapshot(state: RunSnapshot["state"]): RunSnapshot {
+  return {
+    issue: 9,
+    title: "Polls",
+    runId: "r",
+    runDir: "r",
+    startedAt: "now",
+    session: 1,
+    state,
+  };
+}
+
+test("snapshots update the status and a settled run clears it", async () => {
+  const status = recordingStatus();
+  const { controller } = setup(async (_issue, _human, observe) => {
+    observe(statusSnapshot("deriving"));
+    observe({ ...statusSnapshot("planning"), phase: "planning" });
+    observe(statusSnapshot("ended"));
+    return { status: "no-work" };
+  }, status);
+  await controller.startIssueRun(9);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(status.calls, [
+    ["show", "deriving"],
+    ["show", "planning"],
+    ["show", "ended"],
+    ["clear"],
+  ]);
+  await controller.shutdown();
+});
+
+test("a thrown run clears the status", async () => {
+  const status = recordingStatus();
+  const { controller } = setup(async (_issue, _human, observe) => {
+    observe(statusSnapshot("deriving"));
+    throw Error("boom");
+  }, status);
+  await controller.startIssueRun(9);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(status.calls, [["show", "deriving"], ["clear"]]);
+  await controller.shutdown();
+});
+
+test("shutdown clears the status", async () => {
+  const status = recordingStatus();
+  const { controller } = setup(async (_issue, human, observe) => {
+    observe(statusSnapshot("gate-wait"));
+    await human.awaitContinue({ kind: "gate", message: "Merge" });
+    return { status: "no-work" };
+  }, status);
+  await controller.startIssueRun(9);
+  assert.deepEqual(status.calls, [["show", "gate-wait"]]);
+  await controller.shutdown();
+  assert.deepEqual(status.calls.slice(0, 2), [
+    ["show", "gate-wait"],
+    ["clear"],
+  ]);
+});
 
 test("planning sends envelope, feedback, and accepts only a pending result", async () => {
   const { controller, pi } = setup();

@@ -13,6 +13,7 @@ import type { WorkerLauncher } from "./worker-launcher.ts";
 import type { ConsoleSession } from "./planning-usage.ts";
 import { collectPlanningDialogFacts } from "./planning-dialog-facts.ts";
 import { PlanningConversation } from "./planning-conversation.ts";
+import type { RunStatus } from "./run-status.ts";
 
 export type StartRun = (
   issue: number | undefined,
@@ -30,6 +31,7 @@ type Dependencies = {
   session?: ConsoleSession;
   workers: WorkerLauncher;
   startRun: StartRun;
+  runStatus?: Pick<RunStatus, "show" | "clear">;
 };
 const aborted: PhaseRun = {
   result: { ok: false, reason: "Console shut down." },
@@ -64,6 +66,7 @@ export class ConsoleController implements HumanChannel {
     this.active = Promise.resolve()
       .then(() =>
         this.deps.startRun(issue, this, (snapshot) => {
+          this.deps.runStatus?.show(snapshot);
           this.snapshot = snapshot;
           if (
             snapshot.state === "planning" ||
@@ -93,6 +96,7 @@ export class ConsoleController implements HumanChannel {
         },
       )
       .finally(() => {
+        this.deps.runStatus?.clear();
         this.active = undefined;
       });
     return issue === undefined
@@ -207,6 +211,7 @@ export class ConsoleController implements HumanChannel {
     return this.shutdownPromise;
   }
   private async close(): Promise<void> {
+    this.deps.runStatus?.clear();
     this.closing = true;
     this.planning.close(aborted);
     this.continuation?.("quit");
