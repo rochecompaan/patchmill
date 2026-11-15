@@ -74,6 +74,17 @@ export function renderThread(doc, issue) {
         if (event.note) body.append(el(doc, "div", "msg-note", event.note));
         break;
       }
+      case "prompt": {
+        row.classList.add("ev-machine");
+        const details = el(doc, "details", "prompt");
+        details.dataset.key = event.id;
+        details.append(
+          el(doc, "summary", "", "Patchmill prompt"),
+          el(doc, "pre", "", event.text),
+        );
+        body.append(details);
+        break;
+      }
       case "tool": {
         row.classList.add("ev-machine");
         const details = el(
@@ -102,8 +113,8 @@ export function renderThread(doc, issue) {
               ")",
           ),
         );
-        if (event.state === "running")
-          summary.append(el(doc, "span", "tool-state", "running"));
+        if (event.state !== "completed")
+          summary.append(el(doc, "span", "tool-state", event.state));
         const detail = el(doc, "div", "tool-detail");
         detail.append(
           el(doc, "div", "td-label", "arguments"),
@@ -122,7 +133,7 @@ export function renderThread(doc, issue) {
         stepLabel = event.label;
         row.classList.add("ev-machine", "ev-step");
         gutter.append(el(doc, "i", "node"));
-        const line = el(doc, "div", "step-line");
+        const line = el(doc, "h2", "step-line");
         line.append(
           el(doc, "span", "step-num", String(event.number).padStart(2, "0")),
           doc.createTextNode(event.label),

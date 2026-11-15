@@ -17,6 +17,7 @@ export const PATCHMILL_SKILLS = [
   "patchmill-visual-evidence",
   "patchmill-frontend-review",
   "frontend-design",
+  "show-me",
   "module-size",
   "patchmill-cleanup",
   "patchmill-label",

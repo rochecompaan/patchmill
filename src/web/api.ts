@@ -38,7 +38,7 @@ export async function apiResponse(
   const number = Number(rawNumber);
   if (!/^[1-9]\d*$/.test(rawNumber) || !Number.isSafeInteger(number))
     return error(400, "invalid_issue", "Use a positive issue number.");
-  const snapshot = await source.snapshot();
+  const snapshot = await source.snapshot({ issue: number });
   const issue = snapshot.details[String(number)];
   return issue
     ? { status: 200, body: { ...metadata(snapshot), issue } }

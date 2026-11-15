@@ -14,6 +14,24 @@ Patchmill vendors the following third-party components:
 - Purpose: Specification-time frontend design guidance.
 - Modification status: Both files remain verbatim.
 
+## HumanLayer show-me
+
+- Repository: <https://github.com/humanlayer/skills>
+- Commit: `4d69d20f6e9b57b4fcf0d501ccfb1be961f0f329`
+- Source directory: `plugins/show-me/skills/show-me/`
+- Source resources: `SKILL.md` and `agents/openai.yaml` in that directory
+- Packaged directory: `skills/show-me/`
+- Installed directory: `.patchmill/skills/show-me/`
+- License: MIT, from the pinned repository root `LICENSE`, copied to
+  `skills/show-me/LICENSE` and `.patchmill/skills/show-me/LICENSE`
+- Purpose: Conceptual visual explanations of specifications and plans.
+- Modification status: The complete selected skill tree and license remain
+  verbatim. Patchmill workflow adaptations live in the planning wrapper.
+
+The installer copies these resources through the existing bundled skill pack and
+records their hashes under its Patchmill source version. Planning reads the
+installed sibling explicitly. It does not download upstream content.
+
 ## Vercel web-design-guidelines reference
 
 - Repository: <https://github.com/vercel-labs/agent-skills>

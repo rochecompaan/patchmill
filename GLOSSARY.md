@@ -27,6 +27,11 @@ Forgejo and Gitea. _Avoid_: Child issue, slice
 branch. It is the approved design that the Sub-issue's own spec extends and
 never changes. _Avoid_: Inherited spec, shared spec
 
+**Planning visualization**: A visual explanation of the concepts, relationships,
+or execution order in a specification or implementation plan. It explains the
+reasoning rather than depicting the proposed user interface. _Avoid_: UI mockup,
+Implementation screenshot
+
 **Planning pull request**: A pull request for documents that must merge before
 the next required stage. It does not complete the issue. _Avoid_: Implementation
 PR
@@ -65,6 +70,10 @@ A later Run attempt may resume the same Issue run. _Avoid_: Issue run
 
 **Interactive Issue run**: An Issue run that takes human input through a console
 instead of issue comments. It uses the same Run-once workflow.
+
+**Issue thread**: The chronological view of an Issue run's main-agent messages,
+tool calls, and progress. Dividers distinguish its Run attempts and workflow
+steps. _Avoid_: Event ledger, Subagent transcript
 
 **Console session**: The Pi session that holds the maintainer's conversation for
 one or more Interactive Issue runs. It never decides a phase.

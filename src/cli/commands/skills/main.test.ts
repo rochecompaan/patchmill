@@ -152,6 +152,68 @@ test("protects customized design resources during update", async (t) => {
   assert.equal(await readFile(manifestPath, "utf8"), before);
 });
 
+test("upgrades a prior pack with complete show-me resources and stable hashes", async (t) => {
+  const { repoRoot, run, skills, lines } = await setup(t);
+  await installSkills({
+    repoRoot,
+    skillDir: SKILL_DIR,
+    packageRoot: process.cwd(),
+  });
+  const manifestPath = join(skills, "patchmill-skill-pack.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  await rm(join(skills, "show-me"), { recursive: true, force: true });
+  manifest.files = manifest.files.filter(
+    (file: { path: string }) => !file.path.startsWith("show-me/"),
+  );
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await writeFile(join(skills, "user-note.txt"), "keep\n");
+  assert.equal(await run(), 0);
+  const updatedBytes = await readFile(manifestPath, "utf8");
+  const updated = JSON.parse(updatedBytes);
+  for (const path of [
+    "show-me/SKILL.md",
+    "show-me/agents/openai.yaml",
+    "show-me/LICENSE",
+  ]) {
+    const bytes = await readFile(join(skills, path));
+    assert.equal(
+      updated.files.find((file: { path: string }) => file.path === path)
+        ?.sha256,
+      createHash("sha256").update(bytes).digest("hex"),
+    );
+  }
+  assert.equal(await readFile(join(skills, "user-note.txt"), "utf8"), "keep\n");
+  lines.length = 0;
+  assert.equal(await run(), 0);
+  assert.match(lines.join("\n"), /already up to date/);
+  assert.equal(await readFile(manifestPath, "utf8"), updatedBytes);
+});
+
+test("protects edited show-me guidance and a missing license during update", async (t) => {
+  const { repoRoot, run, skills, errors } = await setup(t);
+  await installSkills({
+    repoRoot,
+    skillDir: SKILL_DIR,
+    packageRoot: process.cwd(),
+  });
+  const manifestPath = join(skills, "patchmill-skill-pack.json");
+  const before = await readFile(manifestPath, "utf8");
+  await writeFile(
+    join(skills, "show-me/SKILL.md"),
+    "local conceptual guidance\n",
+  );
+  await rm(join(skills, "show-me/LICENSE"));
+  assert.equal(await run(), 1);
+  assert.match(errors.join("\n"), /show-me\/SKILL\.md/);
+  assert.match(errors.join("\n"), /show-me\/LICENSE \(missing\)/);
+  assert.equal(
+    await readFile(join(skills, "show-me/SKILL.md"), "utf8"),
+    "local conceptual guidance\n",
+  );
+  assert.equal(await exists(join(skills, "show-me/LICENSE")), false);
+  assert.equal(await readFile(manifestPath, "utf8"), before);
+});
+
 test("rejects unknown subcommands", async (t) => {
   const { run, errors } = await setup(t);
   assert.equal(await run(["upgrade"]), 1);

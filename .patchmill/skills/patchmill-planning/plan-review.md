@@ -20,6 +20,26 @@ system-wide or context-specific ADRs when present. Read relevant legacy
 `CONTEXT` documents and explicit deferred resolutions. Do not demand new domain
 artifacts for a non-architectural change.
 
+## Conceptual explanations
+
+Inspect the new or materially revised plan's `## Visual explanation`, including
+its inline diagrams or sketches and every linked HTML companion. Read relevant
+specification explanations too. Verify agreement with the document's concepts,
+behavior, task order, dependencies, and ownership. A UI mockup does not replace
+a conceptual explanation.
+
+For HTML, verify the actual file exists in the specification's directory. Check
+that contextual and companion links resolve from the owning document and stay
+within the worktree. Check its title, issue number, owning document name,
+embedded assets, and direct-from-disk portability. Report any limits of visual
+inspection. Do not install tooling or start a browser/server to perform review.
+
+Confirm stage ownership: no early plan at a Spec gate, no backfill of unchanged
+approved documents, and no approved-spec edit merely to link a plan visual.
+Review a fallback as a useful inline explanation, not prose-only success or a
+link to an absent file. Committed, linked HTML is sufficient. Do not demand
+hosting, image previews, or a UI-design review for conceptual documents.
+
 ## Independent architecture survey
 
 Before judging the plan, independently inspect relevant source, callers, and

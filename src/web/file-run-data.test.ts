@@ -133,8 +133,10 @@ test("file-backed snapshots classify current fixture files, preserve immutabilit
   assert.throws(() => {
     (first.issues as unknown[]).push({});
   });
-  assert.deepEqual(first.details["3"]?.summary, first.issues[2]);
-  assert.deepEqual(first.details["3"]?.thread, []);
+  assert.deepEqual(first.details, {});
+  const selected = await f.source.snapshot({ issue: 3 });
+  assert.deepEqual(selected.details["3"]?.summary, first.issues[2]);
+  assert.deepEqual(selected.details["3"]?.thread, []);
   assert.equal((await f.source.snapshot()).revision, first.revision);
   await f.locks[2]!.release();
   const next = await f.source.snapshot();

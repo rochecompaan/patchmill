@@ -91,6 +91,12 @@ export interface IssueResponse {
 }
 
 export interface IssueDetail {
+  readonly body: string | null;
+  readonly run: {
+    readonly startedAt: string;
+    readonly finishedAt: string | null;
+    readonly outcome: "completed" | "stopped" | "incomplete" | "active";
+  } | null;
   readonly summary: IssueSummary;
   readonly participants: readonly string[];
   readonly thread: readonly ThreadEvent[];
@@ -145,7 +151,7 @@ export type ThreadEvent = {
       readonly result: string | null;
       readonly state: "running" | "completed" | "stopped" | "failed";
     }
-  | { readonly kind: "progress" | "earlier"; readonly text: string }
+  | { readonly kind: "progress" | "earlier" | "prompt"; readonly text: string }
   | {
       readonly kind: "usage";
       readonly taskTokens: number;

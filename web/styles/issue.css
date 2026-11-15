@@ -14,6 +14,12 @@
 .live-issue .thread .empty {
   margin: 0 auto;
 }
+.live-issue > .thread.is-recorded {
+  display: block;
+}
+.live-issue .thread.is-recorded .empty {
+  margin: 9vh auto 0;
+}
 
 .ihead {
   position: sticky;
