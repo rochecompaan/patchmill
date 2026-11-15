@@ -19,6 +19,27 @@ Skills guide judgment within those boundaries.
 5. The kernel checks the artifacts and host facts. A required planning gate
    keeps the issue `in-progress` until that pull request merges.
 
+## Sub-issues
+
+A Sub-issue run reads its parent's newest spec on `origin/<base>` as an
+approved, read-only design input. On GitHub, only native sub-issues record the
+parent link. A `Part of #N` body line has no effect there. On Forgejo and Gitea,
+the first non-empty body line must start with `Part of #N`, for example
+`Part of #356.` Patchmill reads only the direct parent in the same repository. A
+parent spec that exists only on an unmerged branch is not an input.
+
+The Sub-issue still writes its own short spec through the normal stages and
+gates. That spec links to the Parent spec and names the sections it delivers. It
+records only decisions that the Parent spec leaves open. If there are none, it
+says so. If the Parent spec needs a change, the agent asks for input instead of
+changing or overriding it. The kernel does not enforce the read-only rule.
+
+The envelope, console, planning dialog, and run progress show the Parent spec
+and its issue number. The envelope gives a `git show origin/<base>:<path>`
+command because an existing issue worktree can hold an older copy or none.
+Parent lookup errors stop the run with `needs-info`; they are not treated as "no
+parent".
+
 ## Human review and merge
 
 Both planning gates default off. Enable `workflow.specApproval.required` for a

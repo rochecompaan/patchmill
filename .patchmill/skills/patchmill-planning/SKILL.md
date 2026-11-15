@@ -121,6 +121,27 @@ or issue label is not sufficient. Never grant approval or merge a pull request.
   separate planning pull request. Return `done` so the kernel can start its
   implementation session on this same branch.
 
+## Parent spec
+
+When the envelope names a Parent spec, read it before brainstorming. Use
+`git show origin/<base>:<path>` with the envelope's Base and Parent spec path.
+The worktree copy can be missing or old. Do not ask questions that the Parent
+spec answers.
+
+Treat the Parent spec as approved and read-only. Do not change it. Write the
+Sub-issue's own short spec through the normal stages and gates. Link to the
+Parent spec and name the sections that this Sub-issue delivers. Keep the
+parent's terms. Record only decisions that the Parent spec leaves open. If there
+are no such decisions, say so.
+
+If the Parent spec is wrong or conflicts with this issue, stop and ask instead
+of choosing. In an interactive run, ask the maintainer in the chat. In an
+unattended run, return `needs-input`. Do not override the Parent spec in the
+Sub-issue's spec.
+
+List the Parent spec as a plan input. Give its path and base ref to the fresh
+plan reviewer as a specification input.
+
 ## Planning pull requests
 
 Publish a pull request only when the Gate fact requires it. Use the provided

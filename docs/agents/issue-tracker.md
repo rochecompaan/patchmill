@@ -41,7 +41,9 @@ gh issue view <number> --comments
 
 ## Wayfinding operations
 
-Wayfinder maps and tickets are GitHub issues.
+Wayfinder maps and tickets are GitHub issues. On GitHub, Patchmill runs read
+only native sub-issues as the parent link; the `Part of #<map>` fallback gives
+no Parent spec.
 
 - **Map:** Create one issue labelled `wayfinder:map`.
 - **Child ticket:** Create an issue with one `wayfinder:<type>` label and attach

@@ -14,13 +14,17 @@ conversation. If the issue is ambiguous, ask before proceeding.
 
 ## Inspect and refuse active work
 
-Read the root `patchmill.config.json` and local Git state. Resolve the single
-issue branch and worktree from the configured paths and existing Git
-registration. Planning and implementation share that branch and worktree. Do not
-remove a separate phase workspace. Show the absolute path, branch, base, dirty
-and untracked files, branch-unique commits, and merge state. Describe the work
-that deletion will lose. Ask whether to retain or delete the local branch. Never
-delete remote branches through this skill.
+Read the root `patchmill.config.json` and local Git state. Resolve the
+implementation branch and worktree from configured paths and Git registration.
+Ungated planning documents share that workspace. Required planning gates can
+also leave `agent/issue-N--spec` and `agent/issue-N--plan` workspaces. Inspect
+those separately. Do not invent separate workspaces for ungated documents.
+
+For each proposed target, show its absolute path, branch, base, dirty files,
+untracked files, unique commits, and merge state. Describe the work that removal
+will lose. Ask which workspaces to remove and which local branches to retain.
+Never remove remote branches through this skill. Keep any target that contains
+another registered checkout, even inside an ignored directory.
 
 Stop while an issue run is active. The permanent lock is
 `<runsDir>/issue-N/lock`, where `runsDir` comes from configuration. Its PID and
@@ -37,6 +41,29 @@ returns. Before deletion, require a way to hold the same OS lock throughout
 cleanup and prevent competing runs. If that ownership cannot be established
 safely with available tools, stop and ask the operator. There is no
 `patchmill cleanup` or offline lock-purge command in this contract.
+
+## Offer the resource cleanup hook
+
+If `cleanupHook` is configured, offer to run it before manual removal. Show the
+script path and the implementation worktree that supplies its working directory.
+Request explicit consent separately from workspace removal. Explain that a
+matching `<runsDir>/issue-N/cleanup.json` receipt records an earlier successful
+hook step. A manual rerun is still an explicit operator choice.
+
+After consent and lock acquisition, reread the configuration and Git state. If
+the script or target changed, request consent again. Run `bash <cleanupHook>`
+from the implementation worktree with the script path as one argument. Resolve
+relative paths from that worktree. The script needs no executable bit. Do not
+substitute a spec or plan directory for a missing implementation directory.
+
+If the hook fails, report its output and keep all targets. Stop before removal.
+After hook success, inspect dirty files and loss details again. Keep the same OS
+lock through the hook, inspection, and confirmed removal. Do not remove or
+rewrite cleanup receipts without explicit operator guidance.
+
+If the operator declines the hook, explain that external resources can remain.
+Workspace removal still requires its own explicit confirmation. Automatic
+post-merge rules do not authorize manual removal of unfinished work.
 
 ## Confirm and remove
 
