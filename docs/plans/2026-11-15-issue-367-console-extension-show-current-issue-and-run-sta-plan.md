@@ -296,6 +296,12 @@ No mockup applies (terminal footer text, no browser layout).
   the title shortens with `…` while the state stays visible. Quit and confirm
   the console exits normally.
 
+  Execution ruling: used synthetic snapshots through the real installed Pi
+  footer instead of starting another live run. The active issue lock and host
+  mutations make a second live run unsafe. See
+  [verification notes](../verification/console-run-status.md) for evidence,
+  review findings, and remaining live-terminal validation limits.
+
 ## Plan review
 
 - **Reviewer:** fresh-context canonical `reviewer`, `claude-opus-5-5` (high),
