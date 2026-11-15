@@ -11,6 +11,7 @@ export type PlanningDialogFacts = {
   stage: "spec" | "plan" | "implementation";
   branch: string;
   commit: string;
+  parentSpec?: { issue: number; path: string };
   specPath?: string | undefined;
   planPath?: string | undefined;
   mockupPath?: string | undefined;
@@ -73,6 +74,14 @@ export function renderPlanningDialog(
     [
       question,
       "",
+      ...(facts.parentSpec
+        ? [
+            fitLine(
+              `  Parent   ${facts.parentSpec.path} (#${facts.parentSpec.issue})`,
+              width,
+            ),
+          ]
+        : []),
       ...(facts.specPath ? [`  Spec     ${facts.specPath}`] : []),
       ...(facts.planPath ? [`  Plan     ${facts.planPath}`] : []),
       ...(mockup ? [`  Mockup   ${mockup}`] : []),

@@ -25,6 +25,7 @@ export type RunProgress = {
     baseBranch: string;
     specPath: string | null;
     planPath: string | null;
+    parentSpec: { issue: number; path: string } | null;
     pullRequest: PullRequest | null;
   } | null;
   summary: string | null;
@@ -42,6 +43,17 @@ const artifactPath = (v: unknown) =>
     v.length > 0 &&
     !/^[\\/]|^[a-z]:|[\\\0]/i.test(v) &&
     !v.split("/").some((p) => p === ".." || p === "." || p === ""));
+function parentSpec(v: unknown): boolean {
+  return (
+    v === undefined ||
+    v === null ||
+    (object(v) &&
+      Number.isSafeInteger(v.issue) &&
+      Number(v.issue) > 0 &&
+      typeof v.path === "string" &&
+      artifactPath(v.path))
+  );
+}
 function pullRequest(v: unknown): boolean {
   if (v === null) return true;
   if (!object(v)) return false;
@@ -97,6 +109,7 @@ export function parseRunProgress(
       typeof f.baseBranch !== "string" ||
       !artifactPath(f.specPath) ||
       !artifactPath(f.planPath) ||
+      !parentSpec(f.parentSpec) ||
       !pullRequest(f.pullRequest))
   )
     return undefined;
@@ -128,6 +141,7 @@ export function parseRunProgress(
             baseBranch: f.baseBranch,
             specPath: f.specPath,
             planPath: f.planPath,
+            parentSpec: f.parentSpec ?? null,
             pullRequest: f.pullRequest,
           } as RunProgress["facts"]),
     summary: value.summary,
@@ -158,6 +172,7 @@ export function projectRunProgress(
           baseBranch: f.baseBranch,
           specPath: f.specPath ?? null,
           planPath: f.planPath ?? null,
+          parentSpec: f.parentSpec ?? null,
           pullRequest: f.pullRequest ? { ...f.pullRequest, body: "" } : null,
         }
       : null,

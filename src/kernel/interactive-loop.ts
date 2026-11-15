@@ -177,6 +177,7 @@ export async function preparePhasePrompt(
             branch: facts.branch,
             specsDir: config.paths.specsDir,
             plansDir: config.paths.plansDir,
+            ...(facts.parentSpec ? { parentSpec: facts.parentSpec } : {}),
             ...(facts.stage === "plan" &&
             facts.branch !== planningBranchName(issue.number, facts.stage)
               ? { earlierStage: "spec" as const }

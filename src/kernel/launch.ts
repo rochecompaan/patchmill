@@ -12,6 +12,7 @@ export type PhaseLaunch = {
     branch: string;
     specsDir: string;
     plansDir: string;
+    parentSpec?: { issue: number; path: string };
     earlierStage?: "spec" | "plan";
   };
   envelope: string;

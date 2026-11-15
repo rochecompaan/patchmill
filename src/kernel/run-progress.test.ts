@@ -26,11 +26,37 @@ const record: RunProgress = {
     baseBranch: "main",
     specPath: "docs/specs/design.md",
     planPath: null,
+    parentSpec: null,
     pullRequest: null,
   },
   summary: null,
   outcome: null,
 };
+
+test("parent spec progress accepts old records and rejects invalid parent facts", () => {
+  const { parentSpec: _parent, ...oldFacts } = record.facts!;
+  const parsed = parseRunProgress({ ...record, facts: oldFacts }, 9);
+  assert.equal(parsed?.facts?.parentSpec, null);
+  const parentSpec = { issue: 5, path: "docs/specs/p.md" };
+  assert.deepEqual(
+    parseRunProgress({ ...record, facts: { ...oldFacts, parentSpec } }, 9)
+      ?.facts?.parentSpec,
+    parentSpec,
+  );
+  for (const bad of [
+    { issue: 0, path: "a.md" },
+    { issue: 5, path: "../x.md" },
+    { issue: 5, path: null },
+  ]) {
+    assert.equal(
+      parseRunProgress(
+        { ...record, facts: { ...oldFacts, parentSpec: bad } },
+        9,
+      ),
+      undefined,
+    );
+  }
+});
 
 test("unknown progress versions are absent observations", () => {
   assert.equal(parseRunProgress({ schemaVersion: 2 }, 9), undefined);
@@ -65,6 +91,7 @@ test("progress projections exclude private kernel paths and PR bodies", () => {
         remoteBranchExists: false,
         expectedSpecPath: "docs/specs/expected.md",
         expectedPlanPath: "docs/plans/expected.md",
+        parentSpec: { issue: 5, path: "docs/specs/p.md" },
       },
     },
     true,
@@ -76,6 +103,7 @@ test("progress projections exclude private kernel paths and PR bodies", () => {
   );
   assert.equal(p.phase, null);
   assert.equal(p.facts?.specPath, null);
+  assert.deepEqual(p.facts?.parentSpec, { issue: 5, path: "docs/specs/p.md" });
 });
 
 test("atomic progress replacement leaves complete records and no temporary siblings", async (t) => {

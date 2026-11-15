@@ -34,6 +34,7 @@ export async function collectPlanningDialogFacts(
     stage: review.stage,
     branch: review.branch,
     commit: head.stdout.trim(),
+    ...(review.parentSpec ? { parentSpec: review.parentSpec } : {}),
     specPath,
     planPath,
     mockupPath,
