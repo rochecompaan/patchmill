@@ -16,6 +16,61 @@ import {
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import type { RunSnapshot, RunState } from "./run-snapshot.ts";
 
+test("title() is carried by the next emission without emitting or persisting", async () => {
+  const observed: RunSnapshot[] = [];
+  const saved: RunSnapshot[] = [];
+  const snapshot = runSnapshot(
+    { issue: 9, runId: "r", runDir: "/unused", startedAt: "now" },
+    (s) => observed.push(s),
+    () => {},
+    async (s) => {
+      saved.push(s);
+    },
+  );
+  snapshot.title("Add login");
+  assert.deepEqual(observed, []);
+  assert.deepEqual(saved, []);
+  await snapshot.phase("planning", 1);
+  assert.equal(observed[0]!.title, "Add login");
+  assert.equal(saved[0]!.title, "Add login");
+});
+
+test("an edited title appears on the next emission", async () => {
+  const observed: RunSnapshot[] = [];
+  const snapshot = runSnapshot(
+    { issue: 9, runId: "r", runDir: "/unused", startedAt: "now" },
+    (s) => observed.push(s),
+    () => {},
+  );
+  snapshot.title("Old");
+  await snapshot.phase("planning", 1);
+  snapshot.title("New");
+  await snapshot.deriving();
+  assert.deepEqual(
+    observed.map((s) => s.title),
+    ["Old", "New"],
+  );
+});
+
+test("every emitted snapshot carries the issue title", async (t) => {
+  const c = await setupRun(t, [
+    {
+      writeFiles: { [spec]: "s", [plan]: "p" },
+      commit: "Plan",
+      push: true,
+      result: done,
+    },
+    implement,
+  ]);
+  const snapshots: RunSnapshot[] = [];
+  await c.run(
+    { issue: 9 },
+    { human: fakeHuman(c), observe: (s) => snapshots.push(s) },
+  );
+  assert.ok(snapshots.length > 0);
+  assert.ok(snapshots.every((s) => s.title === "Add login"));
+});
+
 test("durable observations settle before console delivery and isolate disk errors", async () => {
   let release!: () => void;
   const saved: string[] = [];
