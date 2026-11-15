@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Patchmill — Live Issue run</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #08090b;
+        --panel: #121418;
+        --text: #e9e9ea;
+        --muted: #92969e;
+        --line: #30343b;
+        --brass: #c4a882;
+        --green: #39c96b;
+        --red: #ff4c4c;
+      }
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #fafafa;
+        --panel: #f0f1f3;
+        --text: #1d2026;
+        --muted: #5c626d;
+        --line: #cdd0d6;
+        --brass: #7c5932;
+        --green: #16723c;
+        --red: #b51e27;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          16px/1.6 "Atkinson Hyperlegible Next",
+          system-ui,
+          sans-serif;
+      }
+      a {
+        color: var(--brass);
+        text-underline-offset: 4px;
+      }
+      button,
+      select {
+        font: inherit;
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 5px 12px;
+      }
+      button,
+      summary,
+      select {
+        cursor: pointer;
+      }
+      :focus-visible {
+        outline: 3px solid var(--brass);
+        outline-offset: 4px;
+      }
+      .top {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        padding: 15px 28px;
+      }
+      .brand {
+        font-size: 23px;
+        font-weight: 700;
+        letter-spacing: -0.6px;
+      }
+      .brand::before {
+        content: "✳";
+        color: var(--brass);
+        padding-right: 10px;
+      }
+      .repo {
+        color: var(--muted);
+        flex: 1;
+      }
+      .name {
+        color: var(--brass);
+      }
+      main {
+        max-width: 1100px;
+        margin: auto;
+        padding: 24px 32px 0;
+      }
+      .back {
+        font-size: 14px;
+      }
+      h1 {
+        font-size: 30px;
+        line-height: 1.3;
+        letter-spacing: -0.5px;
+        margin: 16px 0 22px;
+      }
+      h1 a {
+        font-weight: 400;
+        margin-right: 10px;
+        text-decoration: none;
+      }
+      .rail {
+        list-style: none;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 20px;
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 20px;
+      }
+      .rail li::before {
+        content: "✓";
+        padding-right: 7px;
+        color: var(--green);
+      }
+      .rail li.current {
+        color: var(--text);
+        font-weight: 700;
+      }
+      .rail li.current::before {
+        content: "●";
+        color: var(--brass);
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px 24px;
+        font-size: 14px;
+        margin: 12px 0;
+      }
+      .meta .status {
+        font-weight: 700;
+      }
+      .status::before {
+        content: "●";
+        color: var(--green);
+        padding-right: 7px;
+      }
+      .status.blocked::before {
+        color: var(--red);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 18px;
+        padding: 8px 0 20px;
+        border-bottom: 1px solid var(--line);
+        font-size: 14px;
+      }
+      .cost {
+        margin-left: auto;
+        color: var(--muted);
+      }
+      .cost b {
+        color: var(--text);
+      }
+      .thread {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 8px 18px 48px;
+      }
+      .attempt {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        color: var(--muted);
+        font-size: 13px;
+        margin: 28px 0 20px;
+      }
+      .attempt::after {
+        content: "";
+        height: 1px;
+        background: var(--line);
+        flex: 1;
+      }
+      .step {
+        font-size: 14px;
+        margin: 20px 0 18px;
+        font-weight: 600;
+      }
+      .step span {
+        color: var(--brass);
+        margin-right: 12px;
+        font:
+          14px "Atkinson Hyperlegible Mono",
+          monospace;
+      }
+      .prompt {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 14px 0 24px 42px;
+      }
+      .prompt summary {
+        width: fit-content;
+      }
+      .msg {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 14px;
+        margin: 22px 0;
+      }
+      .agent {
+        color: var(--brass);
+        font-size: 25px;
+        line-height: 1.3;
+      }
+      .msg header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 13px;
+      }
+      .msg header b {
+        color: var(--brass);
+        font-size: 14px;
+      }
+      time {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      p {
+        margin: 8px 0;
+        max-width: 73ch;
+      }
+      .tool {
+        margin: 12px 0 12px 42px;
+        font-size: 13px;
+      }
+      .tool summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 4px;
+        padding: 4px 8px;
+        min-width: 0;
+      }
+      .tool summary::before {
+        content: "▸";
+        color: var(--muted);
+      }
+      .tool[open] summary::before {
+        content: "▾";
+      }
+      .tool summary:hover {
+        background: var(--panel);
+      }
+      .tool code {
+        color: var(--muted);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+      .tool .detail {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 12px 16px;
+        margin-top: 6px;
+      }
+      .detail p {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      pre {
+        font:
+          13px/1.6 "Atkinson Hyperlegible Mono",
+          monospace;
+        overflow: auto;
+        max-width: 100%;
+        margin: 8px 0;
+        tab-size: 2;
+      }
+      .prompt pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        padding: 12px;
+        background: var(--panel);
+      }
+      .progress {
+        margin: 18px 0 18px 42px;
+        color: var(--muted);
+        font:
+          12px/1.7 "Atkinson Hyperlegible Mono",
+          monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .error {
+        margin: 24px 0 24px 42px;
+        border-left: 3px solid var(--red);
+        padding: 10px 18px;
+        background: var(--panel);
+      }
+      .error h2 {
+        color: var(--red);
+        font-size: 15px;
+        margin: 0 0 6px;
+      }
+      .error pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .empty {
+        padding: 44px 0;
+        color: var(--muted);
+      }
+      .empty h2 {
+        font-size: 20px;
+        color: var(--text);
+      }
+      .issue-body {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        margin: 28px 0;
+      }
+      .view-only {
+        border-top: 1px solid var(--line);
+        padding: 20px;
+        color: var(--muted);
+        text-align: center;
+        font-size: 14px;
+      }
+      .mockup {
+        border-top: 1px dashed var(--line);
+        padding: 18px 28px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .mockup p {
+        margin: 0;
+        flex: 1;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (max-width: 600px) {
+        .top {
+          padding: 12px 16px;
+          gap: 12px;
+        }
+        .repo {
+          font-size: 12px;
+          overflow-wrap: anywhere;
+        }
+        .brand {
+          font-size: 19px;
+        }
+        .name {
+          display: none;
+        }
+        main {
+          padding: 20px 16px 0;
+        }
+        h1 {
+          font-size: 25px;
+        }
+        .rail {
+          gap: 8px 15px;
+        }
+        .meta {
+          gap: 7px 18px;
+        }
+        .links {
+          gap: 12px;
+        }
+        .cost {
+          margin-left: 0;
+          width: 100%;
+        }
+        .thread {
+          padding: 8px 0 24px;
+        }
+        .prompt,
+        .tool,
+        .progress,
+        .error {
+          margin-left: 0;
+        }
+        .msg {
+          gap: 8px;
+          grid-template-columns: 24px minmax(0, 1fr);
+        }
+        .mockup {
+          padding: 15px 16px;
+        }
+        .mockup p {
+          flex-basis: 100%;
+        }
+      }
+      .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--green);
+        font-weight: 700;
+      }
+      .live::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        animation: pulse 1.8s infinite;
+      }
+      .live.reconnecting {
+        color: var(--muted);
+      }
+      .live.reconnecting::before {
+        background: var(--muted);
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.35;
+        }
+      }
+      .mono {
+        font-family: "Atkinson Hyperlegible Mono", monospace;
+      }
+      .tool summary code {
+        min-width: 0;
+      }
+      .tool .state {
+        margin-left: auto;
+        color: var(--brass);
+        font-size: 12px;
+        flex: none;
+      }
+      .working {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 14px;
+        margin: 22px 0;
+        color: var(--muted);
+        font-style: italic;
+      }
+      .working .agent {
+        animation: pulse 1.8s infinite;
+      }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      @media (max-width: 600px) {
+        .working {
+          gap: 8px;
+          grid-template-columns: 24px minmax(0, 1fr);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="top" aria-label="Repository">
+      <span class="brand">Patchmill</span>
+      <span class="repo">rochecompaan/patchmill</span>
+      <button id="theme" type="button" aria-label="Switch color theme">
+        Light theme
+      </button>
+      <span class="name">roche</span>
+    </nav>
+    <main>
+      <header>
+        <a class="back" href="#board">← Board</a>
+        <h1>
+          <a href="#issue">#304</a>Stream live progress to the web issue page
+        </h1>
+        <ol class="rail" aria-label="Workflow">
+          <li>Spec</li>
+          <li>Plan</li>
+          <li class="current" aria-current="step">Implement</li>
+        </ol>
+        <div class="meta">
+          <span class="status" id="status">Run active</span>
+          <span class="live" id="connection">Live</span>
+          <span id="step">step Implementation</span>
+          <span class="mono" id="elapsed" data-live-elapsed
+            >elapsed 4m 12s</span
+          >
+          <a href="#pr" id="pr" hidden>PR #370</a>
+        </div>
+        <div class="meta muted" id="times">
+          <span
+            >Started
+            <time datetime="2026-11-14T12:00:00Z"
+              >14 Nov 2026, 12:00 UTC</time
+            ></span
+          >
+          <span id="ended" hidden
+            >Ended
+            <time datetime="2026-11-14T12:31:40Z">12:31:40 UTC</time></span
+          >
+        </div>
+        <div class="links">
+          <a href="#spec">Spec</a><a href="#plan">Plan</a>
+          <span class="cost" id="cost" hidden
+            >Cost, all retained attempts <b>$1.0412</b> · 151k tokens</span
+          >
+        </div>
+        <p class="visually-hidden" role="status" id="announce"></p>
+      </header>
+      <section class="thread" aria-label="Issue thread" id="thread">
+        <div class="attempt">Run attempt 1 <time>14 Nov, 12:00 UTC</time></div>
+        <p class="progress">Issue #304 claimed</p>
+        <h2 class="step"><span>01</span>implementation</h2>
+        <details class="prompt">
+          <summary>Patchmill prompt</summary>
+          <pre>
+Implement the approved plan for issue #304.
+&lt;script&gt;Issue text remains text.&lt;/script&gt;</pre
+          >
+        </details>
+        <article class="msg">
+          <span class="agent" aria-hidden="true">✳</span>
+          <div>
+            <header>
+              <b>agent</b><span class="muted">implementation</span
+              ><time>12:01</time>
+            </header>
+            <p>I will add the feed module first, then the stream route.</p>
+          </div>
+        </article>
+        <details class="tool">
+          <summary>
+            <b>read</b><code>(path="src/web/run-data.ts")</code>
+          </summary>
+          <div class="detail">
+            <p>Input</p>
+            <pre>{ "path": "src/web/run-data.ts" }</pre>
+            <p>Output</p>
+            <pre>
+export interface RunDataSource {
+  snapshot(selection?: { issue: number }): Promise&lt;RunDataSnapshot&gt;;
+}</pre
+            >
+          </div>
+        </details>
+        <details class="tool" id="running-tool">
+          <summary>
+            <b>bash</b
+            ><code>(command="npm test -- src/web/issue-feed.test.ts")</code
+            ><span class="state" id="running-state">running</span>
+          </summary>
+          <div class="detail">
+            <p>Input</p>
+            <pre>{ "command": "npm test -- src/web/issue-feed.test.ts" }</pre>
+            <p id="running-output-label" hidden>Output</p>
+            <pre id="running-output" hidden>
+tests 14
+pass 14
+fail 0</pre
+            >
+          </div>
+        </details>
+        <div id="streamed"></div>
+        <div class="working" id="working">
+          <span class="agent" aria-hidden="true">✳</span>
+          <span>The agent is working…</span>
+        </div>
+      </section>
+    </main>
+    <footer class="view-only" id="footer">
+      View only. This run was started in a terminal with patchmill run-once
+      --issue 304.
+    </footer>
+    <aside class="mockup" aria-label="Mockup controls">
+      <p>
+        Planning mockup. Representative data, not a current run. New entries
+        arrive every few seconds. No network assets.
+      </p>
+      <label for="state">Run state</label>
+      <select id="state">
+        <option value="live">Active, live</option>
+        <option value="reconnecting">Active, reconnecting</option>
+        <option value="interactive">Active, interactive session</option>
+        <option value="ended">Ended</option>
+      </select>
+    </aside>
+    <script>
+      const byId = (id) => document.getElementById(id);
+      const make = (tag, className, text) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      };
+      byId("theme").addEventListener("click", () => {
+        const light = document.documentElement.dataset.theme !== "light";
+        document.documentElement.dataset.theme = light ? "light" : "dark";
+        byId("theme").textContent = light ? "Dark theme" : "Light theme";
+      });
+      let elapsed = 252;
+      let ended = false;
+      let paused = false;
+      const format = (s) => `elapsed ${Math.floor(s / 60)}m ${s % 60}s`;
+      const nearBottom = () =>
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 120;
+      const append = (node) => {
+        const follow = nearBottom();
+        byId("streamed").append(node);
+        if (follow) window.scrollTo({ top: document.body.scrollHeight });
+      };
+      const script = [
+        () => {
+          byId("running-state").remove();
+          byId("running-output-label").hidden = false;
+          byId("running-output").hidden = false;
+        },
+        () =>
+          append(
+            make("p", "progress", "tokens: task 3.1k total 3.1k elapsed: 268s"),
+          ),
+        () => {
+          const msg = make("article", "msg");
+          const body = make("div");
+          const head = make("header");
+          head.append(
+            make("b", "", "agent"),
+            make("span", "muted", "implementation"),
+            make("time", "", "12:05"),
+          );
+          body.append(
+            head,
+            make(
+              "p",
+              "",
+              "The feed tests pass. Next, the stream route: <b>tags stay text</b>.",
+            ),
+          );
+          msg.append(make("span", "agent", "✳"), body);
+          msg.firstChild.setAttribute("aria-hidden", "true");
+          append(msg);
+        },
+        () => {
+          const tool = make("details", "tool");
+          const summary = make("summary");
+          summary.append(
+            make("b", "", "edit"),
+            make("code", "", '(path="src/web/event-stream.ts")'),
+            make("span", "state", "running"),
+          );
+          const detail = make("div", "detail");
+          detail.append(
+            make("p", "", "Input"),
+            make("pre", "", '{ "path": "src/web/event-stream.ts" }'),
+          );
+          tool.append(summary, detail);
+          append(tool);
+        },
+      ];
+      let next = 0;
+      setInterval(() => {
+        if (ended || paused) return;
+        elapsed++;
+        byId("elapsed").textContent = format(elapsed);
+      }, 1000);
+      setInterval(() => {
+        if (ended || paused || next >= script.length) return;
+        script[next++]();
+      }, 3000);
+      byId("state").addEventListener("change", (event) => {
+        const state = event.target.value;
+        ended = state === "ended";
+        paused = state === "reconnecting";
+        const connection = byId("connection");
+        connection.hidden = ended;
+        connection.textContent = paused ? "Reconnecting…" : "Live";
+        connection.classList.toggle("reconnecting", paused);
+        byId("status").textContent = ended ? "Finished" : "Run active";
+        byId("working").hidden = ended || state === "interactive";
+        byId("cost").hidden = !ended;
+        byId("ended").hidden = !ended;
+        byId("pr").hidden = !ended;
+        byId("announce").textContent = ended ? "Run finished" : "";
+        byId("interactive")?.remove();
+        if (state === "interactive") {
+          const note = make(
+            "p",
+            "progress",
+            "Agent messages appear when this interactive session ends.",
+          );
+          note.id = "interactive";
+          byId("streamed").append(note);
+        }
+        byId("footer").textContent =
+          state === "interactive"
+            ? "View only. Messages come with live chat."
+            : ended
+              ? "This run has finished. The page is view only."
+              : "View only. This run was started in a terminal with patchmill run-once --issue 304.";
+        if (ended) byId("elapsed").textContent = "elapsed 31m 40s";
+      });
+    </script>
+  </body>
+</html>

@@ -94,6 +94,7 @@ export interface IssueDetail {
   readonly body: string | null;
   readonly run: {
     readonly startedAt: string;
+    readonly activeSince: string | null;
     readonly finishedAt: string | null;
     readonly outcome: "completed" | "stopped" | "incomplete" | "active";
   } | null;
@@ -208,3 +209,19 @@ export interface ApiError {
     readonly message: string;
   };
 }
+
+export type IssueHeader = Omit<IssueDetail, "thread">;
+export type IssueUpdate = { readonly id: string } & (
+  | { readonly kind: "reset"; readonly issue: IssueResponse }
+  | {
+      readonly kind: "header";
+      readonly header: IssueHeader;
+      readonly syncedAt: string | null;
+    }
+  | {
+      readonly kind: "thread";
+      readonly after: string | null;
+      readonly entries: readonly ThreadEvent[];
+    }
+  | { readonly kind: "unavailable" }
+);

@@ -114,10 +114,35 @@ await fs.writeFile(
   }),
 );
 const activeDir = join(f.repoRoot, f.config.paths.runsDir, "issue-11");
-await writeRunProgress(activeDir, boardProgress({ issue: 11 }));
+const activeStart = new Date().toISOString();
+await writeRunProgress(
+  activeDir,
+  boardProgress({
+    issue: 11,
+    startedAt: activeStart,
+    updatedAt: activeStart,
+    interactive: false,
+  }),
+);
+const activeRun = join(activeDir, boardProgress().runId);
+const activeSession = join(activeRun, "sessions/1");
+await fs.mkdir(activeSession, { recursive: true });
+await fs.writeFile(
+  join(activeSession, "main.jsonl"),
+  JSON.stringify(
+    piEntry(
+      "initial",
+      "assistant",
+      "Earlier work retained for scroll verification. ".repeat(200),
+      activeStart,
+    ),
+  ) + "\n",
+);
 const lock = await acquireLock(join(activeDir, "lock"), {
-  now: () => new Date("2026-11-14T12:00:00Z"),
+  now: () => new Date(activeStart),
 });
+let liveSequence = 0;
+const latencies = [];
 cleanups.push(() => lock.release());
 const issues = [
   {
@@ -321,6 +346,9 @@ try {
   const screenshot = async (name) => {
     if (!process.env.CAPTURE_ISSUE_THREADS) return;
     await fs.mkdir(resolve("docs/screenshots"), { recursive: true });
+    await evaluate(
+      'document.querySelectorAll(".ev").forEach(n=>n.style.contentVisibility="visible");new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
+    );
     const image = await send("Page.captureScreenshot", {
       format: "png",
       captureBeyondViewport: true,
@@ -378,13 +406,88 @@ try {
             /Cost not recorded/,
           );
         } else if (number === 11) {
-          assert.match(
-            await evaluate('document.querySelector(".thread").textContent'),
-            /Live progress comes in a later update/,
+          const elapsedBefore = await evaluate(
+            'document.querySelector("[data-live-elapsed]").textContent',
+          );
+          const sequence = ++liveSequence;
+          const start = Date.now();
+          await fs.appendFile(
+            join(activeSession, "main.jsonl"),
+            JSON.stringify(
+              piEntry(
+                `live-${sequence}`,
+                "assistant",
+                [
+                  {
+                    type: "toolCall",
+                    id: `call-${sequence}`,
+                    name: "read",
+                    arguments: { path: `live-file-${sequence}.ts` },
+                  },
+                ],
+                new Date().toISOString(),
+              ),
+            ) + "\n",
+          );
+          await until(
+            `document.querySelector('.thread').textContent.includes('live-file-${sequence}.ts')`,
+          );
+          latencies.push(Date.now() - start);
+          assert.ok(latencies.at(-1) < 5000);
+          await until(
+            `document.querySelector('[data-live-elapsed]').textContent !== ${JSON.stringify(elapsedBefore)}`,
+          );
+          await evaluate(
+            'document.querySelector(".tool").open=true;document.querySelector(".tool summary").focus({preventScroll:true});document.querySelector(".rail").scrollLeft=80;scrollTo(0,0)',
+          );
+          const railScroll = await evaluate(
+            'document.querySelector(".rail").scrollLeft',
+          );
+          await fs.appendFile(
+            join(activeRun, "history.jsonl"),
+            JSON.stringify({
+              schemaVersion: 1,
+              issue: 11,
+              runId: boardProgress().runId,
+              sequence,
+              at: new Date().toISOString(),
+              kind: "progress",
+              text: `live-progress-${sequence}`,
+              stream: "stderr",
+            }) + "\n",
+          );
+          await until(
+            `document.querySelector('.thread').textContent.includes('live-progress-${sequence}')`,
+          );
+          await evaluate(
+            "new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))",
+          );
+          assert.equal(await evaluate("scrollY"), 0);
+          assert.equal(
+            await evaluate('document.querySelector(".tool").open'),
+            true,
           );
           assert.equal(
-            await evaluate('document.querySelectorAll(".tool").length'),
-            0,
+            await evaluate(
+              'document.activeElement === document.querySelector(".tool summary")',
+            ),
+            true,
+          );
+          assert.equal(
+            await evaluate('document.querySelector(".rail").scrollLeft'),
+            railScroll,
+          );
+          for (const type of ["keyDown", "keyUp"])
+            await send("Input.dispatchKeyEvent", {
+              type,
+              key: "Enter",
+              code: "Enter",
+              windowsVirtualKeyCode: 13,
+              ...(type === "keyDown" ? { text: "\r" } : {}),
+            });
+          assert.equal(
+            await evaluate('document.querySelector(".tool").open'),
+            false,
           );
         } else {
           assert.equal(
@@ -402,6 +505,63 @@ try {
       }
     }
   }
+  await evaluate("location.hash='#/issue/11'");
+  await until(
+    'document.querySelector(".ihead")?.dataset.issue === "11" && document.querySelector("[data-live-elapsed]") && document.querySelector(".connection-state")?.textContent === "Live"',
+  );
+  const liveOrigin = await evaluate("performance.timeOrigin");
+  await fs.writeFile(
+    join(activeRun, "result.json"),
+    JSON.stringify({
+      issue: 11,
+      runId: boardProgress().runId,
+      startedAt: activeStart,
+      finishedAt: new Date().toISOString(),
+      sessions: [{ phase: "planning" }],
+      outcome: {
+        issue: 11,
+        status: "completed",
+        label: "done",
+        summary: "Finished",
+      },
+    }),
+  );
+  await lock.release();
+  await until(
+    'document.querySelector(".ihead")?.dataset.issue === "11" && !document.querySelector("[data-live-elapsed]")',
+  );
+  const finalMeta = await evaluate(
+    'document.querySelector(".meta").textContent',
+  );
+  assert.match(finalMeta, /Finished/);
+  assert.match(finalMeta, /Planning/);
+  assert.match(finalMeta, /\$0\.5000/);
+  assert.equal(await evaluate("performance.timeOrigin"), liveOrigin);
+  const frozenElapsed = await evaluate(
+    'document.querySelector(".meta").textContent',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.equal(
+    await evaluate('document.querySelector(".meta").textContent'),
+    frozenElapsed,
+  );
+  for (const width of [1440, 390]) {
+    await send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height: width === 390 ? 900 : 1100,
+      deviceScaleFactor: 1,
+      mobile: width === 390,
+    });
+    for (const theme of ["dark", "light"]) {
+      await evaluate(
+        `document.documentElement.dataset.theme=${JSON.stringify(theme)};scrollTo(0,0)`,
+      );
+      await screenshot(
+        `issue-thread-live-ended-${width === 390 ? "mobile" : "desktop"}-${theme}`,
+      );
+    }
+  }
+  console.log(JSON.stringify({ liveToolLatenciesMs: latencies }));
   if (replay) {
     await send("Emulation.setDeviceMetricsOverride", {
       width: 1440,

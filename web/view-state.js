@@ -26,17 +26,56 @@ export function createViewState(mount, drafts) {
       input && mount.ownerDocument.activeElement === input
         ? { start: input.selectionStart, end: input.selectionEnd }
         : null;
-    return { issue, selection };
+    const focused = mount.ownerDocument.activeElement;
+    const control = focused && mount.contains(focused) ? focused : null;
+    const focus = control
+      ? {
+          key: control.closest("[data-key]")?.getAttribute("data-key") ?? null,
+          tag: control.tagName,
+          href: control.getAttribute("href"),
+          action: control.getAttribute("data-action"),
+          id: control.id,
+        }
+      : null;
+    return {
+      issue,
+      selection,
+      focus,
+      railScroll: mount.querySelector(".rail")?.scrollLeft ?? 0,
+    };
   }
-  /** @param {ReturnType<typeof capture>} saved */
-  function restore(saved) {
+  /** @param {ReturnType<typeof capture>} saved @param {{keepScroll?:boolean}} [options] */
+  function restore(saved, options = {}) {
     const issue = issueNumber();
     for (const details of mount.querySelectorAll("details"))
       if (issue && openTools.get(issue)?.has(details.dataset.key ?? ""))
         details.open = true;
-    mount
-      .querySelector("[aria-current=step]")
-      ?.scrollIntoView({ block: "nearest", inline: "center" });
+    if (!options.keepScroll)
+      mount
+        .querySelector("[aria-current=step]")
+        ?.scrollIntoView({ block: "nearest", inline: "center" });
+    if (options.keepScroll) {
+      const rail = mount.querySelector(".rail");
+      if (rail) rail.scrollLeft = saved.railScroll;
+      if (saved.focus) {
+        const f = saved.focus;
+        const control = [
+          ...mount.querySelectorAll("summary,a,button,input,select"),
+        ].find(
+          (node) =>
+            node.tagName === f.tag &&
+            (f.key
+              ? node.closest("[data-key]")?.getAttribute("data-key") === f.key
+              : f.href
+                ? node.getAttribute("href") === f.href
+                : f.action
+                  ? node.getAttribute("data-action") === f.action
+                  : !!f.id && node.id === f.id),
+        );
+        if (control instanceof HTMLElement)
+          control.focus({ preventScroll: true });
+      }
+    }
     const input = mount.querySelector("textarea");
     if (saved.issue === issue && saved.selection && input && !input.disabled) {
       input.focus({ preventScroll: true });

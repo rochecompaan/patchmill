@@ -39,6 +39,7 @@ export function renderPage(doc, state, name, drafts) {
       name,
       drafts.get(state.issue.issue.summary.number),
       state.issue.source,
+      state.connection,
     );
   return renderStatus(doc, state);
 }

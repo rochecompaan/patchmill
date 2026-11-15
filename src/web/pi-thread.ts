@@ -30,6 +30,7 @@ export function projectPiThread(input: {
   prefix: string;
   cutoff?: string;
   collapseFirstUser: boolean;
+  active?: boolean;
   seen: Set<string>;
 }): ThreadEvent[] {
   const header = input.records.find(
@@ -119,12 +120,16 @@ export function projectPiThread(input: {
             arguments: b.arguments,
             result: result
               ? shortened(text(result.content, true))
-              : "Output not recorded.",
+              : input.active
+                ? null
+                : "Output not recorded.",
             state: result
               ? result.isError === true
                 ? "failed"
                 : "completed"
-              : "stopped",
+              : input.active
+                ? "running"
+                : "stopped",
           });
         }
       }

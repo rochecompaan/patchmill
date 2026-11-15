@@ -100,13 +100,6 @@ async function fixture(t: import("node:test").TestContext, local = false) {
 
 test("file-backed snapshots classify current fixture files, preserve immutability, and refresh local data inside a warm host period", async (t) => {
   const f = await fixture(t);
-  let changes = 0;
-  const unsubscribe = f.source.subscribe(() => {
-    changes++;
-  });
-  f.source.subscribe(() => {
-    throw Error("listener unavailable");
-  });
   const first = await f.source.snapshot();
   assert.deepEqual(
     first.issues.map((i) => [i.number, i.column]),
@@ -135,8 +128,11 @@ test("file-backed snapshots classify current fixture files, preserve immutabilit
   });
   assert.deepEqual(first.details, {});
   const selected = await f.source.snapshot({ issue: 3 });
-  assert.deepEqual(selected.details["3"]?.summary, first.issues[2]);
-  assert.deepEqual(selected.details["3"]?.thread, []);
+  assert.deepEqual(selected.details["3"]?.summary, {
+    ...first.issues[2],
+    elapsedSeconds: 0,
+  });
+  assert.ok(selected.details["3"]?.thread.length);
   assert.equal((await f.source.snapshot()).revision, first.revision);
   await f.locks[2]!.release();
   const next = await f.source.snapshot();
@@ -144,9 +140,6 @@ test("file-backed snapshots classify current fixture files, preserve immutabilit
   assert.equal(next.issues.find((i) => i.number === 5)?.live, false);
   assert.notEqual(next.revision, first.revision);
   assert.equal(f.calls(), 1);
-  assert.equal(changes, 1);
-  unsubscribe();
-  unsubscribe();
 });
 
 test("both authenticated HTTP APIs share the provider cache and unknown callers cannot trigger it", async (t) => {
@@ -161,12 +154,12 @@ test("both authenticated HTTP APIs share the provider cache and unknown callers 
   assert.equal(board.status, 200);
   assert.equal(detail.status, 200);
   assert.equal(JSON.parse(board.body).source, "live");
-  assert.deepEqual(
-    JSON.parse(detail.body).issue.summary,
-    JSON.parse(board.body).issues.find(
+  assert.deepEqual(JSON.parse(detail.body).issue.summary, {
+    ...JSON.parse(board.body).issues.find(
       (i: { number: number }) => i.number === 3,
     ),
-  );
+    elapsedSeconds: 0,
+  });
   assert.equal(f.calls(), 1);
 });
 

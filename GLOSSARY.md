@@ -75,6 +75,11 @@ instead of issue comments. It uses the same Run-once workflow.
 tool calls, and progress. Dividers distinguish its Run attempts and workflow
 steps. _Avoid_: Event ledger, Subagent transcript
 
+**Issue update**: One ordered change to an issue page's header or Issue thread
+that the web server sends to a live subscriber. It is not durable, and its ID
+orders updates only inside one server process. _Avoid_: Ledger event, Thread
+event
+
 **Console session**: The Pi session that holds the maintainer's conversation for
 one or more Interactive Issue runs. It never decides a phase.
 
