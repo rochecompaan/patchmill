@@ -6,7 +6,7 @@
 
 ## Intent
 
-During an Interactive Issue run, the console log prints the issue line
+During an Interactive Issue run, the console output prints the issue line
 (`issue #N · title`) and each phase start (`01 planning`). These lines scroll
 away. The operator then cannot see which issue runs or what the run does. A
 status-bar segment keeps this information visible at all times.
@@ -52,7 +52,9 @@ Exclusions:
 
 - No per-task progress such as `task 3/7`. The kernel does not know the current
   plan task.
-- No new tool, prompt change, custom footer, or widget.
+- No new tool, prompt change, custom footer, or widget. The existing
+  `patchmill_run_status` tool prints `controller.status()`, so its snapshot
+  output gains the `title` field. This is intended.
 - No change to `progress.json`, run history, or the web views.
 - Non-interactive `run-once` does not change. It has no Pi footer.
 
@@ -117,8 +119,11 @@ Text rules:
   and a space. In code it is `" \u00a0·\u00a0 "`. It shows as two spaces, `·`,
   and two spaces: 5 columns. Pi collapses only runs of ASCII spaces, so the
   separator keeps its width.
-- The title is cleaned: control characters become spaces, then whitespace runs
-  become one space, then the result is trimmed.
+- The title is cleaned with `cleanValue` from `src/kernel/terminal-layout.ts`,
+  the same filter that `formatRunStart` uses. It removes terminal escape
+  sequences and replaces C0 and C1 control characters. Then whitespace runs
+  become one space, and the result is trimmed. Issue titles are untrusted host
+  text, so the footer must not pass control codes to the terminal.
 - With no title, or an empty cleaned title, the segment is
   `#<issue><separator><label>`.
 - Width is measured with `visibleWidth` from `@earendil-works/pi-tui`, so wide
@@ -126,9 +131,14 @@ Text rules:
 - When the full segment fits in `width`, use it.
 - Otherwise the title budget is `width` minus the width of `#<issue>` plus one
   space and of `<separator><label>`. With a budget of 2 or more, cut the title
-  at grapheme boundaries to at most `budget - 1` columns and add `…`. With a
-  smaller budget, drop the title. Pi's footer then cuts anything that still does
-  not fit.
+  at grapheme boundaries to at most `budget - 1` columns, trim trailing spaces,
+  and add `…`. With a smaller budget, drop the title. Pi's footer then cuts
+  anything that still does not fit.
+- Known limitation: when another extension status is also set (for example
+  `subagent-slash` during an operator slash command) and the segment fills the
+  width, Pi's footer cuts the joined line. The last columns of the state can
+  then show as `...`. The budget does not reserve room for other statuses,
+  because those statuses are rare and short-lived.
 - The text contains no ANSI escape sequences. (`truncateToWidth` adds reset
   codes, so the module does its own grapheme cut.)
 
@@ -159,8 +169,10 @@ stale Pi context after a session switch must not break the run or the shutdown.
   `ctx.hasUI` is true. The adapter uses `ctx.ui.setStatus` and
   `process.stdout.columns`, with 80 when the value is missing.
 - The extension subscribes to the `resize` event of `process.stdout` and calls
-  `refresh()`. It removes the listener and calls `clear()` in its
-  `session_shutdown` handler, also when the controller shutdown fails.
+  `refresh()`. The listener is a constant defined when the extension factory
+  runs, so removing it is safe even when `session_start` never ran. The
+  extension removes the listener and calls `clear()` in its `session_shutdown`
+  handler, also when the controller shutdown fails.
 
 The `ended` snapshot thus shows only briefly. The segment is then cleared
 because no Issue run is active. This matches the issue rules.

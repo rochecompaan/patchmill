@@ -87,6 +87,9 @@ No mockup applies (terminal footer text, no browser layout).
     two-session fixture (`setupRun` with plan then `implement`) and
     `observe: (s) => snapshots.push(s)`; assert `snapshots.length > 0` and
     `snapshots.every((s) => s.title === "Add login")`.
+  - `"an edited title appears on the next emission"`: build `runSnapshot` with a
+    recording `observe`; `title("Old")`, `phase("planning", 1)`, `title("New")`,
+    `deriving()`; assert the observed titles are `["Old", "New"]`.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -141,7 +144,8 @@ No mockup applies (terminal footer text, no browser layout).
     `awaiting review`; `blocked` → `blocked`; `ended` → `ended`.
   - `"cleans the title and omits a missing one"`: title `"A\n\tB   C "` →
     `#142 A B C${SEP}preparing`; title `undefined` and title `" \n"` →
-    `#142${SEP}preparing`.
+    `#142${SEP}preparing`; title `"a\u009bb \u001b[31mred\u001b[0m"` → a segment
+    with no character in `\u0000-\u001f` or `\u007f-\u009f` and no `[31m`.
   - `"shortens only the title to fit the width"`: for the full implementation
     segment `s` at width 200, assert `formatRunStatus(…, visibleWidth(s))`
     equals `s`. At width 40, assert the result ends with
@@ -158,8 +162,8 @@ No mockup applies (terminal footer text, no browser layout).
     `"patchmill"`; set columns to 40 and `refresh()`; assert the new text is
     shortened; `clear()` records `undefined`; a later `refresh()` records
     nothing new.
-  - `"status errors are ignored"`: a UI whose `setStatus` throws; assert `show`,
-    `refresh`, and `clear` do not throw.
+  - `"status errors are ignored"`: a UI whose `setStatus` throws, and a UI whose
+    `columns` throws; assert `show`, `refresh`, and `clear` do not throw.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -168,12 +172,12 @@ No mockup applies (terminal footer text, no browser layout).
 
 - [ ] **Step 3: Implement `run-status.ts`**
 
-  Clean the title with `replace(/[\u0000-\u001f\u007f]/g, " ")`, then
-  `replace(/\s+/g, " ").trim()`. Cut the title with
+  Clean the title with `cleanValue(title).replace(/\s+/g, " ").trim()`
+  (`cleanValue` from `src/kernel/terminal-layout.ts`). Cut the title with
   `new Intl.Segmenter(undefined, { granularity: "grapheme" })`, appending
-  graphemes while the visible width stays at most `budget - 1`, then add `…`.
-  `createRunStatus` keeps the last snapshot and wraps each `ui` call in
-  `try { … } catch {}`.
+  graphemes while the visible width stays at most `budget - 1`, then `trimEnd()`
+  and add `…`. `createRunStatus` keeps the last snapshot and wraps each `ui`
+  call in `try { … } catch {}`.
 
 - [ ] **Step 4: Run to verify they pass**
 
@@ -267,8 +271,10 @@ No mockup applies (terminal footer text, no browser layout).
 
   In `session_start`, when `ctx.hasUI`, create
   `createRunStatus({ setStatus: (k, t) => ctx.ui.setStatus(k, t), columns: () => process.stdout.columns || 80 })`
-  and pass it to the controller. Register
-  `const onResize = () => runStatus?.refresh()` with
+  and pass it to the controller. Declare `let runStatus: RunStatus | undefined`
+  and `const onResize = () => runStatus?.refresh()` at factory scope, next to
+  `controller`, so shutdown can remove the listener even without a
+  `session_start`. Register it in `session_start` with
   `process.stdout.on("resize", onResize)`. In the shutdown function, in the
   `finally`, call `process.stdout.off("resize", onResize)` and
   `runStatus?.clear()`, next to `client?.dispose()`.
