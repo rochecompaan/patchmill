@@ -17,6 +17,7 @@ export type ObservedRunOutcome = {
 };
 export type RunSnapshot = {
   issue: number;
+  title?: string;
   runId: string;
   runDir: string;
   startedAt: string;
@@ -58,6 +59,9 @@ export function runSnapshot(
     }
   };
   return {
+    title(title: string) {
+      current = { ...current, title };
+    },
     async deriving() {
       current = { ...current };
       delete current.phase;

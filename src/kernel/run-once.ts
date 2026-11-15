@@ -233,6 +233,7 @@ export async function runOneIssue(
     try {
       await workflow.setStatus(issueNumber, { status: "inProgress", runId });
       let issue = await workflow.issue(issueNumber);
+      snapshot.title(issue.title);
       if (issue.state !== "open" || issue.status !== "inProgress")
         return { status: "claimed-elsewhere", issue: issueNumber };
       await fs.mkdir(runDir, { recursive: true });
@@ -244,6 +245,7 @@ export async function runOneIssue(
       while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
         await snapshot.deriving();
         issue = await workflow.issue(issueNumber);
+        snapshot.title(issue.title);
         const before = resume
           ? { kind: "facts" as const, facts: resume.facts }
           : await provisionWorkspace({ ...deps, config }, issue);
