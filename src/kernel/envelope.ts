@@ -91,6 +91,14 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     worktree: facts.worktree,
     branch: facts.branch,
     base: facts.baseBranch,
+    parentSpec: facts.parentSpec
+      ? `\n- Parent spec: ${facts.parentSpec.path} on origin/${facts.baseBranch} (from issue #${facts.parentSpec.issue}; approved and read-only; read it with \`git show origin/${facts.baseBranch}:${facts.parentSpec.path}\`, because the worktree copy can be missing or old)`
+      : "",
+    parentSpecRules: facts.parentSpec
+      ? input.phase === "planning"
+        ? `\n\nThe parent spec is the approved design for this issue. Do not change it. If this issue has no spec yet, write it at the Spec path. Link to the parent spec, name the parent sections this issue delivers, and record only decisions the parent spec leaves open. If there are none, say so. If the parent spec is wrong or conflicts with this issue, ${interactivePlanning ? "ask the maintainer in this chat" : "stop and return `needs-input`"} instead of choosing.`
+        : "\n\nIf the parent spec must change, do not change it; stop and return `needs-input`."
+      : "",
     spec: facts.specPath ?? `expected: ${facts.expectedSpecPath}`,
     plan: facts.planPath ?? `expected: ${facts.expectedPlanPath}`,
     pullRequest: facts.pullRequest

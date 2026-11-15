@@ -13,6 +13,62 @@ test("the non-interactive envelope is unchanged", () => {
   }
 });
 
+test("a parent spec adds a read-only fact after the Spec line and base read command", () => {
+  const text = renderRunEnvelope({
+    ...input,
+    facts: {
+      ...input.facts,
+      parentSpec: { issue: 356, path: "docs/specs/p-design.md" },
+    },
+  });
+  assert.ok(
+    text.includes(
+      "- Spec: expected: docs/specs/2026-10-15-issue-9-x-design.md\n- Parent spec: docs/specs/p-design.md on origin/main (from issue #356; approved and read-only; read it with `git show origin/main:docs/specs/p-design.md`, because the worktree copy can be missing or old)\n- Plan:",
+    ),
+  );
+});
+
+test("planning with a parent spec states the parent spec rules", () => {
+  const facts = {
+    ...input.facts,
+    parentSpec: { issue: 356, path: "docs/specs/p-design.md" },
+  };
+  const unattended = renderRunEnvelope({ ...input, facts });
+  assert.ok(
+    unattended.includes(
+      "The parent spec is the approved design for this issue.",
+    ),
+  );
+  assert.ok(unattended.includes("stop and return `needs-input`"));
+  const interactive = renderRunEnvelope({ ...input, facts, interactive: true });
+  assert.ok(interactive.includes("ask the maintainer in this chat"));
+  assert.ok(!interactive.includes("stop and return `needs-input`"));
+});
+
+test("implementation with a parent spec shows the fact and one stop rule", () => {
+  const facts = {
+    ...input.facts,
+    parentSpec: { issue: 356, path: "docs/specs/p-design.md" },
+  };
+  const text = renderRunEnvelope({ ...input, facts, phase: "implementation" });
+  assert.ok(text.includes("- Parent spec:"));
+  assert.ok(
+    text.includes(
+      "If the parent spec must change, do not change it; stop and return `needs-input`.",
+    ),
+  );
+  assert.ok(!text.includes("The parent spec is the approved design"));
+  assert.equal(
+    text,
+    renderRunEnvelope({
+      ...input,
+      facts,
+      phase: "implementation",
+      interactive: true,
+    }),
+  );
+});
+
 test("interactive planning asks the maintainer and submits through the tool", () => {
   const text = renderRunEnvelope({ ...input, interactive: true });
   assert.match(text, /A maintainer is present in this chat/);
