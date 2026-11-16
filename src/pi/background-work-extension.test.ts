@@ -30,7 +30,10 @@ function load(
   t.after(() => {
     delete slot[LIVENESS_REGISTRY_KEY];
   });
-  t.mock.method(console, "error", () => {});
+  const errors: string[] = [];
+  t.mock.method(console, "error", (...args: unknown[]) => {
+    errors.push(args.map(String).join(" "));
+  });
   const events = options.subagents ?? fakeSubagents();
   const handlers = new Map<string, Handler[]>();
   const statuses: string[] = [];
@@ -56,6 +59,7 @@ function load(
   };
   return {
     events,
+    errors,
     statuses,
     registry: () => slot[LIVENESS_REGISTRY_KEY] as Registry,
     async fire(event: string) {
@@ -166,13 +170,25 @@ test("a new turn stops idle polling", async (t) => {
   assert.deepEqual(f.statuses, ["1:1"]);
 });
 
-test("shutdown stops active runs only while work is active", async (t) => {
+test("a settle after shutdown does not touch the stale ctx", async (t) => {
+  const f = load(t);
+  await f.fire("session_shutdown");
+  await f.fire("agent_settled");
+  assert.deepEqual(f.statuses, []);
+});
+
+test("shutdown stops active runs only while work is active and waits for them to end", async (t) => {
   const runs = [
     { id: "r1", state: "running", children: [{ agent: "reviewer" }] },
     { id: "r2", state: "complete", children: [{ agent: "reviewer" }] },
   ];
+  let statusCalls = 0;
   const subagents = fakeSubagents({
-    status: () => ({ asyncSnapshot: { runs } }),
+    // The stop reply is a receipt; the run ends a few status checks later.
+    status: () => {
+      if (++statusCalls === 3) runs[0]!.state = "stopped";
+      return { asyncSnapshot: { runs } };
+    },
   });
   const f = load(t, { subagents });
   let active = false;
@@ -190,7 +206,33 @@ test("shutdown stops active runs only while work is active", async (t) => {
     stops.map((r) => r.params),
     [{ id: "r1" }],
   );
+  assert.equal(statusCalls, 3);
+  assert.deepEqual(f.errors, []);
 });
+
+for (const stopFails of [false, true]) {
+  test(`shutdown reports runs still active after the budget: stopFails=${stopFails}`, async (t) => {
+    const subagents = fakeSubagents({
+      status: () => ({
+        asyncSnapshot: {
+          runs: [{ id: "r1", state: "running", children: [{ agent: "x" }] }],
+        },
+      }),
+      ...(stopFails ? { stop: () => ({ error: "execution_failed" }) } : {}),
+    });
+    const f = load(t, { subagents });
+    f.registry().register({
+      name: "pi-subagents",
+      sessionId: "session-1",
+      isActive: () => true,
+    });
+    const started = performance.now();
+    await f.fire("session_shutdown");
+    assert.ok(performance.now() - started < 1000);
+    assert.equal(f.errors.length, 1);
+    assert.match(f.errors[0]!, /r1/);
+  });
+}
 
 test("shutdown with no pi-subagents reply ends within the stop budget", async (t) => {
   const subagents = fakeSubagents({ ping: () => NO_REPLY });

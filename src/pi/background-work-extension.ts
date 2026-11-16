@@ -2,6 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { stopWorkers } from "../console/stray-workers.ts";
 import { SubagentsClient } from "../console/subagents-client.ts";
 import { BACKGROUND_WORK_STATUS } from "../kernel/pi-rpc-protocol.ts";
 
@@ -69,6 +70,8 @@ export function createBackgroundWorkExtension(
     const registrations = new Set<Registration>();
     installRegistry(registrations);
     let settles = 0;
+    // Pi makes ctx stale after shutdown; a late settle must not touch it.
+    let shutDown = false;
     let poll: ReturnType<typeof setInterval> | undefined;
     const stopPolling = () => {
       clearInterval(poll);
@@ -100,6 +103,7 @@ export function createBackgroundWorkExtension(
     pi.on("agent_start", () => stopPolling());
     pi.on("agent_settled", (_event, ctx) => {
       stopPolling();
+      if (shutDown) return;
       const settle = ++settles;
       const work = count(ctx);
       report(ctx, settle, work);
@@ -113,24 +117,40 @@ export function createBackgroundWorkExtension(
       poll.unref?.();
     });
     pi.on("session_shutdown", async (_event, ctx) => {
+      shutDown = true;
       stopPolling();
       if (count(ctx) === 0) return;
       // Async runners are detached from Pi's process group; stop them here,
-      // before pi-subagents removes its RPC bridge.
+      // before pi-subagents removes its RPC bridge. A stop reply is only a
+      // receipt, so wait until status no longer lists the runs.
       const client = new SubagentsClient(pi.events, {
         replyTimeoutMs: options.replyTimeoutMs ?? stopBudgetMs,
       });
       let timer: ReturnType<typeof setTimeout> | undefined;
+      const stopping = stopWorkers(client, {
+        scope: "runs",
+        // Leave room to name the stuck runs before the hard budget below,
+        // which only applies when pi-subagents stops answering.
+        waitMs: Math.max(0, stopBudgetMs - 250),
+        pollMs: Math.min(pollMs, 100),
+      });
+      // When the budget wins, the disposed client rejects the rest quietly.
+      stopping.catch(() => undefined);
       try {
-        await Promise.race([
-          (async () => {
-            const runs = await client.activeRuns();
-            await Promise.allSettled(runs.map(({ id }) => client.stop(id)));
-          })(),
-          new Promise<void>((resolve) => {
-            timer = setTimeout(resolve, stopBudgetMs);
+        const outcome = await Promise.race([
+          stopping,
+          new Promise<undefined>((resolve) => {
+            timer = setTimeout(() => resolve(undefined), stopBudgetMs);
           }),
         ]);
+        if (!outcome)
+          console.error(
+            `Background work was not proven stopped within ${stopBudgetMs}ms.`,
+          );
+        else if (!outcome.ok)
+          console.error(
+            `Background runs still active after shutdown: ${outcome.stuck.join(", ")}`,
+          );
       } catch (error) {
         console.error("Stopping background work failed:", error);
       } finally {
