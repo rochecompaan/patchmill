@@ -245,6 +245,48 @@ the run-data interface hides where the data comes from.
 - What the connection design changes for terminal runs, server restarts and
   issue ownership.
 
+## Why live chat doesn't use Pi Durable
+
+In November 2026 we looked at
+[Pi Durable](https://earendil.com/posts/pi-durable/)
+(`@earendil-works/pi-durable`) as the base for live chat, and decided not to use
+it.
+
+Pi Durable is a harness for long-running agents that many clients can watch and
+steer. It would answer most of the open questions above. A client gets the
+current view first and then only the changes. Thread history lives in SQLite or
+JSONL storage. Runs continue after a crash, and a request ID makes a retried
+message count only once.
+
+We passed on it because it can't load the Pi extensions that Patchmill runs use.
+Pi Durable doesn't use `pi-coding-agent`. Its extensions are built with
+`defineExtension` and can only add tools, prompt sections, hooks, wrappers and
+tasks. It has no session events (`pi.on(...)`), `registerProvider`, commands,
+shortcuts, message renderers or terminal UI. Every extension in
+`.patchmill/pi-agent/settings.json`, and `pi-subagents`, relies on those:
+
+- **pi-context-paging** uses the `context` event, compaction and tree events,
+  commands and terminal UI.
+- **pi-claude-bridge**, the default provider, uses `registerProvider` and keeps
+  Claude Code sessions in step through session, compaction, tree and tool-call
+  events.
+- **remote-pi** uses many `/remote` commands, `sendUserMessage`,
+  `registerProvider`, a message renderer and terminal UI.
+- **pi-voice** uses a keyboard shortcut, commands and terminal UI.
+- **pi-subagents** uses commands, `sendMessage`, `setActiveTools` and terminal
+  UI.
+
+Each would need a rewrite, and Patchmill can't run without them. So live chat
+stays on the Pi coding agent, through RPC mode (#305), which loads all of these
+extensions as before.
+
+We still use Pi Durable's design as a reference for the connection design: send
+the current view first and then only changes, and use a request ID so that a
+retried message counts once.
+
+Look at Pi Durable again if Pi adds a way to run `pi-coding-agent` extensions on
+it.
+
 ## Things to test before live chat
 
 Issue #305 (Pi RPC mode in run-once) tests these first and records the answers
