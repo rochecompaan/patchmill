@@ -173,8 +173,13 @@ into an issue comment.
   - A non-zero exit or a signal from Pi always wins.
 - **Crash before settle.** If Pi exits before the finish rule passes, `stdout`
   is the text of the last assistant `message_end`, or empty. `exitCode` and
-  `signal` come from the process. `parseAgentResult` and `verifyOutcome` handle
-  the failure as they do today.
+  `signal` come from the process. This keeps the existing run-once contract:
+  `run-once-failures.test.ts` expects a question from a non-zero exit, and a
+  question in the summary after a timeout or an abort. Timeouts and aborts
+  always fail in `verifyOutcome`. `verifyOutcome` does not check `exitCode` or
+  `signal`, so a crash after a `done` result is accepted. Real print mode writes
+  nothing in that case. A follow-up issue covers this check for both modes
+  (#374).
 - **Prompt.** RPC mode rejects `@file` arguments. Print mode sends the prompt
   file as `<file name="<absolute path>">\n<contents without BOM>\n</file>\n`.
   The client sends exactly this text in one `prompt` command, so the first user
