@@ -67,6 +67,14 @@ and `abort`, so that live chat can use them later. Nothing calls `steer` or
   - Program status needs `ctx.mode === "tui"`.
   - Management confirmations get a cancelled dialog. This declines the action,
     as the `!ctx.hasUI` refusal does in print mode.
+- Two `ctx.hasUI` branches are visible to the model, and approach 1 accepts
+  them:
+  - The tool result after an async launch tells the model that completion wakes
+    the session (`async-execution.js`). This is true in RPC mode.
+  - `clarify: true` on a chain opens a TUI dialog. RPC mode cannot show it, so
+    it returns no answer.
+- `pi-subagents` async runners start with `detached: true`. A signal to the Pi
+  process group does not reach them.
 
 ## Answers to the two open questions
 
@@ -105,74 +113,92 @@ into an issue comment.
 ### Rules
 
 - **Finish rule.** A phase session finishes at an `agent_settled` event when the
-  background-work extension reports zero outstanding runs for that settle. If
-  the report is not zero, the session continues and waits for the next
-  `agent_settled`. The phase timeout still applies.
-- **Outstanding work.** A run is outstanding when one of these is true:
-  - `pi-subagents` reports it `queued`, `running`, or `stopping` for the current
-    session.
-  - It finished with `triggerTurn: true` (`subagent:async-complete`), but no
-    `subagent-notify` message for its run ID has reached `message_end` yet.
-  - The `status` reply omits runs (`omitted.runs`, `omitted.children`, or
-    `byteLimitExceeded`). Then the extension cannot prove that no work is left,
-    and it reports `1`.
-- **Report channel.** The extension reports the count with
-  `ctx.ui.setStatus("patchmill-background-work", "<settle>:<count>")` from its
-  `agent_settled` handler. `<settle>` is the 1-based number of that
-  `agent_settled` event in the process. In RPC mode, that call becomes a
-  fire-and-forget `extension_ui_request` on stdout. The client matches the
-  report to its own count of `agent_settled` events. If `pi-subagents` is not
-  loaded or does not answer within 10 s, the count is `0`.
+  background-work report for that settle is `0`. If the report is `1`, the
+  session continues and waits for the next `agent_settled`. The phase timeout
+  still applies.
+- **Outstanding work.** `pi-subagents` already computes whether a session still
+  owes work: queued or running runs, owed results, pending deliveries, and a
+  pending parent wake (`isActive` in `extension/index.js`). It publishes this
+  check to a host registry at
+  `globalThis[Symbol.for("@agegr/pi-web/session-liveness/v1")]` with the shape
+  `{ version: 1, register(registration) → release }`. The background-work
+  extension installs this registry when it loads, if no registry is there. If a
+  registry is there, it wraps `register` and keeps a copy of each registration.
+  The report is `1` when any registration for the current session returns
+  `isActive() === true`. Otherwise it is `0`.
+- **Report channel.** The extension's `agent_settled` handler calls
+  `ctx.ui.setStatus("patchmill-background-work", "<settle>:<count>")`.
+  `<settle>` is the 1-based number of that `agent_settled` event in the process.
+  In RPC mode, that call becomes a fire-and-forget `extension_ui_request` on
+  stdout. Pi waits for extension handlers before it writes `agent_settled`, so
+  the report normally arrives first. The client keeps reports by settle number
+  and matches them to its own count of `agent_settled` events, in either order.
 - **Missing report.** If no report for a settle arrives within 15 s, the client
   writes a warning to the logs and treats the count as `0`. A missing extension
   thus cannot hold a phase until its timeout.
-- **Handled prompt.** If the `prompt` response has `disposition: "handled"`, no
-  run starts. The client reads the result at once.
-- **Shutdown.** On `session_shutdown`, the extension stops every outstanding run
-  of its session through the `pi-subagents` `stop` RPC. This covers abort,
-  timeout, and crash recovery. No subagent process stays alive after the phase.
-- **Result.** After the finish rule passes, the client reads the result with
-  `get_last_assistant_text`. Then it closes stdin and waits for Pi to exit.
-- **Exit code parity.** The client tracks the last assistant `message_end`:
-  - With `stopReason` `error` or `aborted`: `stdout` is empty, the error message
-    goes to the logs, and `exitCode` is `1`.
-  - With `stopReason` `length`: `stdout` is the text, the truncation message
-    from print mode goes to the logs, and `exitCode` is `1`.
-  - Otherwise, `exitCode` is the exit code of Pi.
+- **Shutdown.** The background-work extension loads before the other `-e`
+  extensions, so its `session_shutdown` handler runs before the `pi-subagents`
+  handler removes its RPC bridge. If work is still active, it stops each active
+  run of the session through the `pi-subagents` `stop` RPC, within 3 s in total.
+  Async subagent runners are detached from the Pi process group, so a group
+  signal does not stop them. After a normal finish no work is active, so this
+  matters only for abort, timeout, and a failed report.
+- **Result.** After the finish rule passes, the client builds `stdout` from the
+  last `message_end` message with the print-mode rules below. It does not use
+  `get_last_assistant_text`, although the issue names that command. That command
+  joins text blocks with no newline and trims the text, and it skips some
+  aborted messages. Print mode writes each text block followed by `\n`. The
+  `message_end` route keeps the result text byte for byte. This is my call. Then
+  the client closes stdin and waits for Pi to exit.
+- **Exit-code parity.** These rules copy `dist/modes/print-mode.js`:
+  - The last message is not an assistant message: `stdout` is empty and the exit
+    code of Pi is used.
+  - `stopReason` `error` or `aborted`: `stdout` is empty, the error message (or
+    `Request <stopReason>`) goes to the logs, and `exitCode` is `1`.
+  - `stopReason` `length`: `stdout` is the text, the print-mode truncation
+    message goes to the logs, and `exitCode` is `1`.
+  - Otherwise, `stdout` is the text and the exit code of Pi is used.
   - A non-zero exit or a signal from Pi always wins.
 - **Crash before settle.** If Pi exits before the finish rule passes, `stdout`
   is the text of the last assistant `message_end`, or empty. `exitCode` and
   `signal` come from the process. `parseAgentResult` and `verifyOutcome` handle
   the failure as they do today.
+- **Prompt.** RPC mode rejects `@file` arguments. Print mode sends the prompt
+  file as `<file name="<absolute path>">\n<contents without BOM>\n</file>\n`.
+  The client sends exactly this text in one `prompt` command, so the first user
+  message in the session file does not change. A `success: false` response is a
+  Pi error: the message goes to the logs and `exitCode` is `1`. If the response
+  has `disposition: "handled"`, no run starts, and the client reads the result
+  at once.
 - **Dialogs.** The client answers each `select`, `confirm`, `input`, and
   `editor` request with
   `{"type":"extension_ui_response","id":...,"cancelled":true}`. It ignores other
   fire-and-forget requests, except the background-work report.
 - **Abort and timeout.** On `AbortSignal` or timeout, the client sets `aborted`
-  or `timedOut`. It sends `abort`, waits at most `graceMs` for the response, and
-  closes stdin. Then it sends `SIGTERM` to the process group and `SIGKILL` after
-  `graceMs`, as `supervisePi` does. `SIGINT` in the CLI already becomes an abort
-  of the run signal.
+  or `timedOut`. It sends `abort` and waits at most `graceMs` for the response.
+  Then it closes stdin and waits at most `graceMs` for Pi to exit, so that the
+  shutdown handlers can run. Then it sends `SIGTERM` to the process group, and
+  `SIGKILL` after `graceMs`, as `supervisePi` does. Thus an abort can take up to
+  three times `graceMs` (15 s by default), not one. `SIGINT` in the CLI already
+  becomes an abort of the run signal.
 - **No processes left.** After a normal exit, the client checks the process
   group. If any member is alive, it uses the same `SIGTERM` and `SIGKILL`
   escalation.
 - **Logs.** `session-<n>.log` and `pi.log` keep the print-mode content: Pi's
   stderr, `Extension error (<path>): <error>` lines for `extension_error`
-  records, and the assistant text or error message. The JSONL protocol stream
-  does not go into the logs. One difference is deliberate: the client writes the
-  text of each assistant `message_end` when it arrives, not only the last one at
-  exit. Thus the result is in the log before Pi exits, and a crash or an abort
-  still leaves the last assistant text in the log. The log can also hold short
-  assistant text from earlier turns. This is my call.
-- **Prompt.** RPC mode rejects `@file` arguments. The client reads the prompt
-  file and sends its contents with the `prompt` command. A `success: false`
-  response is a Pi error: the message goes to the logs and `exitCode` is `1`.
+  records, non-JSON stdout lines, and the assistant text or error message. The
+  JSONL protocol stream does not go into the logs. One difference is deliberate:
+  the client writes the text of each assistant `message_end` when it arrives,
+  not only the last one at exit. Thus the result is in the log before Pi exits,
+  and a crash or an abort still leaves the last assistant text in the log. The
+  log can also hold short assistant text from earlier turns. This is my call.
 - **Unchanged.** Prompts, `--skill`, `-e` extensions, `--session-dir`,
   `PI_CODING_AGENT_DIR`, session files, cost, progress events, result parsing,
   errors, and the repair flow do not change.
 - **Scope of the switch.** Only run-once phase sessions use RPC mode. Triage
-  (`src/kernel/triage.ts`) and the doctor Pi smoke check keep `supervisePi` in
-  print mode. They load no Patchmill extensions and have no live-chat use.
+  (`src/kernel/triage.ts`), the doctor Pi smoke check, and the auth smoke test
+  keep `supervisePi` or `-p`. They load no Patchmill extensions and have no
+  live-chat use.
 
 ## Design
 
@@ -199,16 +225,22 @@ into an issue comment.
   and process-group shutdown. `steer` and `followUp` reject when the session is
   done.
 
-- **`src/kernel/pi-rpc-extension.ts` (new).** The background-work extension. It
-  is a Pi extension default export. It uses `SubagentsClient`
-  (`src/console/subagents-client.ts`), which the console already uses, for the
-  `status` and `stop` RPCs and the `subagent:async-complete` events.
+- **`src/kernel/pi-rpc-protocol.ts` (new).** JSONL framing, record types, and
+  the shared constant `BACKGROUND_WORK_STATUS`. The extension imports the
+  constant from here, so it does not load the process code.
+
+- **`src/pi/background-work-extension.ts` (new).** The background-work
+  extension, a Pi extension default export. It lives with the other
+  `pi-subagents` integration code in `src/pi/`. It owns the liveness registry
+  and the report. For the stops at shutdown, it uses `SubagentsClient`
+  (`src/console/subagents-client.ts`), which the console already uses.
   `SubagentsClient` gets one new method, `activeRuns()`. It returns every
   `queued`, `running`, or `stopping` run of the session, for any agent.
-  `activeWorkers()` then filters `activeRuns()` to the implementation worker.
+  `activeWorkers()` then filters `activeRuns()` to the implementation worker. A
+  move of `SubagentsClient` out of `src/console/` is a separate refactor.
 
 - **`src/kernel/launch.ts`.** `printModeLauncher` becomes `rpcModeLauncher`. It
-  calls `runPiRpc` and adds the background-work extension path after the
+  calls `runPiRpc` and puts the background-work extension path first, before the
   configured extension paths.
 
 - **`src/kernel/pi-supervisor.ts`.** It exports `signalGroup` so that both
@@ -221,9 +253,11 @@ through `RunOnceDeps.piCommand`. Production uses the bundled Pi CLI. Tests use
 `test-support/fake-pi.mjs`, which learns RPC mode when it sees `--mode rpc`.
 These two adapters make the seam real. No new port is necessary.
 
-The background-work extension has a second seam: the Pi extension API and the
-`pi-subagents` event bus. Tests use `test-support/fake-extension-api.ts` and a
-fake `pi-subagents` responder, as the console tests do.
+The background-work extension has a second seam: the Pi extension API, the
+liveness registry, and the `pi-subagents` event bus. Tests use
+`test-support/fake-extension-api.ts`, a fake registration, and the fake
+`pi-subagents` responder, as the console tests do. Production uses the real
+`pi-subagents` registration.
 
 ### Locality and leverage
 
@@ -260,9 +294,15 @@ visible UI change.
   - a crash before `agent_settled`;
   - an abort, with no process left in the group;
   - a timeout;
-  - a background-work report above zero, then zero at a later settle.
-- Tests run the background-work extension against a fake extension API and a
-  fake `pi-subagents`. They check the count rules and the stop on shutdown.
+  - a background-work report above zero, then zero at a later settle;
+  - a report before its `agent_settled` and a report after it;
+  - the exact wrapped prompt text that Pi receives.
+- Tests run the background-work extension against a fake extension API, a fake
+  liveness registration, and a fake `pi-subagents`. They check the report for
+  active and idle registrations, an existing registry, no registration, and the
+  stop on shutdown.
+- The test-repository check looks for `pi-subagents` runner processes, not only
+  for `pi --mode rpc`.
 - Existing run-once tests pass. Only tests that check Pi's command-line
   arguments change.
 - A run on a test repository (`patchmill setup-test-repo`) gives the same run
@@ -282,21 +322,24 @@ sequenceDiagram
     participant E as background-work extension
     participant S as pi-subagents
     K->>C: runPiRpc(options)
-    C->>P: prompt (contents of prompt.md)
+    C->>P: prompt (prompt.md wrapped as print mode does)
     P-->>C: extension_ui_request select/confirm/input/editor
     C->>P: extension_ui_response cancelled: true
-    P->>E: agent_settled
-    E->>S: status (current session)
-    E-->>C: setStatus patchmill-background-work = 1
-    Note over C: outstanding work, keep waiting
+    P->>E: agent_settled handler
+    E->>S: isActive() through the liveness registry
+    E-->>C: setStatus patchmill-background-work = "1:1"
+    P-->>C: agent_settled
+    Note over C: work is outstanding, keep waiting
     S-->>P: subagent-notify starts a new turn
-    P->>E: agent_settled
-    E-->>C: setStatus patchmill-background-work = 0
-    C->>P: get_last_assistant_text
+    P-->>C: message_end (assistant text, logged)
+    P->>E: agent_settled handler
+    E-->>C: setStatus patchmill-background-work = "2:0"
+    P-->>C: agent_settled
+    Note over C: stdout = last message_end, print-mode rules
     C->>P: close stdin
-    P->>E: session_shutdown (stop outstanding runs)
+    P->>E: session_shutdown (stop runs only if still active)
     P-->>C: exit
-    C-->>K: PiSession (stdout = result text)
+    C-->>K: PiSession
 ```
 
 ## Companion artifacts
