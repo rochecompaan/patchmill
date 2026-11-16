@@ -88,12 +88,13 @@ test("readiness retries ping every 250ms and is shared by concurrent requests", 
   assert.equal(pings, 3);
 });
 
-test("activeWorkers filters state and worker agent; resume and stop use id", async (t) => {
+test("activeRuns filters state, activeWorkers also filters the worker agent; resume and stop use id", async (t) => {
   const runs = [
     { id: "a", state: "running", children: [{ agent: WORKER_AGENT }] },
     { id: "b", state: "queued", children: [{ agent: WORKER_AGENT }] },
     { id: "c", state: "complete", children: [{ agent: WORKER_AGENT }] },
     { id: "d", state: "running", children: [{ agent: "other" }] },
+    { id: "e", state: "stopping", children: [{ agent: "reviewer" }] },
   ];
   const bus = fakeSubagents({ status: () => ({ asyncSnapshot: { runs } }) });
   const client = new SubagentsClient(bus);
@@ -101,6 +102,12 @@ test("activeWorkers filters state and worker agent; resume and stop use id", asy
   assert.deepEqual(await client.activeWorkers(), [
     { id: "a", state: "running" },
     { id: "b", state: "queued" },
+  ]);
+  assert.deepEqual(await client.activeRuns(), [
+    { id: "a", state: "running" },
+    { id: "b", state: "queued" },
+    { id: "d", state: "running" },
+    { id: "e", state: "stopping" },
   ]);
   assert.equal(await client.resume("a", "fix"), "run-1");
   assert.deepEqual(bus.requests.at(-1)?.params, { id: "a", message: "fix" });
