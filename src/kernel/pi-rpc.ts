@@ -25,7 +25,14 @@ export type PiRpcSession = {
   abort(): Promise<void>;
   done: Promise<PiSession>;
 };
-export type PiRpcOptions = PiSessionOptions & { reportWaitMs?: number };
+/**
+ * `onOutput` is required: an RPC session writes only to its logs and this
+ * callback, never to the terminal.
+ */
+export type PiRpcOptions = Omit<PiSessionOptions, "onOutput"> & {
+  onOutput: (chunk: string) => void;
+  reportWaitMs?: number;
+};
 
 const REPORT_WAIT_MS = 15_000;
 type Pending = {
@@ -67,7 +74,6 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
   const errors: unknown[] = [];
   const pending = new Map<string, Pending>();
   const reports = new Map<number, number>();
-  const missedReports = new Set<number>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const exited = Promise.withResolvers<void>();
   let logs: Awaited<ReturnType<typeof fs.open>>[] = [];
@@ -79,6 +85,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
   let settles = 0;
   let lastMessage: RpcMessage | undefined;
   let lastAssistant: RpcMessage | undefined;
+  let logFailed = false;
   let failedPrompt = false;
   let interruption: Promise<void> | undefined;
   let escalation: Promise<void> | undefined;
@@ -97,19 +104,15 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     if (!errors.includes(error)) errors.push(error);
     void interrupt();
   };
-  const log = (chunk: string, stdout = false) => {
-    if (!chunk) return;
+  const log = (chunk: string) => {
+    if (!chunk || logFailed) return;
     writes = writes.then(async () => {
+      if (logFailed) return;
       try {
         for (const file of logs) await file.writeFile(chunk);
-        if (options.onOutput) options.onOutput(chunk);
-        else
-          await new Promise<void>((done, reject) =>
-            (stdout ? process.stdout : process.stderr).write(chunk, (error) =>
-              error ? reject(error) : done(),
-            ),
-          );
+        options.onOutput(chunk);
       } catch (error) {
+        logFailed = true;
         fail(error);
       }
     });
@@ -155,6 +158,8 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
   const interrupt = (kind?: "aborted" | "timedOut") => {
     if (closed) return Promise.resolve();
     if (kind) result[kind] = true;
+    // Before the spawn, the flag is enough: run() checks it and starts nothing.
+    if (!child) return Promise.resolve();
     interruption ??= (async () => {
       const abort = send("abort").catch(() => undefined);
       await Promise.race([abort, waitForExit(graceMs)]);
@@ -174,9 +179,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
   };
   const evaluate = () => {
     if (finished || busy || settles === 0) return;
-    const report = reports.get(settles);
-    if (report === 0 || (report === undefined && missedReports.has(settles)))
-      finish();
+    if (reports.get(settles) === 0) finish();
   };
   const onRecord = (record: RpcRecord) => {
     switch (record.type) {
@@ -211,10 +214,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
       }
       case "extension_error": {
         const error = record as Extract<RpcRecord, { type: "extension_error" }>;
-        log(
-          `Extension error (${error.extensionPath}): ${error.error}\n`,
-          false,
-        );
+        log(`Extension error (${error.extensionPath}): ${error.error}\n`);
         return;
       }
       case "message_end": {
@@ -226,7 +226,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
         if (message?.role !== "assistant") return;
         lastAssistant = message;
         const shown = printModeResult(message);
-        log(shown.stdout, true);
+        log(shown.stdout);
         log(shown.stderr);
         return;
       }
@@ -242,7 +242,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
             log(
               `Warning: no background-work report for settle ${settle} after ${reportWaitMs}ms; finishing without it.\n`,
             );
-            missedReports.add(settle);
+            reports.set(settle, 0);
             evaluate();
           });
         evaluate();
@@ -253,7 +253,8 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
 
   const run = async (): Promise<PiSession> => {
     if (result.aborted) return result;
-    let onAbort: (() => void) | undefined;
+    const onAbort = () => void interrupt("aborted");
+    options.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       const promptPath = resolve(options.cwd, options.promptPath);
       const prompt = promptFileText(
@@ -263,6 +264,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
       logs.push(await fs.open(options.logPath, "w"));
       if (options.aggregateLogPath)
         logs.push(await fs.open(options.aggregateLogPath, "a"));
+      if (result.aborted) return result;
       child = spawn(
         options.command.command,
         piCommandArgs(options.command, piRpcArgs(options)),
@@ -283,7 +285,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
       child.stderr!.setEncoding("utf8");
       child.stdout!.on(
         "data",
-        jsonlRecords(onRecord, (line) => log(`${line}\n`, true)),
+        jsonlRecords(onRecord, (line) => log(`${line}\n`)),
       );
       child.stderr!.on("data", (chunk: string) => log(chunk));
       child.stdout!.on("error", fail);
@@ -298,17 +300,13 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
         pending.clear();
         exited.resolve();
       });
-      onAbort = () => void interrupt("aborted");
-      options.signal?.addEventListener("abort", onAbort, { once: true });
       later(options.timeoutMs, () => void interrupt("timedOut"));
-      if (options.signal?.aborted) onAbort();
       void send("prompt", { message: prompt }).then(
         (response) => {
           if ("success" in response && !response.success) {
             log(`${String(response.error ?? "Prompt failed")}\n`);
             failedPrompt = true;
-            finished = true;
-            endInput();
+            finish();
           } else if (
             (response as { data?: { disposition?: string } }).data
               ?.disposition === "handled"
@@ -328,7 +326,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     } catch (error) {
       errors.push(error);
     } finally {
-      if (onAbort) options.signal?.removeEventListener("abort", onAbort);
+      options.signal?.removeEventListener("abort", onAbort);
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
       for (const file of logs) {

@@ -2,6 +2,7 @@
 // protocol that Patchmill's RPC client uses. The order of records follows
 // Pi 1.5.2: extension handlers for `agent_settled` (and so the
 // background-work report) run before Pi writes `agent_settled`.
+import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import fs from "node:fs/promises";
 
@@ -18,13 +19,25 @@ export async function runRpc({ step, script, sideEffects }) {
       dialogs.get(command.id)?.(command);
       return;
     }
+    // Exit with the command still unanswered.
+    if (command.type === step.exitOn) process.exit(3);
+    if (command.type === "prompt" && step.promptError) {
+      out({
+        id: command.id,
+        type: "response",
+        command: "prompt",
+        success: false,
+        error: step.promptError,
+      });
+      return;
+    }
     if (command.type === "prompt") {
       out({
         id: command.id,
         type: "response",
         command: "prompt",
         success: true,
-        data: { disposition: "started" },
+        data: { disposition: step.handled ? "handled" : "started" },
       });
       prompted.resolve();
       return;
@@ -71,7 +84,25 @@ export async function runRpc({ step, script, sideEffects }) {
       statusText: `${settle}:${count}`,
     });
 
+  if (step.spawnChild) {
+    // A group member that outlives Pi and ignores its closed input.
+    const grandchild = spawn(
+      process.execPath,
+      ["-e", "process.on('SIGTERM',()=>{}); setInterval(()=>{},1000)"],
+      { stdio: "ignore" },
+    );
+    await fs.writeFile(`${script}.child.pid`, String(grandchild.pid));
+    grandchild.unref();
+  }
+  if (step.extensionError)
+    out({
+      type: "extension_error",
+      extensionPath: "/ext/broken.ts",
+      event: "session_start",
+      error: step.extensionError,
+    });
   await prompted.promise;
+  if (step.handled || step.promptError) return;
   out({ type: "agent_start" });
   await sideEffects();
   if (step.stderr !== undefined) console.error(step.stderr);

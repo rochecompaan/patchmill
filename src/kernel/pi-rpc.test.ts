@@ -246,6 +246,73 @@ test("steer and follow_up reach Pi while it runs and reject after", async (t) =>
   await assert.rejects(session.followUp("late"), /done/);
 });
 
+test("a failed prompt is logged and exits with code 1", async (t) => {
+  const f = await fake(t, [{ promptError: "No model configured" }]);
+  const result = await runPiRpc(f.options);
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.stdout, "");
+  assert.match(await f.log(), /No model configured/);
+});
+
+test("a handled prompt finishes at once with empty stdout", async (t) => {
+  const f = await fake(t, [{ handled: true }]);
+  const result = await runPiRpc({ ...f.options, reportWaitMs: 60_000 });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout, "");
+});
+
+test("extension errors go to the log", async (t) => {
+  const f = await fake(t, [{ extensionError: "boom", result: done }]);
+  await runPiRpc(f.options);
+  assert.match(await f.log(), /Extension error \(\/ext\/broken\.ts\): boom/);
+});
+
+test("a group member left after Pi exits is stopped", async (t) => {
+  const f = await fake(t, [{ spawnChild: true, result: done }]);
+  const result = await runPiRpc(f.options);
+  assert.equal(parseAgentResult(result.stdout).ok, true);
+  const pid = Number(await fs.readFile(`${f.script}.child.pid`, "utf8"));
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+});
+
+test("Pi exiting with a command outstanding rejects it and resolves done", async (t) => {
+  const f = await fake(t, [{ result: done, sleepMs: 5000, exitOn: "steer" }]);
+  const session = startPiRpc(f.options);
+  await waitFor(async () => (await f.log()).includes("Finished"));
+  await assert.rejects(session.steer("go"), /Pi exited/);
+  const result = await session.done;
+  assert.equal(result.exitCode, 3);
+  assert.equal(signalGroup(await f.pid(), 0), false);
+});
+
+test("abort while startup is pending starts no Pi and resolves done", async (t) => {
+  const f = await fake(t, [{ result: done }]);
+  const session = startPiRpc(f.options);
+  await session.abort();
+  const result = await session.done;
+  assert.equal(result.aborted, true);
+  assert.equal(result.exitCode, null);
+  await assert.rejects(fs.stat(`${f.script}.pid`), { code: "ENOENT" });
+});
+
+test("a log write failure rejects done once and stops Pi", async (t) => {
+  const f = await fake(t, [{ result: done, sleepMs: 5000 }]);
+  let calls = 0;
+  const failure = new Error("sink closed");
+  await assert.rejects(
+    runPiRpc({
+      ...f.options,
+      onOutput: () => {
+        calls++;
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  assert.equal(calls, 1);
+  assert.equal(signalGroup(await f.pid(), 0), false);
+});
+
 test("jsonlRecords splits only on newline and passes other text through", () => {
   const records: unknown[] = [];
   const text: string[] = [];
