@@ -1,6 +1,9 @@
+import { extname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { Phase } from "./phase.ts";
-import { supervisePi, type PiSession } from "./pi-supervisor.ts";
+import { runPiRpc } from "./pi-rpc.ts";
+import type { PiSession } from "./pi-supervisor.ts";
 import { parseAgentResult, type ParsedResult } from "./result.ts";
 
 export type PhaseLaunch = {
@@ -32,13 +35,25 @@ export type PhaseRun = {
 };
 export type PhaseLauncher = (launch: PhaseLaunch) => Promise<PhaseRun>;
 
-export function printModeLauncher(options: {
+/**
+ * The Pi extension that reports outstanding background subagent work, so that
+ * an RPC session finishes where print mode would. It has the extension of this
+ * module: `.ts` from source, `.js` from `dist`.
+ */
+export const BACKGROUND_WORK_EXTENSION_PATH = fileURLToPath(
+  new URL(
+    `../pi/background-work-extension${extname(fileURLToPath(import.meta.url))}`,
+    import.meta.url,
+  ),
+);
+
+export function rpcModeLauncher(options: {
   command: PiCommandSpec;
   agentDir: string;
   extensionPaths: string[];
 }): PhaseLauncher {
   return async (launch) => {
-    const session = await supervisePi({
+    const session = await runPiRpc({
       command: options.command,
       cwd: launch.worktree,
       agentDir: options.agentDir,
@@ -47,7 +62,11 @@ export function printModeLauncher(options: {
       promptPath: launch.promptPath,
       logPath: launch.logPath,
       aggregateLogPath: launch.aggregateLogPath,
-      extensionPaths: options.extensionPaths,
+      // First, so its shutdown handler runs before pi-subagents removes its bridge.
+      extensionPaths: [
+        BACKGROUND_WORK_EXTENSION_PATH,
+        ...options.extensionPaths,
+      ],
       timeoutMs: launch.timeoutMs,
       // Keep the agent protocol in the logs, not the operator's terminal.
       onOutput: () => {},

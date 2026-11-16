@@ -4,7 +4,7 @@ import type {
   Wait,
   BlockAnswer,
 } from "../src/kernel/human-channel.ts";
-import { printModeLauncher } from "../src/kernel/launch.ts";
+import { rpcModeLauncher } from "../src/kernel/launch.ts";
 import type { Scenario } from "./run-once-fixture.ts";
 
 export function fakeHuman(
@@ -19,7 +19,7 @@ export function fakeHuman(
   const feedback: string[] = [];
   let planningCount = 0;
   let waitCount = 0;
-  const launch = printModeLauncher({
+  const launch = rpcModeLauncher({
     command: c.deps.piCommand,
     agentDir: resolve(c.repoRoot, c.config.pi.agentDir),
     extensionPaths: c.deps.extensionPaths,
