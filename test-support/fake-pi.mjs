@@ -28,60 +28,69 @@ await fs.writeFile(
   join(sessionDir, "fake.jsonl"),
   '{"usage":{"input":100,"output":20,"cost":{"total":0.05}}}\n',
 );
-for (const [path, content] of Object.entries(step.writeFiles ?? {})) {
-  await fs.mkdir(dirname(path), { recursive: true });
-  await fs.writeFile(path, content);
-}
-const git = promisify(execFile);
-if (step.commit) {
-  await git("git", ["add", "-A"]);
-  await git("git", ["commit", "-m", step.commit]);
-}
-if (step.push) await git("git", ["push", "-u", "origin", "HEAD"]);
-if (step.pullRequest) {
-  const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
-  if (!stateFile) throw new Error("PATCHMILL_FAKE_HOST_STATE is required");
-  const { stdout } = await git("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
-  const headBranch = stdout.trim();
-  // Read after git finishes so host changes made during that command survive.
-  const state = JSON.parse(readFileSync(stateFile, "utf8"));
-  const headRepository =
-    state.pushRepository ??
-    `${state.repository.owner}/${state.repository.repo}`;
-  const existing = state.pullRequests.find(
-    (pr) =>
-      pr.headBranch === headBranch && pr.headRepository === headRepository,
-  );
-  if (existing) {
-    Object.assign(existing, step.pullRequest, { headBranch });
-  } else {
-    const number =
-      Math.max(0, ...state.pullRequests.map((pr) => pr.number)) + 1;
-    state.pullRequests.push({
-      number,
-      url: `https://example.invalid/pulls/${number}`,
-      state: "open",
-      draft: true,
-      body: "",
-      headRepository,
-      baseBranch: state.repository.defaultBranch,
-      ...step.pullRequest,
-      headBranch,
-    });
+async function sideEffects() {
+  for (const [path, content] of Object.entries(step.writeFiles ?? {})) {
+    await fs.mkdir(dirname(path), { recursive: true });
+    await fs.writeFile(path, content);
   }
-  writeFileSync(stateFile, JSON.stringify(state));
+  const git = promisify(execFile);
+  if (step.commit) {
+    await git("git", ["add", "-A"]);
+    await git("git", ["commit", "-m", step.commit]);
+  }
+  if (step.push) await git("git", ["push", "-u", "origin", "HEAD"]);
+  if (step.pullRequest) {
+    const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
+    if (!stateFile) throw new Error("PATCHMILL_FAKE_HOST_STATE is required");
+    const { stdout } = await git("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+    const headBranch = stdout.trim();
+    // Read after git finishes so host changes made during that command survive.
+    const state = JSON.parse(readFileSync(stateFile, "utf8"));
+    const headRepository =
+      state.pushRepository ??
+      `${state.repository.owner}/${state.repository.repo}`;
+    const existing = state.pullRequests.find(
+      (pr) =>
+        pr.headBranch === headBranch && pr.headRepository === headRepository,
+    );
+    if (existing) {
+      Object.assign(existing, step.pullRequest, { headBranch });
+    } else {
+      const number =
+        Math.max(0, ...state.pullRequests.map((pr) => pr.number)) + 1;
+      state.pullRequests.push({
+        number,
+        url: `https://example.invalid/pulls/${number}`,
+        state: "open",
+        draft: true,
+        body: "",
+        headRepository,
+        baseBranch: state.repository.defaultBranch,
+        ...step.pullRequest,
+        headBranch,
+      });
+    }
+    writeFileSync(stateFile, JSON.stringify(state));
+  }
+  if (step.issuePatch) {
+    const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
+    const state = JSON.parse(readFileSync(stateFile, "utf8"));
+    Object.assign(state.issues[0], step.issuePatch);
+    writeFileSync(stateFile, JSON.stringify(state));
+  }
 }
-if (step.issuePatch) {
-  const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
-  const state = JSON.parse(readFileSync(stateFile, "utf8"));
-  Object.assign(state.issues[0], step.issuePatch);
-  writeFileSync(stateFile, JSON.stringify(state));
+
+if (process.argv.includes("--mode")) {
+  const { runRpc } = await import("./fake-pi-rpc.mjs");
+  await runRpc({ step, script, sideEffects });
+} else {
+  await sideEffects();
+  if (step.stdout !== undefined) console.log(step.stdout);
+  if (step.stderr !== undefined) console.error(step.stderr);
+  for (const name of step.printEnv ?? []) console.log(process.env[name] ?? "");
+  if (step.sleepMs)
+    await new Promise((resolve) => setTimeout(resolve, step.sleepMs));
+  if (step.result !== undefined && step.result !== null)
+    console.log(`\`\`\`json\n${JSON.stringify(step.result)}\n\`\`\``);
+  process.exitCode = step.exitCode ?? 0;
 }
-if (step.stdout !== undefined) console.log(step.stdout);
-if (step.stderr !== undefined) console.error(step.stderr);
-for (const name of step.printEnv ?? []) console.log(process.env[name] ?? "");
-if (step.sleepMs)
-  await new Promise((resolve) => setTimeout(resolve, step.sleepMs));
-if (step.result !== undefined && step.result !== null)
-  console.log(`\`\`\`json\n${JSON.stringify(step.result)}\n\`\`\``);
-process.exitCode = step.exitCode ?? 0;
