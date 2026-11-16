@@ -287,17 +287,29 @@ retried message counts once.
 Look at Pi Durable again if Pi adds a way to run `pi-coding-agent` extensions on
 it.
 
-## Things to test before live chat
+## Answers from #305
 
-Issue #305 (Pi RPC mode in run-once) tests these first and records the answers
-here.
+Issue #305 tested these with Pi 1.5.2.
 
-- Pi's `--fork` option works with `--mode rpc`. If it doesn't, the RPC `fork`
-  command may meet the same need.
-- A resumed Pi session can use a different tool list. If it can't, a small
-  Patchmill extension can block writing tools during the brainstorm.
+- **Pi's `--fork` option works with `--mode rpc`.**
+  `pi --mode rpc --fork <file> --session-dir <dir>` makes a new session file in
+  `<dir>`. Its header records `parentSession: <file>`. The file holds a copy of
+  the source entries. The RPC `fork` command is a different feature. It branches
+  the current session from an earlier user message. Live chat does not need it.
+- **A resumed session can use a different tool list.**
+  `--session <file> --tools read,ls` gives only `read` and `ls`. A later resume
+  of the same file without `--tools` gives the full tool set again. An extension
+  can also change the tools with `pi.setActiveTools()`. Pi does not keep that
+  change for a later resume. The command line wins.
 
-One difference is already known. In RPC mode, Pi tells extensions that a user
-interface exists (`ctx.hasUI` is `true`), and extension dialogs wait for the
-client to answer. In print mode (`pi -p`), dialogs return at once with no
-answer. So run-once must answer every dialog itself, or a run could hang.
+In RPC mode, Pi tells extensions that a user interface exists (`ctx.hasUI` is
+`true`). This has two effects on run-once:
+
+- Extension dialogs wait for the client to answer. In print mode (`pi -p`),
+  dialogs return at once with no answer. Run-once answers each dialog as
+  cancelled, so a run cannot hang on a dialog.
+- `pi-subagents` does not wait for background subagents before the agent
+  settles. Their results start a new turn later. A small Patchmill extension
+  reports after each settle whether background work is still open. Run-once
+  finishes at the first settle with no open work. If no report comes in 15
+  seconds, run-once finishes with a warning in the log.
