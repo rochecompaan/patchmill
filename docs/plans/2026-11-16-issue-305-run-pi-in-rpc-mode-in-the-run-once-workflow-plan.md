@@ -50,7 +50,14 @@ no HTML companion.
   `{ version: 1, register({ name, sessionId, sessionFile?, isActive }) → release }`.
   Count is `1` when any live registration for the current session ID returns
   `true` from `isActive()`, else `0`.
-- Shutdown stops: at most 3 s in total, only when the count is still `1`.
+- Idle polling: after a `1` report, the extension checks `isActive()` every 1 s
+  until the next turn starts. When it is `0`, it sends `"<settle>:0"` again with
+  the same settle number. The client keeps the latest report per settle.
+- `isActive()` throws: log to stderr, count that registration as `0`.
+- Shutdown stops: call `isActive()` again; stop only if it is `true`; at most 3
+  s in total.
+- "Last message" means the last `message_end` of any role (print mode reads
+  `state.messages.at(-1)`). Only an assistant message gives text.
 - Dialog answer: `{"type":"extension_ui_response","id":<id>,"cancelled":true}`
   for `select`, `confirm`, `input`, and `editor`.
 - Exit-code parity with print mode: last assistant `stopReason` `error` or
@@ -69,9 +76,9 @@ no HTML companion.
 
 ## Review Focus
 
-1. **Pi dies while a command is outstanding.** `get_last_assistant_text` or
-   `abort` gets no response because Pi exited. Expect: `done` resolves from the
-   process exit, never hangs. Test in Task 1 (`crash before settle`).
+1. **Pi dies while a command is outstanding.** `abort` gets no response because
+   Pi exited. Expect: `done` resolves from the process exit, never hangs. Test
+   in Task 1 (`crash before settle`).
 2. **Writes to stdin after Pi exits.** An `EPIPE` on stdin must not throw out of
    `done` or crash Patchmill. Test in Task 1 (`abort after exit`).
 3. **A stdout record split across chunks, or one with U+2028 in a string.**
@@ -159,9 +166,9 @@ all current step side effects (session file, `writeFiles`, `commit`, `push`,
 talks:
 
 0. Write `process.pid` to `${script}.pid`, so tests can check the group.
-1. Read JSONL commands from stdin. Answer `abort`, `steer`, `follow_up`, and
-   `get_last_assistant_text` (with `data: { text }`) with `success: true`.
-   Append each received command as one JSON line to `${script}.commands.log`.
+1. Read JSONL commands from stdin. Answer `abort`, `steer`, and `follow_up` with
+   `success: true`. Append each received command as one JSON line to
+   `${script}.commands.log`.
 2. On `prompt`, answer `{disposition:"started"}`, run side effects, then emit a
    `message_end` with an assistant message. Its text is the `stdout` lines, the
    `printEnv` lines, and the fenced result block, joined with `\n`. Its
@@ -174,9 +181,10 @@ talks:
 5. For each entry of `step.backgroundCounts ?? [0]` (index `i`): unless
    `step.noReport`, emit a `setStatus` request with
    `statusKey: "patchmill-background-work"` and `statusText: "<i+1>:<count>"`;
-   then emit `agent_settled`. With `step.reportAfterSettle`, swap the two. If
-   the count is above 0, wait 50 ms and emit another assistant `message_end`
-   with text `background turn <i+2>` before the next settle.
+   then emit `agent_settled`. With `step.reportAfterSettle`, swap the two. With
+   `step.lateZero` and a count above 0, wait 50 ms, then emit `"<i+1>:0"` and no
+   further turn. If the count is above 0, wait 50 ms and emit another assistant
+   `message_end` with text `background turn <i+2>` before the next settle.
 6. On stdin end, exit 0 unless `ignoreSigterm`.
 
 Print mode in the fake is unchanged.
@@ -214,7 +222,9 @@ Print mode in the fake is unchanged.
   - `timeout` for `ignoreSigterm` `false` and `true` → `timedOut true`, `signal`
     `SIGTERM` or `SIGKILL`.
   - `background work`: `backgroundCounts:[1,0]` → `stdout` is
-    `background turn 2`.
+    `background turn 2\n`.
+  - `late zero`: `backgroundCounts:[1]`, `lateZero:true` → session ends with
+    `exitCode 0` in under 5 s, and `stdout` is the first turn's text.
   - `missing report`: `noReport:true`, `reportWaitMs:100` → session ends,
     `exitCode 0`, log contains `background-work report`.
   - `framing`: feed `jsonlRecords` the chunks `'{"a":"x y"}\r'` and
@@ -232,8 +242,8 @@ Print mode in the fake is unchanged.
       Log writes, `onOutput`, and sink error handling follow `supervisePi`.
       Assistant `message_end` text and non-JSON stdout lines go to the logs when
       they arrive; stderr as it arrives; `extension_error` as
-      `Extension error (<path>): <error>`. Keep the last assistant message for
-      parity and the crash fallback. After a normal exit, if
+      `Extension error (<path>): <error>`. Keep the last `message_end` message
+      (any role) for parity and the crash fallback. After a normal exit, if
       `signalGroup(pid, 0)` is `true`, run the same `SIGTERM`/`SIGKILL`
       escalation. Catch stdin `error` events.
 - [ ] **Step 5: Run**
@@ -268,8 +278,11 @@ Rules (from the spec):
   original. Any other value: leave it, and report `0`.
 - `agent_settled` handler: count = `1` if any kept registration with
   `sessionId === ctx.sessionManager.getSessionId()` returns `true` from
-  `isActive()` (a throw counts as `true`), else `0`. Call
+  `isActive()`, else `0`. A throw is logged to stderr and counts as `0`. Call
   `ctx.ui.setStatus(BACKGROUND_WORK_STATUS, "<n>:<count>")`.
+- After a `1` report, poll every 1 s (`pollMs` option for tests) until
+  `agent_start` or a `0`; on `0` call `setStatus` with `"<n>:0"`. Clear the
+  timer on `agent_start` and `session_shutdown`.
 - `session_shutdown` handler: if the count is `1`, call `activeRuns()` and
   `stop(id)` for each, all within 3 s in total, then dispose the client.
 
@@ -286,9 +299,13 @@ Rules (from the spec):
   - A released registration is ignored.
   - An existing v1 registry: its `register` still gets the registration, and the
     extension still sees it.
-  - `isActive` throws → `"1:1"`.
-  - `session_shutdown` while active with one running run → one `stop` request
-    with that ID. While idle → no `status` request.
+  - `isActive` throws → `"1:0"`.
+  - Idle polling: `isActive` `true` at settle, then `false` with no new settle →
+    statuses `"1:1"` then `"1:0"`. An `agent_start` before that stops the
+    polling (no further status).
+  - `session_shutdown` while `isActive` is `true` with one running run → one
+    `stop` request with that ID. While `isActive` is `false` → no `status`
+    request.
   - `session_shutdown` with no `pi-subagents` reply → resolves within 3.5 s.
 - [ ] **Step 2: Run**
       `node --test src/pi/background-work-extension.test.ts src/console/subagents-client.test.ts`.
@@ -421,6 +438,20 @@ client is a deep module behind the unchanged `PiSession` interface.
 - **Suggestion (declined):** a missing report stays a log warning, not a phase
   warning. The extension is part of Patchmill, so a missing report means a load
   failure, which Pi already logs as an `extension_error`.
+
+**Scoped confirmation:** a second fresh `reviewer` (same model) checked commit
+`d0b3e85`. It confirmed B2, B3, and B4, the registry timing, and the handler
+order against the sources. It found one new blocker: `isActive()` can become
+false with no new turn (retained nested routes, nested children of a finished
+job, an expired wake), so the phase would wait until its timeout, where print
+mode finishes. Fix (accepted): the extension polls `isActive()` every 1 s while
+idle after a `1` report and sends a `0` report for the same settle; a throw now
+counts as `0`. Suggestions accepted: "last message" means any role, as in print
+mode; shutdown calls `isActive()` again; the stale `get_last_assistant_text`
+references are gone; the `background work` test expects the trailing newline.
+Declined: resolving `promptPath` against `cwd`, because callers always pass an
+absolute path. These fixes are local to the finish rule and Task 1–2 tests, so
+no further review is needed.
 
 **Inspection limits:** no tests or builds ran, because there is no
 implementation yet. The liveness-registry route was read from source and not

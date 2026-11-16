@@ -112,10 +112,11 @@ into an issue comment.
 
 ### Rules
 
-- **Finish rule.** A phase session finishes at an `agent_settled` event when the
-  background-work report for that settle is `0`. If the report is `1`, the
-  session continues and waits for the next `agent_settled`. The phase timeout
-  still applies.
+- **Finish rule.** A phase session finishes when the latest background-work
+  report for the latest `agent_settled` is `0`. If the report is `1`, the
+  session continues. It finishes at a later settle with a `0` report, or when a
+  repeated report for the same settle changes to `0`. The phase timeout still
+  applies.
 - **Outstanding work.** `pi-subagents` already computes whether a session still
   owes work: queued or running runs, owed results, pending deliveries, and a
   pending parent wake (`isActive` in `extension/index.js`). It publishes this
@@ -125,7 +126,16 @@ into an issue comment.
   extension installs this registry when it loads, if no registry is there. If a
   registry is there, it wraps `register` and keeps a copy of each registration.
   The report is `1` when any registration for the current session returns
-  `isActive() === true`. Otherwise it is `0`.
+  `isActive() === true`. Otherwise it is `0`. If `isActive()` throws, the
+  extension writes the error to stderr and counts that registration as `0`, so a
+  broken check cannot hold a phase until its timeout.
+- **Polling while idle.** `isActive()` can become false with no new turn: a
+  retained nested route that a poller removes, live nested children of a
+  finished async job, or an expired parent wake. Print mode does not wait for
+  these. Thus, after a report of `1`, the extension checks `isActive()` again
+  every 1 s while the session is idle. When the result is `0`, it sends the
+  report again as `"<settle>:0"`, with the same settle number. A new turn stops
+  the polling.
 - **Report channel.** The extension's `agent_settled` handler calls
   `ctx.ui.setStatus("patchmill-background-work", "<settle>:<count>")`.
   `<settle>` is the 1-based number of that `agent_settled` event in the process.
@@ -138,13 +148,15 @@ into an issue comment.
   thus cannot hold a phase until its timeout.
 - **Shutdown.** The background-work extension loads before the other `-e`
   extensions, so its `session_shutdown` handler runs before the `pi-subagents`
-  handler removes its RPC bridge. If work is still active, it stops each active
-  run of the session through the `pi-subagents` `stop` RPC, within 3 s in total.
-  Async subagent runners are detached from the Pi process group, so a group
-  signal does not stop them. After a normal finish no work is active, so this
-  matters only for abort, timeout, and a failed report.
+  handler removes its RPC bridge. It calls `isActive()` again. If work is still
+  active, it stops each active run of the session through the `pi-subagents`
+  `stop` RPC, within 3 s in total. Async subagent runners are detached from the
+  Pi process group, so a group signal does not stop them. After a normal finish
+  no work is active, so this matters only for abort, timeout, and a failed
+  report.
 - **Result.** After the finish rule passes, the client builds `stdout` from the
-  last `message_end` message with the print-mode rules below. It does not use
+  last `message_end` message of any role, as print mode reads the last message
+  of the session state, with the print-mode rules below. It does not use
   `get_last_assistant_text`, although the issue names that command. That command
   joins text blocks with no newline and trims the text, and it skips some
   aborted messages. Print mode writes each text block followed by `\n`. The
