@@ -298,6 +298,17 @@ test("sessionPresentation follows the issue-state table", async () => {
   );
   assert.deepEqual(pick({ ...base, run }), ["resume", "disabled", false]);
   assert.deepEqual(pick(base), ["start", "disabled", false]);
+  const refused = sessionPresentation(
+    {
+      ...base,
+      session: live("ended", { reason: "refused", message: "Not open." }),
+    },
+    true,
+  );
+  assert.deepEqual(
+    [refused?.header, refused?.composerHint],
+    ["start", "Not open."],
+  );
 });
 
 test("session posts send JSON with one request ID and retry once with it", async () => {

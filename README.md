@@ -230,8 +230,9 @@ CHROMIUM=/path/to/chromium npm run test:web
 ```
 
 CI runs this command and fails if no browser is available. It checks mobile
-layout, message controls, keyboard access, and delayed gallery images. The
-command does not change reference screenshots by default.
+layout, message controls, keyboard access, delayed gallery images, and the Web
+session controls on the issue page. The command does not change reference
+screenshots by default.
 
 To refresh its reference screenshots, set `LAYOUT_SCREENSHOTS=1`. To save its
 measurements, set `LAYOUT_EVIDENCE` to a local JSON path.

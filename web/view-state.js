@@ -1,3 +1,11 @@
+const SESSION_ACTIONS = new Set([
+  "start",
+  "resume",
+  "retry",
+  "pause",
+  "stop-reply",
+  "answer",
+]);
 /** @param {HTMLElement} mount @param {ReturnType<import('./state.js').createDraftStore>} drafts */
 export function createViewState(mount, drafts) {
   /** @type {Map<string,Set<string>>} */ const openTools = new Map();
@@ -72,8 +80,16 @@ export function createViewState(mount, drafts) {
                   ? node.getAttribute("data-action") === f.action
                   : !!f.id && node.id === f.id),
         );
-        if (control instanceof HTMLElement)
-          control.focus({ preventScroll: true });
+        // A session control can be replaced (Start → Pause) or removed (an
+        // answered question). Keep focus on a stable control nearby.
+        const fallback =
+          !control && f.action && SESSION_ACTIONS.has(f.action)
+            ? (mount.querySelector(".ihead .control button") ??
+              mount.querySelector("#composer-input:not(:disabled)"))
+            : null;
+        const target = control ?? fallback;
+        if (target instanceof HTMLElement)
+          target.focus({ preventScroll: true });
       }
     }
     const input = mount.querySelector("textarea");

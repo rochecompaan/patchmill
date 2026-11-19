@@ -204,8 +204,11 @@ export function sessionPresentation(detail, sessions) {
   // The crash message tells the user to press Resume.
   if (session?.ended?.reason === "crashed")
     return row("resume", "disabled", session.ended.message);
+  // A refused start says why under the control that follows.
+  const refused =
+    session?.ended?.reason === "refused" ? session.ended.message : null;
   if (issue.status === "blocked")
-    return row("retry", "disabled", statuses.blocked.hint);
+    return row("retry", "disabled", refused ?? statuses.blocked.hint);
   if (
     session?.ended?.reason === "paused" ||
     (detail.run && !detail.run.finishedAt)
@@ -213,9 +216,10 @@ export function sessionPresentation(detail, sessions) {
     return row(
       "resume",
       "disabled",
-      "This Issue run is paused. Click Resume to continue it.",
+      refused ?? "This Issue run is paused. Click Resume to continue it.",
     );
-  if (!detail.run) return row("start", "disabled", statuses.none.hint);
+  if (!detail.run)
+    return row("start", "disabled", refused ?? statuses.none.hint);
   return row(
     "resume",
     "disabled",

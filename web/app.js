@@ -122,14 +122,24 @@ async function sessionInput(action, body = {}) {
     openName();
     return false;
   }
+  // One input per issue at a time: a double click or a second Enter is not
+  // a second input.
+  const number = issue.issue.summary.number;
+  if (pendingInputs.has(number)) return false;
+  pendingInputs.add(number);
   notice.hidden = true;
-  const result = await api.session(issue.issue.summary.number, action, {
-    ...body,
-    author: name,
-  });
-  if (!result.ok) showNote(result.message);
-  return result.ok;
+  try {
+    const result = await api.session(number, action, {
+      ...body,
+      author: name,
+    });
+    if (!result.ok) showNote(result.message);
+    return result.ok;
+  } finally {
+    pendingInputs.delete(number);
+  }
 }
+/** @type {Set<number>} */ const pendingInputs = new Set();
 const controller = createPageController({
   api,
   events: (url) => new EventSource(url),
@@ -309,11 +319,17 @@ document.addEventListener("submit", (event) => {
       const text = input.value;
       void sessionInput("messages", { text }).then((ok) => {
         if (!ok || number === undefined) return;
-        // Clear the draft only when it still holds the sent text.
+        // A render can replace the textarea before the post returns: clear
+        // the current one, and only when it still holds the sent text.
         if (drafts.get(number) === text) drafts.set(number, "");
-        if (input.isConnected && input.value === text) {
-          input.value = "";
-          input.rows = 1;
+        const box = mount.querySelector("#composer-input");
+        if (
+          box instanceof HTMLTextAreaElement &&
+          box.dataset.issue === String(number) &&
+          box.value === text
+        ) {
+          box.value = "";
+          box.rows = 1;
         }
       });
     }

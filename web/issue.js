@@ -220,8 +220,8 @@ function renderHeader(doc, detail, name, p) {
   return header;
 }
 
-/** @param {Document} doc @param {IssueSummary} issue @param {string} name @param {string} draft @param {Presentation} p @param {'sample'|'live'} source */
-function renderComposer(doc, issue, name, draft, p, source) {
+/** @param {Document} doc @param {IssueSummary} issue @param {string} name @param {string} draft @param {Presentation} p @param {'sample'|'live'} source @param {boolean} sessions */
+function renderComposer(doc, issue, name, draft, p, source, sessions) {
   const footer = el(doc, "footer", "composer");
   if (p.composer === "terminal" || p.composer === "finished") {
     footer.append(el(doc, "div", "note-bar", p.composerHint));
@@ -239,7 +239,7 @@ function renderComposer(doc, issue, name, draft, p, source) {
   input.dataset.issue = String(issue.number);
   input.rows = 1;
   input.placeholder =
-    source === "live" && disabled
+    source === "live" && disabled && !sessions
       ? "Live chat is not available yet."
       : "Message the agent as " + name;
   input.setAttribute("aria-label", "Message the agent");
@@ -333,9 +333,14 @@ export function renderIssue(
   }
   const fragment = doc.createDocumentFragment();
   const active = source === "live" && detail.run?.outcome === "active";
+  const liveSession =
+    web && detail.session && detail.session.state !== "ended"
+      ? detail.session
+      : null;
+  // A live Web session shows its own working row.
   const thread = renderThread(
     doc,
-    web
+    liveSession
       ? { ...detail, summary: { ...detail.summary, status: "idle" } }
       : detail,
   );
@@ -368,8 +373,7 @@ export function renderIssue(
     thread.append(empty);
   }
   // An ended session is in the run files; only a live one renders here.
-  if (web && detail.session && detail.session.state !== "ended")
-    thread.append(renderSession(doc, detail));
+  if (liveSession) thread.append(renderSession(doc, detail));
   /** @type {Presentation} */
   const shown = web
     ? { ...p, ...web }
@@ -384,7 +388,7 @@ export function renderIssue(
         }
       : p;
   const header = renderHeader(doc, detail, name, web ? shown : p);
-  if ((active || (web && detail.session)) && connection) {
+  if ((active || liveSession) && connection) {
     const status = el(
       doc,
       "span",
@@ -401,7 +405,7 @@ export function renderIssue(
   fragment.append(
     header,
     thread,
-    renderComposer(doc, detail.summary, name, draft, shown, source),
+    renderComposer(doc, detail.summary, name, draft, shown, source, sessions),
   );
   return fragment;
 }
