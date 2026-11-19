@@ -1,11 +1,11 @@
-import { selectRunIssue } from "../../../kernel/issue-selection.ts";
+import { prepareInteractiveRun } from "../../../kernel/interactive-start.ts";
 import { formatRunResult } from "../../../kernel/console.ts";
 import { startConsole } from "../../../console/start.ts";
 import { loadConfig } from "../../../config/config.ts";
 import { runOneIssue, type RunOnceOptions } from "../../../kernel/run-once.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
-import { sweepMergedIssues } from "../../../kernel/merged-cleanup-sweep.ts";
+import type { sweepMergedIssues } from "../../../kernel/merged-cleanup-sweep.ts";
 import { createRunOnceDeps } from "./deps.ts";
 
 const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only] [--interactive]
@@ -71,38 +71,36 @@ export async function main(
     const config = await loadConfig(repoRoot);
     const runner = options.runner ?? runCommand;
     const deps = createRunOnceDeps({ config, repoRoot, runner, output });
-    const { workflow } = deps;
     if (runOptions.interactive) {
       process.on("SIGINT", abort);
       process.on("SIGTERM", abort);
+      let start;
       try {
-        await (options.sweepMergedIssues ?? sweepMergedIssues)({
-          ...deps,
+        start = await prepareInteractiveRun({
           config,
+          deps,
+          ...(runOptions.issue !== undefined
+            ? { issue: runOptions.issue }
+            : {}),
           report: output.stderr,
           signal: controller.signal,
+          ...(options.sweepMergedIssues
+            ? { sweep: options.sweepMergedIssues }
+            : {}),
         });
       } finally {
         process.off("SIGINT", abort);
         process.off("SIGTERM", abort);
       }
-      if (controller.signal.aborted) {
+      if (start.kind === "cancelled") {
         output.stderr("Run cancelled before interactive selection.");
         return 1;
       }
-      await workflow.sync(runOptions.issue);
-      const selection = await selectRunIssue({
-        host: deps.host,
-        workflow,
-        ...(runOptions.issue !== undefined ? { issue: runOptions.issue } : {}),
-        warn: (issue, message) =>
-          output.stderr(`Warning: Issue #${issue}: ${message}`),
-      });
-      if (selection.kind === "refused") {
-        output.stderr(selection.reason);
+      if (start.kind === "refused") {
+        output.stderr(start.reason);
         return 1;
       }
-      if (selection.kind === "none") {
+      if (start.kind === "none") {
         output.stdout(
           formatRunResult({ label: "No eligible issue", severity: "success" }),
         );
@@ -111,7 +109,7 @@ export async function main(
       const code = await (options.startConsole ?? startConsole)({
         config,
         deps,
-        issue: selection.issue.number,
+        issue: start.issue,
       });
       // Pi's normal quit also exits after awaited cleanup. A stopped console
       // can retain Pi-owned handles (for example custom-theme file watchers).
