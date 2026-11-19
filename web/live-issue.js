@@ -6,7 +6,11 @@ export function applyIssueUpdate(response, update) {
     return {
       ...response,
       syncedAt: update.syncedAt,
-      issue: { ...update.header, thread: response.issue.thread },
+      issue: {
+        ...update.header,
+        thread: response.issue.thread,
+        session: response.issue.session ?? null,
+      },
     };
   if (update.kind === "thread") {
     const index =

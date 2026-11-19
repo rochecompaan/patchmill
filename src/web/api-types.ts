@@ -87,6 +87,8 @@ export interface IssueResponse {
   readonly source: "sample" | "live";
   readonly revision: string;
   readonly syncedAt: string | null;
+  /** The server has a Session hub. `--sample` is view only. */
+  readonly sessions: boolean;
   readonly issue: IssueDetail;
 }
 
@@ -101,6 +103,8 @@ export interface IssueDetail {
   readonly summary: IssueSummary;
   readonly participants: readonly string[];
   readonly thread: readonly ThreadEvent[];
+  /** The issue's live or recently ended Web session. */
+  readonly session: LiveSession | null;
   readonly artifacts: readonly Artifact[];
   readonly finalUsage: {
     readonly tokens: number | null;
@@ -250,7 +254,8 @@ export interface LiveSession extends LiveSessionHeader {
   readonly entries: readonly ThreadEvent[];
 }
 
-export type IssueHeader = Omit<IssueDetail, "thread">;
+/** Session data travels only in `session` updates and resets. */
+export type IssueHeader = Omit<IssueDetail, "thread" | "session">;
 export type IssueUpdate = { readonly id: string } & (
   | { readonly kind: "reset"; readonly issue: IssueResponse }
   | {
@@ -264,4 +269,9 @@ export type IssueUpdate = { readonly id: string } & (
       readonly entries: readonly ThreadEvent[];
     }
   | { readonly kind: "unavailable" }
+  | { readonly kind: "session"; readonly session: LiveSessionHeader | null }
+  | {
+      readonly kind: "session-entries";
+      readonly entries: readonly ThreadEvent[];
+    }
 );

@@ -1,5 +1,6 @@
 import type { IssueResponse, IssueUpdate } from "./api-types.ts";
 import type { RunDataSource } from "./run-data.ts";
+import type { SessionChange, SessionHub } from "./session/types.ts";
 export type FeedClock = {
   now(): number;
   every(ms: number, fn: () => void): () => void;
@@ -21,10 +22,20 @@ type Hub = {
   busy: boolean;
   stop?: (() => void) | undefined;
   expire?: (() => void) | undefined;
+  /** Unsubscribes from the Session hub when this state expires. */
+  unsubscribe?: (() => void) | undefined;
+  /** The last session id seen, to notice a new or removed session. */
+  sessionId?: string | null;
+  /** Reproject on the next tick: the run-file filter follows the session. */
+  reproject: boolean;
 };
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
-const header = ({ thread: _thread, ...rest }: IssueResponse["issue"]) => rest;
+const header = ({
+  thread: _thread,
+  session: _session,
+  ...rest
+}: IssueResponse["issue"]) => rest;
 
 /** Owns ordered observation, bounded replay, and lifetime of one feed per issue. */
 export function createIssueFeed(input: {
@@ -33,6 +44,7 @@ export function createIssueFeed(input: {
   clock: FeedClock;
   epoch(): string;
   warn(message: string): void;
+  sessions?: Pick<SessionHub, "current" | "subscribe">;
 }): Pick<RunDataSource, "subscribe"> {
   const hubs = new Map<number, Hub>();
   function deliver(s: Subscriber, update: IssueUpdate) {
@@ -69,6 +81,8 @@ export function createIssueFeed(input: {
     payload:
       | Omit<Extract<IssueUpdate, { kind: "header" }>, "id">
       | Omit<Extract<IssueUpdate, { kind: "thread" }>, "id">
+      | Omit<Extract<IssueUpdate, { kind: "session" }>, "id">
+      | Omit<Extract<IssueUpdate, { kind: "session-entries" }>, "id">
       | { kind: "unavailable" },
   ) {
     const u = { ...payload, id: `${h.epoch}-${++h.sequence}` } as IssueUpdate;
@@ -76,8 +90,22 @@ export function createIssueFeed(input: {
     if (h.log.length > 1000) h.log.shift();
     for (const s of h.subscribers) if (s.ready) deliver(s, u);
   }
+  /** Fold a session change into the stored state, then log it in order. */
+  function sessionChange(issue: number, h: Hub, change: SessionChange) {
+    if (!h.state) return; // The next reset reads current().
+    const session = input.sessions?.current(issue) ?? null;
+    const id =
+      change.kind === "session" ? (change.session?.id ?? null) : undefined;
+    if (id !== undefined && id !== h.sessionId) {
+      h.sessionId = id;
+      h.reproject = true;
+    }
+    h.state = { ...h.state, issue: { ...h.state.issue, session } };
+    emit(h, change);
+  }
   async function tick(issue: number, h: Hub, force = false) {
     if (h.busy || !h.subscribers.size) return;
+    force ||= h.reproject;
     h.busy = true;
     try {
       const fingerprint = await input.fingerprint(issue);
@@ -88,8 +116,18 @@ export function createIssueFeed(input: {
         fingerprint !== h.fingerprint ||
         input.clock.now() - h.projectedAt >= 60000
       ) {
-        const next = await input.project(issue);
+        h.reproject = false;
+        const projected = await input.project(issue);
         if (!h.subscribers.size) return;
+        // Session changes that arrived during projection are already folded.
+        const next =
+          projected && h.state
+            ? {
+                ...projected,
+                issue: { ...projected.issue, session: h.state.issue.session },
+              }
+            : projected;
+        h.sessionId = next?.issue.session?.id ?? null;
         const previous = h.state;
         if (previous === undefined) h.sequence = 1;
         else if (next === null) {
@@ -151,8 +189,13 @@ export function createIssueFeed(input: {
           subscribers: new Set(),
           projectedAt: -Infinity,
           busy: false,
+          reproject: false,
         };
         hubs.set(selection.issue, h);
+        const state = h;
+        state.unsubscribe = input.sessions?.subscribe(selection.issue, (c) =>
+          sessionChange(selection.issue, state, c),
+        );
       }
       const hub = h;
       const idle = !hub.subscribers.size;
@@ -175,7 +218,9 @@ export function createIssueFeed(input: {
         hub.stop?.();
         hub.stop = undefined;
         hub.expire = input.clock.after(300000, () => {
-          if (hubs.get(selection.issue) === hub) hubs.delete(selection.issue);
+          if (hubs.get(selection.issue) !== hub) return;
+          hubs.delete(selection.issue);
+          hub.unsubscribe?.();
         });
       };
     },

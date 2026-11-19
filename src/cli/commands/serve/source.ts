@@ -52,6 +52,7 @@ export async function createServeSource(input: {
   const source = createFileRunDataSource({
     ...input,
     config,
+    sessions,
     host,
     now: () => new Date(),
     metadata: {

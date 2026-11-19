@@ -41,6 +41,9 @@ export async function apiResponse(
   const snapshot = await source.snapshot({ issue: number });
   const issue = snapshot.details[String(number)];
   return issue
-    ? { status: 200, body: { ...metadata(snapshot), issue } }
+    ? {
+        status: 200,
+        body: { ...metadata(snapshot), sessions: snapshot.sessions, issue },
+      }
     : error(404, "not_found", "Issue not found.");
 }
