@@ -11,6 +11,9 @@ It leaves valid configuration unchanged and does not migrate earlier versions.
 
 ## Entry points
 
+See [Skills workflow](/reference/skills-workflow/) for diagrams of the skills
+that each phase uses.
+
 Only three skill keys exist in `patchmill.config.json`:
 
 ```json
