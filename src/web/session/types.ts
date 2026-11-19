@@ -1,4 +1,8 @@
-import type { LiveSessionHeader, ThreadEvent } from "../api-types.ts";
+import type {
+  LiveSession,
+  LiveSessionHeader,
+  ThreadEvent,
+} from "../api-types.ts";
 import type {
   InteractivePi,
   InteractivePiOptions,
@@ -35,3 +39,22 @@ export type HubErrorCode =
 export type HubResult =
   | { ok: true; duplicate: boolean }
   | { ok: false; code: HubErrorCode; message: string };
+
+export type SessionHub = {
+  start(issue: number, input: SessionInput): Promise<HubResult>;
+  send(issue: number, input: SessionInput & { text: string }): HubResult;
+  answer(
+    issue: number,
+    input: SessionInput & { questionId: string; choice: string },
+  ): HubResult;
+  stopReply(issue: number, input: SessionInput): HubResult;
+  /** Returns at once; the effect shows on the stream. */
+  pause(issue: number, input: SessionInput): HubResult;
+  current(issue: number): LiveSession | null;
+  subscribe(
+    issue: number,
+    listener: (change: SessionChange) => void,
+  ): () => void;
+  /** Idempotent. */
+  close(): Promise<void>;
+};
