@@ -1,16 +1,12 @@
-import { createWorkflowState } from "../../../kernel/workflow-factory.ts";
 import { selectRunIssue } from "../../../kernel/issue-selection.ts";
 import { formatRunResult } from "../../../kernel/console.ts";
 import { startConsole } from "../../../console/start.ts";
 import { loadConfig } from "../../../config/config.ts";
-import { createHost } from "../../../host/factory.ts";
-import { createKernelGit } from "../../../kernel/git.ts";
 import { runOneIssue, type RunOnceOptions } from "../../../kernel/run-once.ts";
-import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
-import { resolveBundledPiCommand } from "../../pi-cli.ts";
 import { sweepMergedIssues } from "../../../kernel/merged-cleanup-sweep.ts";
+import { createRunOnceDeps } from "./deps.ts";
 
 const HELP = `Usage: patchmill run-once [--issue N] [--dry-run] [--plan-only] [--interactive]
 Advance one issue. Use --dry-run to show the next phase without claiming it.
@@ -74,26 +70,8 @@ export async function main(
     const repoRoot = options.repoRoot ?? process.cwd();
     const config = await loadConfig(repoRoot);
     const runner = options.runner ?? runCommand;
-    const host = createHost(config, runner, repoRoot);
-    const now = () => new Date();
-    const workflow = createWorkflowState({
-      config,
-      host,
-      repoRoot,
-      now,
-      warn: (message) => output.stderr(`Warning: ${message}`),
-    });
-    const deps = {
-      host,
-      workflow,
-      runner,
-      git: createKernelGit(runner, repoRoot),
-      piCommand: resolveBundledPiCommand(),
-      extensionPaths: [resolvePiSubagentsPackageRoot()],
-      repoRoot,
-      now,
-      output,
-    };
+    const deps = createRunOnceDeps({ config, repoRoot, runner, output });
+    const { workflow } = deps;
     if (runOptions.interactive) {
       process.on("SIGINT", abort);
       process.on("SIGTERM", abort);

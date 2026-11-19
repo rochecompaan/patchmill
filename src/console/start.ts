@@ -15,6 +15,7 @@ import { resolvePiSubagentsPackageRoot } from "../pi/pi-subagents-package.ts";
 import { createConsoleSessionHost } from "./session-host.ts";
 import { openIssueConsoleSession } from "./console-session.ts";
 import type { StartRun } from "./controller.ts";
+import { acquireConsoleLock, CONSOLE_SESSION_BUSY } from "./console-lock.ts";
 
 export function collectConsoleDiagnostics(
   diagnostics: AgentSessionRuntimeDiagnostic[],
@@ -100,6 +101,25 @@ export async function startConsole(input: {
   issue: number;
 }): Promise<number> {
   const { config, deps, issue } = input;
+  const { repoRoot } = deps;
+  // Only one process writes an issue's Console session (terminal or web).
+  const lock = await acquireConsoleLock(repoRoot, config.paths.runsDir, issue);
+  if (!lock) {
+    deps.output.stderr(CONSOLE_SESSION_BUSY(issue));
+    return 1;
+  }
+  try {
+    return await openConsole(config, deps, issue);
+  } finally {
+    await lock.release();
+  }
+}
+
+async function openConsole(
+  config: PatchmillConfig,
+  deps: RunOnceDeps,
+  issue: number,
+): Promise<number> {
   const { repoRoot } = deps;
   const skillPaths = consoleSkillPaths(config, repoRoot);
   await provisionAgentDir(repoRoot, config.pi.agentDir, skillPaths);

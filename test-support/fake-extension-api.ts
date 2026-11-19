@@ -20,6 +20,7 @@ export function fakeExtensionApi(events = fakeSubagents()) {
       sessionManager: SessionManager;
       hasUI: boolean;
       ui: { setStatus(key: string, text: string | undefined): void };
+      shutdown(): void;
     },
   ) => Promise<void>;
   const handlers = new Map<string, Handler[]>();
@@ -59,6 +60,8 @@ export function fakeExtensionApi(events = fakeSubagents()) {
   const fake = Object.assign(api, {
     statuses,
     failStatus: false,
+    /** Calls of `ctx.shutdown()`, from any handler or command. */
+    shutdowns: 0,
     tools,
     commands,
     async callCommand(
@@ -69,6 +72,15 @@ export function fakeExtensionApi(events = fakeSubagents()) {
       if (!command) throw new Error("Unknown command patchmill-issue");
       await command.handler(args, { switchSession } as ExtensionCommandContext);
       return messages.at(-1)?.message.content;
+    },
+    async runCommand(name: string, args = "") {
+      const command = commands.get(name);
+      if (!command) throw new Error(`Unknown command ${name}`);
+      await command.handler(args, {
+        shutdown: () => {
+          fake.shutdowns += 1;
+        },
+      } as unknown as ExtensionCommandContext);
     },
     userMessages,
     messages,
@@ -86,6 +98,9 @@ export function fakeExtensionApi(events = fakeSubagents()) {
                 if (fake.failStatus) throw new Error("Stale UI context");
                 statuses.set(key, text);
               },
+            },
+            shutdown: () => {
+              fake.shutdowns += 1;
             },
           },
         );
