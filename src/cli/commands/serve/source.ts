@@ -5,14 +5,21 @@ import type { CommandRunner } from "../../../process/command.ts";
 import { createFileRunDataSource } from "../../../web/file-run-data.ts";
 import { createSampleRunDataSource } from "../../../web/sample-data.ts";
 import type { RunDataSource } from "../../../web/run-data.ts";
+import { join } from "node:path";
+import { probeIssueLock } from "../../../kernel/lock.ts";
+import { consoleLockHeld } from "../../../console/console-lock.ts";
+import { createSessionHub } from "../../../web/session/hub.ts";
+import type { SessionHub } from "../../../web/session/types.ts";
+import { createSessionLauncher } from "./session-launcher.ts";
 
 export async function createServeSource(input: {
   sample: boolean;
   repoRoot: string;
   runner: CommandRunner;
   warn: (message: string) => void;
-}): Promise<RunDataSource> {
-  if (input.sample) return createSampleRunDataSource();
+}): Promise<{ source: RunDataSource; sessions?: SessionHub }> {
+  // Sample data stays view only: it has no Session hub.
+  if (input.sample) return { source: createSampleRunDataSource() };
   const config = await loadConfig(input.repoRoot);
   const host = createHost(config, input.runner, input.repoRoot);
   const repository = await host.repository();
@@ -33,7 +40,16 @@ export async function createServeSource(input: {
       input.repoRoot,
     ).remoteDefaultBranch()) ??
     repository.defaultBranch;
-  return createFileRunDataSource({
+  const { repoRoot, runner, warn } = input;
+  const sessions = createSessionHub({
+    launch: createSessionLauncher({ config, repoRoot, runner }),
+    lockHeld: async (issue) =>
+      (await probeIssueLock(
+        join(repoRoot, config.paths.runsDir, `issue-${issue}`, "lock"),
+      )) || (await consoleLockHeld(repoRoot, config.paths.runsDir, issue)),
+    warn,
+  });
+  const source = createFileRunDataSource({
     ...input,
     config,
     host,
@@ -44,4 +60,5 @@ export async function createServeSource(input: {
       pushRepository: { slug: pushSlug, url: pushed.publicUrl },
     },
   });
+  return { source, sessions };
 }

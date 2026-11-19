@@ -6,6 +6,8 @@ import { issueEventsPath, serveIssueEvents } from "./event-stream.ts";
 import type { RunDataSource } from "./run-data.ts";
 import type { ServeAuth } from "./auth.ts";
 import type { RequestPolicy } from "./request-policy.ts";
+import { serveSessionRoute, sessionRoute } from "./session/routes.ts";
+import type { SessionHub } from "./session/types.ts";
 
 type RequestContext = {
   webRoot: string;
@@ -15,6 +17,8 @@ type RequestContext = {
   streams: Set<ServerResponse>;
   closing(): boolean;
   keepAliveMs: number;
+  /** Absent for `--sample`: the session routes answer 404. */
+  sessions?: SessionHub;
 };
 function send(
   res: ServerResponse,
@@ -38,6 +42,7 @@ export function createRequestHandler({
   streams,
   closing,
   keepAliveMs,
+  sessions,
 }: RequestContext) {
   return (req: IncomingMessage, res: ServerResponse) => {
     const method = req.method ?? "GET",
@@ -81,6 +86,15 @@ export function createRequestHandler({
           streams,
           closing,
           keepAliveMs,
+        });
+      const session = sessionRoute(path);
+      if (session)
+        return serveSessionRoute({
+          req,
+          res,
+          method,
+          route: session,
+          sessions,
         });
       if (method !== "GET" && method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");

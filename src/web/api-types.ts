@@ -205,7 +205,16 @@ export type Artifact = ArtifactLink & {
 
 export interface ApiError {
   readonly error: {
-    readonly code: "invalid_issue" | "not_found" | "internal_error";
+    readonly code:
+      | "invalid_issue"
+      | "not_found"
+      | "internal_error"
+      | "invalid_request"
+      | "invalid_author"
+      | "unsupported_media_type"
+      | "too_large"
+      | "method_not_allowed"
+      | import("./session/types.ts").HubErrorCode;
     readonly message: string;
   };
 }

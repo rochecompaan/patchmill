@@ -44,7 +44,7 @@ test("serve selects repository data by default and prints the real board prefix"
     output: { stdout: (s) => lines.push(s), stderr: assert.fail },
     createSource: async (input) => {
       selected = input.sample;
-      return createSampleRunDataSource();
+      return { source: createSampleRunDataSource() };
     },
     startServer: async () => ({
       origin: "http://127.0.0.1:4280",
