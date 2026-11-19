@@ -210,6 +210,37 @@ export interface ApiError {
   };
 }
 
+export type LiveSessionState =
+  | "starting"
+  | "idle"
+  | "replying"
+  | "question"
+  | "pausing"
+  | "ended";
+export interface LiveQuestion {
+  readonly id: string;
+  readonly kind: "select" | "confirm";
+  readonly title: string;
+  readonly message: string | null;
+  /** A confirm question offers "Yes" and "No". */
+  readonly options: readonly string[];
+}
+export interface LiveSessionHeader {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly state: LiveSessionState;
+  /** The last `setStatus("patchmill")` text. */
+  readonly status: string | null;
+  readonly question: LiveQuestion | null;
+  readonly ended: {
+    readonly reason: "finished" | "paused" | "crashed" | "refused";
+    readonly message: string;
+  } | null;
+}
+export interface LiveSession extends LiveSessionHeader {
+  readonly entries: readonly ThreadEvent[];
+}
+
 export type IssueHeader = Omit<IssueDetail, "thread">;
 export type IssueUpdate = { readonly id: string } & (
   | { readonly kind: "reset"; readonly issue: IssueResponse }

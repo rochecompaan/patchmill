@@ -1,7 +1,7 @@
 import type { ThreadEvent, TextBlock } from "./api-types.ts";
 import { object, timestamp } from "./run-files.ts";
 
-function text(content: unknown, attachmentNotice = false): string {
+export function text(content: unknown, attachmentNotice = false): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -14,7 +14,7 @@ function text(content: unknown, attachmentNotice = false): string {
     })
     .join("\n");
 }
-function shortened(value: string): string {
+export function shortened(value: string): string {
   const chars = Array.from(value);
   return chars.length > 8000
     ? chars.slice(0, 8000).join("") + "\nOutput shortened."

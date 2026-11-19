@@ -1,3 +1,4 @@
+import type { LiveSessionHeader, ThreadEvent } from "../api-types.ts";
 import type {
   InteractivePi,
   InteractivePiOptions,
@@ -15,3 +16,22 @@ export type SessionLauncher = (
   report: (line: string) => void,
   signal: AbortSignal,
 ) => Promise<LaunchResult>;
+
+export type SessionInput = { author: string; requestId: string };
+export type SessionChange =
+  | { kind: "session"; session: LiveSessionHeader | null }
+  /** Upsert by entry id. */
+  | { kind: "session-entries"; entries: readonly ThreadEvent[] };
+export type HubErrorCode =
+  | "session_live"
+  | "run_live"
+  | "no_session"
+  | "no_question"
+  | "already_answered"
+  /** HTTP 400; the other codes are 409. */
+  | "invalid_choice"
+  | "not_accepting"
+  | "closing";
+export type HubResult =
+  | { ok: true; duplicate: boolean }
+  | { ok: false; code: HubErrorCode; message: string };
