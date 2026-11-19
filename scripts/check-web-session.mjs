@@ -330,6 +330,27 @@ try {
       )),
     "question text is set as text, not markup",
   );
+  // A render while a choice has focus keeps focus on that choice.
+  await evaluate(
+    `document.querySelector('[data-choice="Request changes"]').focus()`,
+  );
+  push({
+    kind: "session-entries",
+    entries: [
+      {
+        id: "web:s1:progress",
+        at: null,
+        kind: "progress",
+        text: "A collaborator wrote.",
+      },
+    ],
+  });
+  await until(`document.body.textContent.includes("A collaborator wrote.")`);
+  check(
+    (await evaluate(`document.activeElement?.dataset?.choice`)) ===
+      "Request changes",
+    "a render keeps focus on the chosen answer",
+  );
   await evaluate(`document.querySelector('[data-choice="Approve"]').focus()`);
   await enter();
   await until(`!document.querySelector(".question-card")`);
@@ -344,11 +365,31 @@ try {
     "answering posts the question ID and choice",
   );
   check(
-    (await evaluate(`document.activeElement?.tagName`)) !== "BODY",
-    "focus stays on a control after the question closes",
+    (await evaluate(`document.activeElement?.id`)) === "composer-input",
+    "focus moves to the composer after the question closes",
   );
 
-  // An ended session: no Live pill and no session section.
+  // An ended session: no Live pill and no session section. The run is no
+  // longer active, so only the session could show the pill.
+  detail = {
+    ...detail,
+    run: {
+      ...detail.run,
+      outcome: "incomplete",
+      finishedAt: "2026-11-19T10:30:00Z",
+    },
+  };
+  for (const listener of listeners)
+    listener({
+      id: `0000000a-${++sequence}`,
+      kind: "reset",
+      issue: response(),
+    });
+  await sleep(200);
+  check(
+    await evaluate(`Boolean(document.querySelector(".connection-state"))`),
+    "a live session shows the connection state",
+  );
   push({
     kind: "session",
     session: header({
@@ -358,12 +399,8 @@ try {
   });
   await until(`!document.querySelector(".web-session")`);
   check(
-    !(await evaluate(`Boolean(document.querySelector(".connection-state"))`)) ||
-      (await evaluate(
-        `document.querySelector(".connection-state").textContent !== "Live"`,
-      )) ||
-      detail.run?.outcome === "active",
-    "an ended session shows no Live pill of its own",
+    !(await evaluate(`Boolean(document.querySelector(".connection-state"))`)),
+    "an ended session shows no Live pill",
   );
   check(
     (await evaluate(

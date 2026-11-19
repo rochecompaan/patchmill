@@ -42,6 +42,8 @@ export function createViewState(mount, drafts) {
           tag: control.tagName,
           href: control.getAttribute("href"),
           action: control.getAttribute("data-action"),
+          // Answer buttons share one action; the choice tells them apart.
+          choice: control.getAttribute("data-choice"),
           id: control.id,
         }
       : null;
@@ -77,15 +79,21 @@ export function createViewState(mount, drafts) {
               : f.href
                 ? node.getAttribute("href") === f.href
                 : f.action
-                  ? node.getAttribute("data-action") === f.action
+                  ? node.getAttribute("data-action") === f.action &&
+                    node.getAttribute("data-choice") === f.choice
                   : !!f.id && node.id === f.id),
         );
         // A session control can be replaced (Start → Pause) or removed (an
         // answered question). Keep focus on a stable control nearby.
+        // After an answer or Stop reply the composer is next; after a
+        // header control, its replacement is.
+        const header = mount.querySelector(".ihead .control button");
+        const composer = mount.querySelector("#composer-input:not(:disabled)");
         const fallback =
           !control && f.action && SESSION_ACTIONS.has(f.action)
-            ? (mount.querySelector(".ihead .control button") ??
-              mount.querySelector("#composer-input:not(:disabled)"))
+            ? f.action === "answer" || f.action === "stop-reply"
+              ? (composer ?? header)
+              : (header ?? composer)
             : null;
         const target = control ?? fallback;
         if (target instanceof HTMLElement)
