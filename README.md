@@ -366,7 +366,9 @@ For visible browser changes, planning adds an offline HTML mockup of the full
 page to the spec. After validation, implementation reviews the frontend against
 pinned local rules, fixes each valid finding, and records the review in the pull
 request. Backend work, documentation, and small text changes skip both steps.
-See [Skills configuration](https://patchmill.dev/guides/skills-configuration/).
+See [Skills configuration](https://patchmill.dev/guides/skills-configuration/)
+and the [Skills workflow](https://patchmill.dev/reference/skills-workflow/)
+diagrams.
 
 ## Roadmap
 

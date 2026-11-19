@@ -1,10 +1,13 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightThemeNova from "starlight-theme-nova";
+import mermaid from "astro-mermaid";
 
 export default defineConfig({
   site: "https://patchmill.dev",
   integrations: [
+    // Must come before Starlight so it sees Mermaid code blocks first.
+    mermaid({ autoTheme: true }),
     starlight({
       title: "Patchmill",
       description:
@@ -99,6 +102,10 @@ export default defineConfig({
             {
               label: "Agent workflow lifecycle",
               slug: "reference/agent-workflow-lifecycle",
+            },
+            {
+              label: "Skills workflow",
+              slug: "reference/skills-workflow",
             },
             { label: "Git safety", slug: "reference/git-safety" },
             {
