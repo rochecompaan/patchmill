@@ -105,8 +105,33 @@ function render() {
     });
   openLinkedArtifact(current);
 }
+const api = createApi();
+/**
+ * Send one Web session input as the saved name. Without a saved name, the
+ * name dialog opens first.
+ * @param {import('./api.js').SessionAction} action @param {Record<string,string>} [body]
+ * @returns {Promise<boolean>}
+ */
+async function sessionInput(action, body = {}) {
+  const issue = current?.issue;
+  if (!issue?.sessions) {
+    showNote();
+    return false;
+  }
+  if (!readName(storage)) {
+    openName();
+    return false;
+  }
+  notice.hidden = true;
+  const result = await api.session(issue.issue.summary.number, action, {
+    ...body,
+    author: name,
+  });
+  if (!result.ok) showNote(result.message);
+  return result.ok;
+}
 const controller = createPageController({
-  api: createApi(),
+  api,
   events: (url) => new EventSource(url),
   onState: (state) => {
     const previousBoard = current?.board;
@@ -258,11 +283,18 @@ document.addEventListener("click", (event) => {
   } else if (action === "reload") void controller.retry();
   else if (action === "earlier")
     showNote("These are sample steps. No earlier history is loaded.");
-  else if (
-    action &&
-    ["start", "pause", "resume", "retry", "stop-reply"].includes(action)
-  )
-    showNote();
+  else if (action === "start" || action === "resume" || action === "retry")
+    void sessionInput("start");
+  else if (action === "pause" || action === "stop-reply")
+    void sessionInput(action);
+  else if (action === "answer") {
+    const choice = target.closest("[data-action]");
+    if (choice instanceof HTMLElement)
+      void sessionInput("answers", {
+        questionId: choice.dataset.question ?? "",
+        choice: choice.dataset.choice ?? "",
+      });
+  }
 });
 document.addEventListener("submit", (event) => {
   if (
@@ -273,7 +305,17 @@ document.addEventListener("submit", (event) => {
     const input = event.target.querySelector("textarea");
     if (input?.value.trim()) {
       captureDraft();
-      showNote();
+      const number = current?.issue?.issue.summary.number;
+      const text = input.value;
+      void sessionInput("messages", { text }).then((ok) => {
+        if (!ok || number === undefined) return;
+        // Clear the draft only when it still holds the sent text.
+        if (drafts.get(number) === text) drafts.set(number, "");
+        if (input.isConnected && input.value === text) {
+          input.value = "";
+          input.rows = 1;
+        }
+      });
     }
   }
 });

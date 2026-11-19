@@ -28,6 +28,37 @@ export function applyIssueUpdate(response, update) {
       },
     };
   }
+  if (update.kind === "session")
+    return {
+      ...response,
+      issue: {
+        ...response.issue,
+        session: update.session
+          ? {
+              ...update.session,
+              // A new session starts with an empty thread.
+              entries:
+                response.issue.session?.id === update.session.id
+                  ? response.issue.session.entries
+                  : [],
+            }
+          : null,
+      },
+    };
+  if (update.kind === "session-entries") {
+    const session = response.issue.session;
+    if (!session) return response;
+    const entries = [...session.entries];
+    for (const entry of update.entries) {
+      const index = entries.findIndex((e) => e.id === entry.id);
+      if (index >= 0) entries[index] = entry;
+      else entries.push(entry);
+    }
+    return {
+      ...response,
+      issue: { ...response.issue, session: { ...session, entries } },
+    };
+  }
   return response;
 }
 /** @param {import('../src/web/api-types.ts').IssueDetail} detail @param {number} nowMs */

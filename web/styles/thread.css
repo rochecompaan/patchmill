@@ -421,3 +421,36 @@
 .empty p {
   margin: 0 0 20px;
 }
+
+/* Web session: the live thread after the recorded run files. */
+.web-session {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.web-session-heading {
+  margin: 0 0 12px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.question-card {
+  margin: 16px 0 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--brass);
+  border-radius: var(--r-m);
+  background: var(--brass-soft);
+}
+.question-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.question-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}

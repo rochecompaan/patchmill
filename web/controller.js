@@ -27,13 +27,8 @@ export function createPageController({ api, onState, visible, clock, events }) {
     state = { ...state, connection: null };
   }
   function connect() {
-    if (
-      !events ||
-      stream ||
-      state.issue?.source !== "live" ||
-      state.issue.issue.run?.outcome !== "active"
-    )
-      return;
+    // Every live issue page subscribes: a Web session can start at any time.
+    if (!events || stream || state.issue?.source !== "live") return;
     const socket = events(
       `/api/issues/${state.issue.issue.summary.number}/events`,
     );
@@ -56,7 +51,14 @@ export function createPageController({ api, onState, visible, clock, events }) {
         publish();
       }
     });
-    for (const kind of ["reset", "header", "thread", "unavailable"])
+    for (const kind of [
+      "reset",
+      "header",
+      "thread",
+      "unavailable",
+      "session",
+      "session-entries",
+    ])
       socket.addEventListener(kind, (event) => {
         if (!current() || !state.issue) return;
         try {
@@ -69,8 +71,17 @@ export function createPageController({ api, onState, visible, clock, events }) {
             publish();
             return;
           }
+          const wasActive = state.issue.issue.run?.outcome === "active";
           state = { ...state, issue: applyIssueUpdate(state.issue, update) };
-          if (state.issue?.issue.run?.outcome !== "active") {
+          // A finished run without a Web session reloads for final data;
+          // a Web session keeps the stream.
+          if (
+            wasActive &&
+            update.kind !== "session" &&
+            update.kind !== "session-entries" &&
+            state.issue?.issue.run?.outcome !== "active" &&
+            !state.issue?.issue.session
+          ) {
             closeStream();
             publish();
             void load();

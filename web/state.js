@@ -70,7 +70,7 @@ const statuses = {
     hint: "This run has finished. Review continues on the implementation pull request.",
   },
 };
-const controls = {
+export const controls = {
   start: { label: "Start planning", className: "btn btn-primary" },
   pause: { label: "Pause", className: "btn" },
   resume: { label: "Resume", className: "btn btn-live" },
@@ -143,4 +143,73 @@ export function createDraftStore() {
       drafts.set(number, text);
     },
   };
+}
+
+/** @typedef {{header:RunAction|'other-process'|null,composer:'enabled'|'disabled'|'other-process'|'finished',stopReply:boolean,hint:string}} SessionPresentation */
+export const OTHER_PROCESS_HINT =
+  "This run is live in a terminal or another process. You can watch it here.";
+/**
+ * The controls of a live issue page on a server with Web sessions. Rows are
+ * checked in order. Returns null for view-only servers, which keep
+ * `presentationFor`.
+ * @param {import('../src/web/api-types.ts').IssueDetail} detail @param {boolean} sessions @returns {SessionPresentation|null}
+ */
+export function sessionPresentation(detail, sessions) {
+  if (!sessions) return null;
+  const issue = detail.summary;
+  const session = detail.session;
+  const live = session && session.state !== "ended" ? session : null;
+  /** @param {SessionPresentation['header']} header @param {SessionPresentation['composer']} composer @param {string} hint @param {boolean} [stopReply] @returns {SessionPresentation} */
+  const row = (header, composer, hint, stopReply = false) => ({
+    header,
+    composer,
+    stopReply,
+    hint,
+  });
+  const finished =
+    issue.status === "done" ||
+    issue.pullRequests.some(
+      (p) => p.kind === "implementation" && p.state === "open",
+    );
+  if (finished && !session) return row(null, "finished", statuses.done.hint);
+  if (live?.state === "starting")
+    return row("pause", "disabled", "The Web session is starting…");
+  if (live?.state === "idle")
+    return row(
+      "pause",
+      "enabled",
+      live.status ?? "The agent is idle. Your message starts a new turn.",
+    );
+  if (live?.state === "replying" || live?.state === "question")
+    return row(
+      "pause",
+      "enabled",
+      live.state === "question"
+        ? "The agent is waiting for an answer."
+        : "The agent is replying. Your message reaches it after its current tool call.",
+      true,
+    );
+  if (live?.state === "pausing")
+    return row(null, "disabled", "Pausing the Web session…");
+  if (issue.live)
+    return row("other-process", "other-process", OTHER_PROCESS_HINT);
+  if (session?.ended?.reason === "crashed")
+    return row("retry", "disabled", session.ended.message);
+  if (issue.status === "blocked")
+    return row("retry", "disabled", statuses.blocked.hint);
+  if (
+    session?.ended?.reason === "paused" ||
+    (detail.run && !detail.run.finishedAt)
+  )
+    return row(
+      "resume",
+      "disabled",
+      "This Issue run is paused. Click Resume to continue it.",
+    );
+  if (!detail.run) return row("start", "disabled", statuses.none.hint);
+  return row(
+    "resume",
+    "disabled",
+    session?.ended?.message ?? "Click Resume to continue the Issue run.",
+  );
 }
