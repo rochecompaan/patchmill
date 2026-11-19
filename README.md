@@ -178,7 +178,34 @@ server and runs must use the same directory on the same host.
 The server caches host issues and pull requests for one minute across all
 browsers. The page refreshes every 15 seconds and shows the host sync age. Local
 run observations and held issue locks supply current progress and Live markers.
-Real issue threads are not available yet. Chat and run controls change nothing.
+
+### Web sessions
+
+The issue page is also the web version of the interactive console. From the
+page, you can start an interactive Issue run, chat with the planning agent,
+approve gates, answer a blocked worker, and pause and resume the run. You do not
+need a terminal. Several people can share one Web session.
+
+- Each Web session is one Pi RPC process that the server starts. The Issue run
+  in it behaves as in `patchmill run-once --interactive`.
+- An issue has at most one live Web session. If a terminal console, another Web
+  session or `run-once` holds the issue, the server refuses the start.
+- Anyone with the token can act on the page under the name that they enter. The
+  name is a label, not a permission.
+- A question from the run shows as a card in every browser. The first answer
+  wins. The card closes in the other browsers.
+- **Stop reply** stops the agent's current reply. The session stays open.
+- **Pause** ends the Web session, as quitting the console does. Patchmill keeps
+  the run state and the Console session. **Resume** continues the same Issue run
+  and conversation.
+- A server stop or restart ends every Web session and stops its worker. Press
+  **Resume** to continue.
+- A Web session and a terminal console use the same Console session file. They
+  never run at the same time. The Console session lock refuses the second one.
+- If Pi stops unexpectedly, a worker that is still running stops when the next
+  session starts.
+- While a Web session is live, the page shows its messages as they arrive. After
+  it ends, the page shows the run files, as after a terminal console run.
 
 Use `patchmill serve --sample` for deterministic design fixtures and sample
 issue pages. Sample mode needs no repository, config, or provider account. All
@@ -191,7 +218,8 @@ creates a new random token. Keep the printed link private.
 
 Use `--host HOST` and `--port PORT` to change the listener. A non-loopback
 listener is for a trusted network or VPN only. HTTP does not encrypt its content
-or token. The server only reads data. It never starts or changes a run.
+or token. With `--sample`, the server only reads data. It never starts or
+changes a run.
 
 ### Browser regression checks
 
@@ -221,7 +249,7 @@ measurements, set `LAYOUT_EVIDENCE` to a local JSON path.
 | `patchmill release --issue N`                                              | Clear a stale claim after a hard crash.                                                                                                 |
 | `patchmill status [--all] [--issue N]`                                     | Show workflow status in local state mode. Read blockers of ready and in-progress issues live from the tracker.                          |
 | `patchmill skills update`                                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files that the pack dropped. |
-| `patchmill serve [--sample] [--host HOST] [--port PORT]`                   | Serve the view-only repository board, or design fixtures with `--sample`.                                                               |
+| `patchmill serve [--sample] [--host HOST] [--port PORT]`                   | Serve the repository board and its Web sessions, or view-only fixtures with `--sample`.                                                 |
 | `patchmill version`                                                        | Print the version.                                                                                                                      |
 | `patchmill setup-test-repo`                                                | Development tool for the end-to-end CI. It is not part of the kernel.                                                                   |
 
