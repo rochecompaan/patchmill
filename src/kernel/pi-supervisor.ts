@@ -38,7 +38,7 @@ export function piArgs(options: PiSessionOptions): string[] {
   ];
 }
 
-function signalGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
+export function signalGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
   try {
     process.kill(-pid, signal);
     return true;

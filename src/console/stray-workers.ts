@@ -8,13 +8,20 @@ export type StopResult =
   | { ok: false; stuck: string[] };
 
 /** Stops the given worker IDs, or every active Patchmill worker when `ids`
- * is omitted, and waits until none of them is active. */
+ * is omitted, and waits until none of them is active. With `scope: "runs"`,
+ * the same applies to active runs of any agent. */
 export async function stopWorkers(
   client: SubagentsClient,
-  options?: { ids?: string[]; waitMs?: number; pollMs?: number },
+  options?: {
+    ids?: string[];
+    waitMs?: number;
+    pollMs?: number;
+    scope?: "workers" | "runs";
+  },
 ): Promise<StopResult> {
-  const ids =
-    options?.ids ?? (await client.activeWorkers()).map(({ id }) => id);
+  const active = () =>
+    options?.scope === "runs" ? client.activeRuns() : client.activeWorkers();
+  const ids = options?.ids ?? (await active()).map(({ id }) => id);
   if (ids.length === 0) return { ok: true, stopped: [] };
 
   for (const id of ids) {
@@ -27,8 +34,8 @@ export async function stopWorkers(
 
   const deadline = Date.now() + (options?.waitMs ?? STOP_WAIT_MS);
   for (;;) {
-    const active = new Set((await client.activeWorkers()).map(({ id }) => id));
-    const stuck = ids.filter((id) => active.has(id));
+    const live = new Set((await active()).map(({ id }) => id));
+    const stuck = ids.filter((id) => live.has(id));
     if (stuck.length === 0) return { ok: true, stopped: ids };
     const remaining = deadline - Date.now();
     if (remaining <= 0) return { ok: false, stuck };

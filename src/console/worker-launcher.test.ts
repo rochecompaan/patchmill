@@ -9,7 +9,7 @@ import {
   NO_REPLY,
   type Script,
 } from "../../test-support/fake-subagents.ts";
-import { printModeLauncher, type PhaseLaunch } from "../kernel/launch.ts";
+import { rpcModeLauncher, type PhaseLaunch } from "../kernel/launch.ts";
 import { parseAgentResult } from "../kernel/result.ts";
 import { SubagentsClient } from "./subagents-client.ts";
 import { createWorkerLauncher } from "./worker-launcher.ts";
@@ -80,7 +80,7 @@ test("launcher reads saved output, logs it, copies session, and exposes active w
   assert.equal(f.launcher.active(), undefined);
 });
 
-test("missing JSON matches printModeLauncher parsing and uses completion fallback", async (t) => {
+test("missing JSON matches rpcModeLauncher parsing and uses completion fallback", async (t) => {
   const f = await fixture(t);
   const pending = f.launcher.run(f.launch);
   await waitUntil(() => f.launcher.active() !== undefined);
@@ -90,7 +90,7 @@ test("missing JSON matches printModeLauncher parsing and uses completion fallbac
     results: [{ output: "plain text" }],
   });
   const run = await pending;
-  const printed = await printModeLauncher({
+  const launched = await rpcModeLauncher({
     command: {
       command: process.execPath,
       argsPrefix: ["-e", "process.stdout.write('plain text')"],
@@ -99,7 +99,7 @@ test("missing JSON matches printModeLauncher parsing and uses completion fallbac
     extensionPaths: [],
   })(f.launch);
   assert.deepEqual(run.result, parseAgentResult("plain text"));
-  assert.deepEqual(run.result, printed.result);
+  assert.deepEqual(run.result, launched.result);
   assert.deepEqual(run.result, { ok: false, reason: "no result" });
   assert.deepEqual(run.session, {
     exitCode: 1,

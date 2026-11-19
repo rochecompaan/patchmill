@@ -141,7 +141,20 @@ export class SubagentsClient {
     await this.request("stop", { id });
   }
 
+  /** Queued, running, and stopping runs of the current session, any agent. */
+  async activeRuns(): Promise<{ id: string; state: string }[]> {
+    return (await this.liveRuns()).map(({ id, state }) => ({ id, state }));
+  }
+
   async activeWorkers(): Promise<{ id: string; state: string }[]> {
+    return (await this.liveRuns())
+      .filter((run) =>
+        run.children?.some((step) => step.agent === WORKER_AGENT),
+      )
+      .map(({ id, state }) => ({ id, state }));
+  }
+
+  private async liveRuns() {
     const data = await this.request<{
       asyncSnapshot: {
         omitted?: {
@@ -161,13 +174,9 @@ export class SubagentsClient {
         "incomplete_status",
         "Incomplete worker status; cleanup cannot be proven",
       );
-    return data.asyncSnapshot.runs
-      .filter(
-        (run) =>
-          ["running", "queued", "stopping"].includes(run.state) &&
-          run.children?.some((step) => step.agent === WORKER_AGENT),
-      )
-      .map(({ id, state }) => ({ id, state }));
+    return data.asyncSnapshot.runs.filter((run) =>
+      ["running", "queued", "stopping"].includes(run.state),
+    );
   }
 
   dispose(): void {

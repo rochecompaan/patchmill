@@ -10,7 +10,7 @@ import { renderRunEnvelope } from "./envelope.ts";
 import { resolvePhaseSkill } from "./phase-skill.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
-  printModeLauncher,
+  rpcModeLauncher,
   type PhaseLaunch,
   type PhaseLauncher,
   type PhaseRun,
@@ -162,7 +162,7 @@ export async function preparePhasePrompt(
     trusted: trustedAuthors(config, (await host.checkCli()).login),
   });
   await fs.writeFile(promptPath, envelope);
-  const launcher = printModeLauncher({
+  const launcher = rpcModeLauncher({
     command: deps.piCommand,
     agentDir: resolve(repoRoot, config.pi.agentDir),
     extensionPaths: deps.extensionPaths,
