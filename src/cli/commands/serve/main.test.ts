@@ -36,6 +36,53 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
     assert.match(lines[0]!, /Patchmill sample data:/);
     assert.deepEqual(process.listeners(signal), before);
   });
+test("a repeated signal while Web sessions stop keeps serve in charge", async () => {
+  const before = process.listeners("SIGINT");
+  const out: string[] = [];
+  const err: string[] = [];
+  const sessions = Promise.withResolvers<void>();
+  let closes = 0;
+  let closing: Promise<void> | undefined;
+  const closed = Promise.withResolvers<void>();
+  const result = main([], {
+    output: {
+      stdout: (l) => {
+        out.push(l);
+        queueMicrotask(() => process.emit("SIGINT"));
+      },
+      stderr: (l) => err.push(l),
+    },
+    env: {},
+    createSource: async () => ({
+      source: createSampleRunDataSource(),
+      sessions: {} as never,
+    }),
+    startServer: async () => ({
+      origin: "http://127.0.0.1:4280",
+      url: "http://127.0.0.1:4280/?token=test",
+      networkExposed: false,
+      closed: closed.promise,
+      close: () =>
+        (closing ??= (async () => {
+          closes++;
+          // The HTTP server closes first; the Web sessions take longer.
+          closed.resolve();
+          await sessions.promise;
+        })()),
+    }),
+  });
+  await new Promise((r) => setImmediate(r));
+  // While the sessions stop, a second Ctrl-C must not reach Node's default.
+  assert.equal(process.listeners("SIGINT").length, before.length + 1);
+  process.emit("SIGINT");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(closes, 1);
+  sessions.resolve();
+  assert.equal(await result, 0);
+  assert.deepEqual(process.listeners("SIGINT"), before);
+  assert.match(err.join("\n"), /Stopping the Web sessions/);
+  assert.match(err.join("\n"), /Still stopping/);
+});
 test("serve selects repository data by default and prints the real board prefix", async () => {
   const lines: string[] = [];
   let selected: boolean | undefined;

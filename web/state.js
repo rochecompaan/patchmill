@@ -2,7 +2,7 @@
 /** @typedef {{view:'board'}|{view:'issue',number:number,artifactId:string|null}|{view:'not-found'}} Route */
 /** @typedef {'start'|'pause'|'resume'|'retry'} RunAction */
 /** @typedef {{className:string,label:string,dot:boolean}} Marker */
-/** @typedef {{header:RunAction|'terminal'|null,composer:'enabled'|'disabled'|'terminal'|'finished',stopReply:boolean,dotClass:string,cardClass:string,marker:Marker|null,statusLabel:string,composerHint:string,showStep:boolean,control:{label:string,className:string}|null}} Presentation */
+/** @typedef {{header:RunAction|'terminal'|null,composer:'enabled'|'disabled'|'terminal'|'finished',stopReply:boolean,dotClass:string,cardClass:string,marker:Marker|null,statusLabel:string,composerHint:string,showStep:boolean,control:{label:string,className:string}|null,terminalNote?:string}} Presentation */
 /** @typedef {{label:string,header:RunAction|null,hint:string,dotClass?:string,cardClass?:string,marker?:Marker,showStep?:boolean,disabled?:boolean}} StatusPresentation */
 
 /** @type {readonly {id:import('../src/web/api-types.ts').PhaseId,label:string,pr:boolean}[]} */
@@ -70,7 +70,7 @@ const statuses = {
     hint: "This run has finished. Review continues on the implementation pull request.",
   },
 };
-export const controls = {
+const controls = {
   start: { label: "Start planning", className: "btn btn-primary" },
   pause: { label: "Pause", className: "btn" },
   resume: { label: "Resume", className: "btn btn-live" },
@@ -145,7 +145,7 @@ export function createDraftStore() {
   };
 }
 
-/** @typedef {{header:RunAction|'other-process'|null,composer:'enabled'|'disabled'|'other-process'|'finished',stopReply:boolean,hint:string}} SessionPresentation */
+/** @typedef {Pick<Presentation,'header'|'composer'|'stopReply'|'composerHint'|'control'|'terminalNote'>} SessionPresentation */
 export const OTHER_PROCESS_HINT =
   "This run is live in a terminal or another process. You can watch it here.";
 /**
@@ -159,19 +159,20 @@ export function sessionPresentation(detail, sessions) {
   const issue = detail.summary;
   const session = detail.session;
   const live = session && session.state !== "ended" ? session : null;
-  /** @param {SessionPresentation['header']} header @param {SessionPresentation['composer']} composer @param {string} hint @param {boolean} [stopReply] @returns {SessionPresentation} */
+  /** @param {RunAction|null} header @param {SessionPresentation['composer']} composer @param {string} hint @param {boolean} [stopReply] @returns {SessionPresentation} */
   const row = (header, composer, hint, stopReply = false) => ({
     header,
     composer,
     stopReply,
-    hint,
+    composerHint: hint,
+    control: header ? controls[header] : null,
   });
   const finished =
     issue.status === "done" ||
     issue.pullRequests.some(
       (p) => p.kind === "implementation" && p.state === "open",
     );
-  if (finished && !session) return row(null, "finished", statuses.done.hint);
+  if (finished && !live) return row(null, "finished", statuses.done.hint);
   if (live?.state === "starting")
     return row("pause", "disabled", "The Web session is starting…");
   if (live?.state === "idle")
@@ -192,9 +193,17 @@ export function sessionPresentation(detail, sessions) {
   if (live?.state === "pausing")
     return row(null, "disabled", "Pausing the Web session…");
   if (issue.live)
-    return row("other-process", "other-process", OTHER_PROCESS_HINT);
+    return {
+      header: "terminal",
+      composer: "terminal",
+      stopReply: false,
+      composerHint: OTHER_PROCESS_HINT,
+      control: null,
+      terminalNote: "Running in another process",
+    };
+  // The crash message tells the user to press Resume.
   if (session?.ended?.reason === "crashed")
-    return row("retry", "disabled", session.ended.message);
+    return row("resume", "disabled", session.ended.message);
   if (issue.status === "blocked")
     return row("retry", "disabled", statuses.blocked.hint);
   if (

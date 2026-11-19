@@ -23,7 +23,21 @@ export async function main(
     stderr: console.error,
   };
   let serving: Serving | undefined;
+  let hasSessions = false;
+  let stopping = false;
+  // Kept until the Web sessions have stopped, so a second Ctrl-C does not
+  // exit Node and leave workers running.
   const stop = () => {
+    if (stopping) {
+      if (hasSessions)
+        output.stderr(
+          "Still stopping the Web sessions. Patchmill exits when every Pi process has ended.",
+        );
+      return;
+    }
+    stopping = true;
+    if (hasSessions)
+      output.stderr("Stopping the Web sessions and their workers…");
     void serving?.close().catch(() => {});
   };
   try {
@@ -48,8 +62,9 @@ export async function main(
       source: data.source,
       ...(data.sessions ? { sessions: data.sessions } : {}),
     });
-    process.once("SIGINT", stop);
-    process.once("SIGTERM", stop);
+    hasSessions = !!data.sessions;
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
     if (serving.networkExposed)
       output.stderr(
         "Warning: the server is available on the network. HTTP does not encrypt content. Use only a trusted network or VPN.",
@@ -65,8 +80,11 @@ export async function main(
     );
     return 1;
   } finally {
-    process.removeListener("SIGINT", stop);
-    process.removeListener("SIGTERM", stop);
-    await serving?.close();
+    try {
+      await serving?.close();
+    } finally {
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
+    }
   }
 }

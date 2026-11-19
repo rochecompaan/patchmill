@@ -24,7 +24,7 @@ type Hub = {
   expire?: (() => void) | undefined;
   /** Unsubscribes from the Session hub when this state expires. */
   unsubscribe?: (() => void) | undefined;
-  /** The last session id seen, to notice a new or removed session. */
+  /** The last session key seen, to notice a new, ended or removed session. */
   sessionId?: string | null;
   /** Reproject on the next tick: the run-file filter follows the session. */
   reproject: boolean;
@@ -37,6 +37,13 @@ const header = ({
   ...rest
 }: IssueResponse["issue"]) => rest;
 
+/** The run-file filter changes when a session starts, ends or goes away. */
+const sessionKey = (
+  session: { id: string; state: string } | null | undefined,
+) =>
+  session
+    ? `${session.id}:${session.state === "ended" ? "ended" : "live"}`
+    : null;
 /** Owns ordered observation, bounded replay, and lifetime of one feed per issue. */
 export function createIssueFeed(input: {
   fingerprint(issue: number): Promise<string>;
@@ -95,7 +102,7 @@ export function createIssueFeed(input: {
     if (!h.state) return; // The next reset reads current().
     const session = input.sessions?.current(issue) ?? null;
     const id =
-      change.kind === "session" ? (change.session?.id ?? null) : undefined;
+      change.kind === "session" ? sessionKey(change.session) : undefined;
     if (id !== undefined && id !== h.sessionId) {
       h.sessionId = id;
       h.reproject = true;
@@ -127,7 +134,7 @@ export function createIssueFeed(input: {
                 issue: { ...projected.issue, session: h.state.issue.session },
               }
             : projected;
-        h.sessionId = next?.issue.session?.id ?? null;
+        h.sessionId = sessionKey(next?.issue.session);
         const previous = h.state;
         if (previous === undefined) h.sequence = 1;
         else if (next === null) {

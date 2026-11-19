@@ -19,13 +19,14 @@ const entry = (id: string, at: string | null = null): ThreadEvent => ({
   kind: "progress",
   text: id,
 });
-const header = (id = "s1"): LiveSessionHeader => ({
-  id,
+const header = (patch: Partial<LiveSessionHeader> = {}): LiveSessionHeader => ({
+  id: "s1",
   startedAt: "2026-11-19T10:05:00.000Z",
   state: "idle",
   status: null,
   question: null,
   ended: null,
+  ...patch,
 });
 
 function fakeSessions() {
@@ -253,6 +254,49 @@ test("removing the session reprojects and shows the run files again", async () =
   assert.deepEqual(reset?.kind === "reset" && reset.issue.issue.thread, []);
   const before = f.projects();
   f.sessions.change({ kind: "session", session: null });
+  await f.clock.advance(1000);
+  assert.ok(f.projects() > before);
+  const thread = a.updates.find((u) => u.kind === "thread");
+  assert.deepEqual(
+    thread?.kind === "thread" && thread.entries.map((e) => e.id),
+    ["r:history:4"],
+  );
+});
+
+test("an ended session hides no run files", () => {
+  const detail = {
+    thread: [
+      entry("r:2:console-planning.jsonl:0", "2026-11-19T10:06:00.000Z"),
+      entry("r:history:4", "2026-11-19T10:06:00.000Z"),
+      entry("r:interactive-pending", null),
+    ],
+  } as unknown as Parameters<typeof withLiveSession>[0];
+  const session = {
+    ...header({
+      state: "ended",
+      ended: { reason: "paused", message: "p" },
+    }),
+    entries: [],
+  };
+  const shown = withLiveSession(detail, session);
+  assert.equal(shown.thread.length, 3);
+  assert.equal(shown.session, session);
+});
+
+test("a session that ends reprojects and shows the run files again", async () => {
+  const f = await fixture();
+  f.setThread([entry("r:history:4", "2026-11-19T10:06:00.000Z")]);
+  f.sessions.change({ kind: "session", session: header() });
+  const a = f.subscribe();
+  await f.clock.advance(0);
+  const before = f.projects();
+  f.sessions.change({
+    kind: "session",
+    session: header({
+      state: "ended",
+      ended: { reason: "paused", message: "p" },
+    }),
+  });
   await f.clock.advance(1000);
   assert.ok(f.projects() > before);
   const thread = a.updates.find((u) => u.kind === "thread");

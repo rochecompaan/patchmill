@@ -55,15 +55,19 @@ const clock: FeedClock = {
 };
 
 /**
- * Add the Web session to an issue detail. While a session is shown, the
+ * Add the Web session to an issue detail. While a session is live, the
  * run-file copies of its span (console transcript, progress lines and the
- * "pending" notice) are hidden, so nothing appears twice.
+ * "pending" notice) are hidden, so nothing appears twice. An ended session
+ * hides nothing.
  */
 export function withLiveSession(
   detail: IssueDetail,
   session: LiveSession | null,
 ): IssueDetail {
   if (!session) return { ...detail, session: null };
+  // After the session ends, the run files are the record, as after a
+  // terminal console run.
+  if (session.state === "ended") return { ...detail, session };
   const since = Date.parse(session.startedAt);
   const thread = detail.thread.filter((entry) => {
     if (entry.id.endsWith(":interactive-pending")) return false;

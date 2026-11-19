@@ -1,11 +1,6 @@
 import { el, icon, externalLink, person, elapsed } from "./dom.js";
 import { renderThread } from "./thread.js";
-import {
-  presentationFor,
-  sessionPresentation,
-  controls,
-  PHASES,
-} from "./state.js";
+import { presentationFor, sessionPresentation, PHASES } from "./state.js";
 import { liveElapsedSeconds } from "./live-issue.js";
 /** @typedef {import('../src/web/api-types.ts').IssueDetail} IssueDetail */
 /** @typedef {import('../src/web/api-types.ts').IssueSummary} IssueSummary */
@@ -192,7 +187,9 @@ function renderHeader(doc, detail, name, p) {
   );
   const control = el(doc, "div", "control");
   if (p.header === "terminal")
-    control.append(el(doc, "span", "note-pill", "Running in a terminal"));
+    control.append(
+      el(doc, "span", "note-pill", p.terminalNote ?? "Running in a terminal"),
+    );
   else if (p.header && p.control) {
     const b = button(doc, p.header, p.control.label, p.control.className);
     if (p.header === "pause") b.setAttribute("aria-label", "Pause Web session");
@@ -370,15 +367,12 @@ export function renderIssue(
     );
     thread.append(empty);
   }
-  if (web && detail.session) thread.append(renderSession(doc, detail));
+  // An ended session is in the run files; only a live one renders here.
+  if (web && detail.session && detail.session.state !== "ended")
+    thread.append(renderSession(doc, detail));
   /** @type {Presentation} */
-  const composer = web
-    ? {
-        ...p,
-        composer: web.composer === "other-process" ? "terminal" : web.composer,
-        stopReply: web.stopReply,
-        composerHint: web.hint,
-      }
+  const shown = web
+    ? { ...p, ...web }
     : source === "live" &&
         p.composer !== "terminal" &&
         p.composer !== "finished"
@@ -389,25 +383,7 @@ export function renderIssue(
           composerHint: "View only. Messages come with live chat.",
         }
       : p;
-  const header = renderHeader(
-    doc,
-    detail,
-    name,
-    web
-      ? {
-          ...p,
-          header: web.header === "other-process" ? "terminal" : web.header,
-          control:
-            web.header && web.header !== "other-process"
-              ? controls[web.header]
-              : null,
-        }
-      : p,
-  );
-  if (web?.header === "other-process") {
-    const pill = header.querySelector(".control .note-pill");
-    if (pill) pill.textContent = "Running in another process";
-  }
+  const header = renderHeader(doc, detail, name, web ? shown : p);
   if ((active || (web && detail.session)) && connection) {
     const status = el(
       doc,
@@ -425,7 +401,7 @@ export function renderIssue(
   fragment.append(
     header,
     thread,
-    renderComposer(doc, detail.summary, name, draft, composer, source),
+    renderComposer(doc, detail.summary, name, draft, shown, source),
   );
   return fragment;
 }

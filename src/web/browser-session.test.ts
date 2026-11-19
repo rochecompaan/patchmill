@@ -250,7 +250,7 @@ test("sessionPresentation follows the issue-state table", async () => {
     true,
   );
   assert.deepEqual(
-    [pausing?.header, pausing?.composer, pausing?.hint],
+    [pausing?.header, pausing?.composer, pausing?.composerHint],
     [null, "disabled", "Pausing the Web session…"],
   );
   const other = sessionPresentation(
@@ -263,8 +263,8 @@ test("sessionPresentation follows the issue-state table", async () => {
     true,
   );
   assert.deepEqual(
-    [other?.header, other?.composer, other?.hint],
-    ["other-process", "other-process", OTHER_PROCESS_HINT],
+    [other?.header, other?.composer, other?.composerHint, other?.terminalNote],
+    ["terminal", "terminal", OTHER_PROCESS_HINT, "Running in another process"],
   );
   assert.deepEqual(
     pick({
@@ -272,8 +272,18 @@ test("sessionPresentation follows the issue-state table", async () => {
       run,
       session: live("ended", { reason: "crashed", message: "Pi stopped" }),
     }),
-    ["retry", "disabled", false],
+    ["resume", "disabled", false],
   );
+  for (const status of ["done", "blocked"] as const)
+    assert.deepEqual(
+      pick({
+        ...base,
+        run,
+        summary: { ...base.summary, status },
+        session: live("ended", { reason: "finished", message: "x" }),
+      })?.[0],
+      status === "done" ? null : "retry",
+    );
   assert.deepEqual(
     pick({ ...base, run, summary: { ...base.summary, status: "blocked" } }),
     ["retry", "disabled", false],
