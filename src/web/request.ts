@@ -9,6 +9,7 @@ import type { RequestPolicy } from "./request-policy.ts";
 import { serveSessionRoute, sessionRoute } from "./session/routes.ts";
 import type { SessionHub } from "./session/types.ts";
 import type { Presence } from "./presence.ts";
+import { serveTypingRoute, typingRoute } from "./presence-routes.ts";
 
 type RequestContext = {
   webRoot: string;
@@ -103,6 +104,15 @@ export function createRequestHandler({
           method,
           route: session,
           sessions,
+        });
+      const typingIssue = typingRoute(path);
+      if (typingIssue !== null)
+        return serveTypingRoute({
+          req,
+          res,
+          method,
+          rawIssue: typingIssue,
+          presence,
         });
       if (method !== "GET" && method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");
