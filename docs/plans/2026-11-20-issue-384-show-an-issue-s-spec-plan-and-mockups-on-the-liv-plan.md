@@ -49,7 +49,9 @@ review of this plan and the spec happened before implementation.
   `On branch <branch>`, `On <base>`.
 - Limits: spec or plan 1 MiB, HTML 5 MiB, 20 HTML entries for each issue.
 - Warning: `Could not read documents for issue #N.`
-- A document failure never fails the issue page.
+- A document failure never fails the issue page or the issue feed.
+  `issueRefsFingerprint` returns `refs-unavailable` instead of throwing.
+- One content cache for each live source, keyed by blob ID, 64 entries.
 
 ## Review Focus
 
@@ -106,13 +108,12 @@ review of this plan and the spec happened before implementation.
     a \u0060c\u0060 **s** *e* _e_ [h](https://x.test) [r](../m.html) ![alt](i.png) [j](javascript:x)
     ```
 
-    gives `text`, `code` `c`, `strong` `s`, `emphasis` `e`, `emphasis` `e`,
-    `link` `h` with href `https://x.test` as written, then `text` `r`, `text`
-    `alt` and `text` `j`, with the spaces as `text` between them.
+    gives exactly, with adjacent text merged:
+    `[text "a ", code "c", text " ", strong "s", text " ", emphasis "e", text " ", emphasis "e", text " ", link "h" href "https://x.test", text " r alt j"]`.
 
   - `unclosed markers stay text`: the source `"**a \u0060b"` gives one `text`
     item with the same characters.
-  - `markdownTitle` returns `Title` for `"intro\n# Title *x*\n"`, and `null`
+  - `markdownTitle` returns `Title x` for `"intro\n# Title *x*\n"`, and `null`
     without a level-one heading.
 
 - [ ] **Step 2: Run the tests and see them fail**
@@ -166,8 +167,13 @@ review of this plan and the spec happened before implementation.
     provider: HostProviderId;
     runner: CommandRunner;
   };
+  export type DocumentCache = Map<string, unknown>; // blob ID → parsed content
+  export function createDocumentCache(limit?: number): DocumentCache; // default 64, oldest out
   export function createIssueDocumentReader(
-    input: DocumentRepositoryInput,
+    input: DocumentRepositoryInput & {
+      warn(message: string): void;
+      cache?: DocumentCache;
+    },
   ): (issue: number, branches: readonly string[]) => Promise<IssueDocuments>;
   export function issueRefsFingerprint(input: {
     repoRoot: string;
@@ -186,9 +192,11 @@ review of this plan and the spec happened before implementation.
   ```
 
   `DocumentRepositoryInput` replaces the private `RepositoryInput` of
-  `document-links.ts`. `validBranchName` and `hostFileUrl` move from
-  `document-links.ts` unchanged in behavior; `document-links.test.ts` must still
-  pass.
+  `document-links.ts`. `validBranchName` and `hostFileUrl` are extracted from
+  the inline code at `document-links.ts:56` and `:95-97`, and
+  `createDocumentLinkReader` calls them. `document-links.test.ts` must still
+  pass unchanged. `issueRefsFingerprint` never throws: a failed `git` call
+  returns `"refs-unavailable"`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -211,15 +219,23 @@ review of this plan and the spec happened before implementation.
     to the same commit. Assert `draft:false`,
     `location:"On branch agent/issue-9-docs"`, and `sourceUrl` =
     `https://host/owner/repo/blob/<full sha>/docs/specs/<name>`. Then add a
-    local commit that changes only the plan. Spec stays `draft:false`; plan is
-    `draft:true` with the local location text.
+    local commit that changes only the plan. Spec stays `draft:false` and its
+    `commit` is the remote commit; plan is `draft:true` with the local location
+    text and the local commit.
+  - `base blobs on an unpushed branch`: the spec is on `origin/main` and the
+    same blob is on a local-only Issue branch that also adds a plan. Spec:
+    `location:"On main"`, `draft:false`, `commit` and `sourceUrl` of the
+    `origin/main` commit. Plan: the local location text.
   - `base documents`: only `origin/main` has a spec. Location `On main`.
   - `refuses links outside the documents`: links to `https://x.test/a.html`,
     `/abs.html`, `../../../outside.html`, `m.html?x`, `m%2e.html`, a
     symbolic-link blob `docs/mockups/link.html`, a missing file, and a `.md`
     target. None is listed.
-  - `limits`: a 1 MiB + 1 byte spec is not listed; 21 linked HTML files give 20
-    entries.
+  - `limits`: a 1 MiB + 1 byte spec on the local branch is not listed, the
+    smaller spec on `origin/main` is not used instead, its links are not read,
+    and `warn` is called once. 21 linked HTML files give 20 entries.
+  - `cache spans readers`: two readers that share one `createDocumentCache()`
+    run `cat-file` for a blob only once.
   - `file returns only listed HTML`: `file(mockupId)` returns the committed
     bytes with `text/html; charset=utf-8`. `file("spec")`, `file("plan")`,
     `file("mockup-000000000000")`, and the mockup ID of issue 10 return `null`.
@@ -241,12 +257,13 @@ review of this plan and the spec happened before implementation.
   `createDocumentLinkReader` does). Read blobs with `git cat-file blob <sha>`
   after `git ls-tree -z <commit> -- <path>` confirms mode `100644`/`100755` and
   gives the blob ID and size (`ls-tree -l`). Draft and `sourceUrl` compare blob
-  IDs with `origin/<branch>` and `origin/<base>`. Cache by blob ID inside one
-  reader. `issueRefsFingerprint` runs
+  IDs with `origin/<branch>` and `origin/<base>`. Keep parsed blocks and HTML
+  bytes in the `cache` by blob ID (a private cache when none is passed).
+  `issueRefsFingerprint` runs
   `git for-each-ref --format=%(refname) %(objectname)` over `refs/heads/agent/`,
   `refs/remotes/origin/agent/` and `refs/remotes/origin/<base>`, then keeps
   lines where `isIssueBranch(issue, …)` holds for the branch part, plus the base
-  line. Join with `\n`.
+  line. Join with `\n`. Catch every failure and return `"refs-unavailable"`.
 
 - [ ] **Step 4: Run the tests and see them pass**
 
@@ -278,10 +295,13 @@ review of this plan and the spec happened before implementation.
     (`null` when the path does not start with `/files/`).
 
 - [ ] **Step 1: Write the failing tests**
-  - `response-headers.test.ts`: extend the loop with `/document`. Assert the
-    exact document CSP from Global Constraints,
-    `doesNotMatch /allow-same-origin/` for it, and the current values for `/`
-    and `/preview`.
+  - `response-headers.test.ts`: change the server stub to call
+    `setResponseHeaders(res, profile)` with `"sample"` for `/preview` and
+    `"document"` for `/document`. Scope the existing
+    `doesNotMatch(/unsafe-inline/)` assertion to `/` and `/preview`. Extend the
+    loop with `/document`. Assert the exact document CSP from Global
+    Constraints, `doesNotMatch /allow-same-origin/` for it, and the current
+    values for `/` and `/preview`.
   - `issue-file-route.test.ts`, with `startWebFixture(t, { source })` where
     `source` is the sample source plus a `documentFile` stub that returns
     `<p>m</p>` only for `(9, "mockup-0123456789ab")`:
@@ -348,7 +368,11 @@ review of this plan and the spec happened before implementation.
     returns the bytes; `source.documentFile(10, mockupId)` returns `null`.
   - `document failure keeps the issue page`: a runner that fails every `git`
     call. The detail has `artifacts: []`, and `warn` received
-    `Could not read documents for issue #9.` once.
+    `Could not read documents for issue #9.` once. A feed subscriber for issue 9
+    still gets its `reset` update.
+  - `documentFile follows page eligibility`: an issue with the `unsuitable`
+    label and a closed issue return `null`, even with a matching mockup on their
+    branch.
   - `a new commit updates the feed`: extend `file-live-feed.test.ts` style. A
     commit on the Issue branch, with run files unchanged, delivers a `header`
     update whose artifacts carry the new commit.
@@ -363,9 +387,12 @@ review of this plan and the spec happened before implementation.
 
   In `projectIssue`, when `withDetail` is true, call the reader with the same
   branch list as `links`, catch and warn, and pass `artifacts` to
-  `readIssueDetail`. Add `documentFile(issue, id)`: read the host cache, find
-  the eligible issue, rebuild its branch list as `projectIssue` does, and return
-  `reader(issue, branches).file(id)`. Wrap the feed fingerprint:
+  `readIssueDetail`. Extract one private helper from `projectIssue` that returns
+  the roles check, run observation, associated pull requests and branch list, or
+  `null` for an issue the page would not show. `projectIssue` and the new
+  `documentFile(issue, id)` both use it; `documentFile` then returns
+  `reader(issue, branches).file(id)`. Create one `createDocumentCache()` when
+  the source is created and pass it to every reader. Wrap the feed fingerprint:
   `issueFingerprint(...) + "\n" + issueRefsFingerprint(...)`.
 
 - [ ] **Step 4: Run the tests and see them pass**
@@ -380,14 +407,16 @@ review of this plan and the spec happened before implementation.
 
 **Files:**
 
-- Modify: `web/links.js`, `web/artifacts.js`, `web/issue.js`
+- Modify: `web/links.js`, `web/artifacts.js`, `web/issue.js`, `README.md` ("Web
+  board" section)
 - Test: `src/web/browser-links.test.ts`
 
 **Interfaces:**
 
 - Produces: `safePreviewUrl(value)` accepts `/files/issues/<n>/<id>` where `<n>`
   matches `^[1-9]\d*$` and `<id>` matches `fileIdPattern`'s source; and
-  `previewSandbox(url: string): "allow-scripts" | "allow-same-origin"`.
+  `previewSandbox(url: string): "allow-scripts" | "allow-same-origin"`; and
+  `remainingDocumentLinks(links: readonly DocumentLink[], artifacts: readonly Artifact[]): DocumentLink[]`.
 
 - [ ] **Step 1: Write the failing tests**
   - `safePreviewUrl` accepts `/files/issues/384/mockup-0123456789ab` and
@@ -399,6 +428,8 @@ review of this plan and the spec happened before implementation.
   - `previewSandbox("/files/issues/9/mockup-0123456789ab")` is
     `"allow-scripts"`; `previewSandbox("/samples/board.html")` is
     `"allow-same-origin"`.
+  - `remainingDocumentLinks` with spec and plan links and a spec artifact
+    returns only the plan link; with no artifacts it returns both.
 
 - [ ] **Step 2: Run the tests and see them fail**
 
@@ -409,8 +440,10 @@ review of this plan and the spec happened before implementation.
   `artifacts.js`: set `frame.setAttribute("sandbox", previewSandbox(local))` and
   choose the note: the live note from Global Constraints for `/files/`, the
   current sample note otherwise. `issue.js`: build the `documentLinks` row from
-  links whose `kind` is not in `detail.artifacts`; skip the row when none
-  remain.
+  `remainingDocumentLinks(issue.documentLinks, detail.artifacts)`; skip the row
+  when none remain. `README.md`: add one short paragraph to "Web board": the
+  live issue page shows Issue documents from local and pushed branches, and
+  mockup scripts run in an isolated frame without access to the page or the API.
 
 - [ ] **Step 4: Run the checks**
 
@@ -433,17 +466,20 @@ review of this plan and the spec happened before implementation.
 
   Start `startServeServer` with a source that is the sample source plus a
   `documentFile` that returns a mockup whose script stores three results in
-  `window.results`: `document.cookie`, the outcome of `fetch("/api/board")`, and
-  whether `parent.document` throws. Wrap `snapshot` so that the detail of sample
-  issue 210 also has a `mockup` artifact, ID `mockup-0123456789ab`, with
-  `preview.url` `/files/issues/210/mockup-0123456789ab`. With Chromium over CDP
-  (as `check-serve-layout.mjs` does), open the issue, open the mockup chip, and
+  `window.results`. Each probe runs in its own `try`/`catch` and records either
+  the value or `"threw"`: `document.cookie`, the outcome of
+  `fetch("/api/board")` (awaited), and `parent.document.title`. Wrap `snapshot`
+  so that the detail of sample issue 210 also has a `mockup` artifact, ID
+  `mockup-0123456789ab`, with `preview.url`
+  `/files/issues/210/mockup-0123456789ab`. With Chromium over CDP (as
+  `check-serve-layout.mjs` does), open the issue, open the mockup chip, and
   evaluate `window.results` in the frame's execution context. Assert: cookie is
-  `""`, fetch rejected, `parent.document` threw, and the frame's
-  `location.origin` is `"null"`. Then open the file URL as a top-level tab and
-  assert `self.origin === "null"`. The script skips with a message when
-  `CHROMIUM` is not set and `chromium` is not on `PATH`, like the current
-  scripts.
+  `"threw"` or `""`, fetch is `"threw"`, `parent.document.title` is `"threw"`,
+  and the frame's `self.origin` is `"null"`. In the page context, assert that
+  the frame's `getAttribute("sandbox")` is exactly `"allow-scripts"`. Then open
+  the file URL as a top-level tab and assert `self.origin === "null"`. Like the
+  current scripts, it uses `CHROMIUM` or `chromium` and fails when neither
+  starts. It never skips.
 
 - [ ] **Step 2: Run the full verification**
 

@@ -155,23 +155,29 @@ in a run file must not choose a file.
 Each Issue document becomes one `Artifact` in `IssueDetail.artifacts`. The
 `Artifact` type stays the same.
 
-| Field                | Value                                                                                                                           |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                 | `spec`, `plan`, or `<kind>-<first 12 hex of SHA-256 of the path>`, for example `mockup-3f9a0c1b2d4e`.                           |
-| `title`              | Spec and plan: the text of the first level-one heading, otherwise the file name. HTML: as above.                                |
-| `path`               | The repository path, with `/` separators.                                                                                       |
-| `commit`             | The first 7 hex characters of the commit where the server found it.                                                             |
-| `draft`              | `true` when the blob is not on any remote ref that the server read. Otherwise `false`.                                          |
-| `location`           | Local only: `On local branch <branch>. Not pushed yet.` Pushed branch: `On branch <branch>`. Base: `On <base>`.                 |
-| `sourceUrl`          | When the same blob is on a remote ref: the host URL at that remote commit, in the `document-links.ts` format. Otherwise `null`. |
-| `preview` (document) | `{ kind: "document", blocks }` from `markdownBlocks()`.                                                                         |
-| `preview` (page)     | `{ kind: "page", url: "/files/issues/<number>/<id>" }`.                                                                         |
+| Field                | Value                                                                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | `spec`, `plan`, or `<kind>-<first 12 hex of SHA-256 of the path>`, for example `mockup-3f9a0c1b2d4e`.                                     |
+| `title`              | Spec and plan: the text of the first level-one heading, otherwise the file name. HTML: as above.                                          |
+| `path`               | The repository path, with `/` separators.                                                                                                 |
+| `commit`             | The first 7 hex characters of the remote commit that `sourceUrl` names. Without a remote match: of the local commit.                      |
+| `draft`              | `true` when the blob is not on any remote ref that the server read. Otherwise `false`.                                                    |
+| `location`           | The first remote ref with the same blob decides: `On branch <branch>`, then `On <base>`. Else `On local branch <branch>. Not pushed yet.` |
+| `sourceUrl`          | When the same blob is on a remote ref: the host URL at that remote commit, in the `document-links.ts` format. Otherwise `null`.           |
+| `preview` (document) | `{ kind: "document", blocks }` from `markdownBlocks()`.                                                                                   |
+| `preview` (page)     | `{ kind: "page", url: "/files/issues/<number>/<id>" }`.                                                                                   |
 
 To find `draft`, the server compares the blob ID at `<ref>:<path>` with the blob
-ID at the same path on `origin/<branch>` and on `origin/<base>`.
+ID at the same path on `origin/<branch>`, then on `origin/<base>`. The first
+match gives `location`, `commit` and `sourceUrl`, so "at abc1234" and "View on
+GitHub" always name the same commit. Example: a spec merged into the base and
+carried on an unpushed Issue branch shows `On main` and `draft: false`.
 
 A spec or plan larger than 1 MiB, or an HTML file larger than 5 MiB, is not
-listed. The server logs a warning.
+listed. The server does not try the next ref for that kind, and it does not
+search the links of a skipped document. It calls the reader's `warn` callback.
+Git output is UTF-8 text through `CommandRunner`, so the route serves HTML as
+UTF-8.
 
 ### Markdown to text blocks
 
@@ -263,15 +269,24 @@ a ref fingerprint to the `issueFingerprint()` value. The ref fingerprint is one
 patterns under `refs/remotes/origin/`, and `refs/remotes/origin/<base>`. The
 issue-ref prefix match is exact, so issue 38 does not match issue 384. A new
 commit on the Issue branch then updates the header within the feed's 1-second
-cycle. The reader caches parsed blocks and HTML lookups by blob ID for the life
-of one snapshot.
+cycle. During an active run the feed reprojects about every second, because
+session logs change. The live adapter therefore keeps one content cache for its
+whole life. The cache key is the blob ID, which never changes for given content.
+It holds parsed blocks and HTML bytes, with at most 64 entries, oldest out
+first. Only ref resolution and `ls-tree` run again on each projection.
+
+`issueRefsFingerprint()` never throws. If `git` fails, it returns the constant
+`refs-unavailable`, so the feed keeps working. A pull request head branch that
+is not an `agent/issue-N` branch is not in the ref fingerprint. Its changes show
+at the feed's 60-second full reprojection.
 
 ### Issue page
 
 `renderArtifactChips()` already groups Planning chips. It does not change. The
 header shows the `documentLinks` row only for a kind that is not in
-`detail.artifacts`. This prevents two Spec chips. A host link stays available as
-"View on GitHub" in the viewer when `sourceUrl` is set.
+`detail.artifacts`. A pure helper `remainingDocumentLinks(links, artifacts)` in
+`web/links.js` makes this rule testable. This prevents two Spec chips. A host
+link stays available as "View on GitHub" in the viewer when `sourceUrl` is set.
 
 ### Module design
 
@@ -285,14 +300,17 @@ ADR.
   `createIssueDocumentReader(input) => (issue, branches) => Promise<IssueDocuments>`,
   where `IssueDocuments` is
   `{ artifacts: readonly Artifact[]; file(id: string): Promise<IssueFile | null> }`.
-  The input is the `RepositoryInput` of `document-links.ts`. It hides ref order,
-  branch validation, `ls-tree` and `cat-file` calls, link discovery, size
-  limits, IDs, draft and location rules, and the blob cache. Callers know only
-  that failures throw, and that a reader is bound to one snapshot.
+  The input is the `RepositoryInput` of `document-links.ts`, plus `warn` and an
+  optional shared content cache. It hides ref order, branch validation,
+  `ls-tree` and `cat-file` calls, link discovery, size limits, IDs, draft and
+  location rules, and caching. Callers know that a Git failure throws, that a
+  skipped document calls `warn`, and that ref results are bound to one call.
 - **`src/web/markdown-blocks.ts` (new, pure).** `markdownBlocks(source)`.
 - **`src/web/file-run-data.ts`.** It creates one reader for each snapshot, next
   to `documents()`. It passes the same branch list to both. It puts `artifacts`
-  on the detail and implements `documentFile()`. A failure logs
+  on the detail and implements `documentFile()`. One helper finds the eligible
+  issue and its branch list for both the page and `documentFile()`. It applies
+  the page's rules: open, not `unsuitable`, and a board summary. A failure logs
   `Could not read documents for issue #N.` and keeps `artifacts: []`.
 - **`src/web/file-issue-detail.ts`.** It takes `artifacts` as an input and does
   not compute them.
@@ -336,16 +354,24 @@ branch validation helper and the host URL helper, which move out of
 - A viewer test: a `/files/` frame gets `sandbox="allow-scripts"` exactly. A
   `/samples/` frame keeps `allow-same-origin`.
 - `issue-documents.test.ts`: a new commit on the Issue branch changes the ref
-  fingerprint that the issue feed adds to `issueFingerprint()`.
-- An optional real-browser check in `scripts/check-serve-layout.mjs` style: a
-  mockup script in the frame reads `document.cookie`, calls
-  `fetch("/api/board")` and reads `parent.document`. All three fail.
+  fingerprint that the issue feed adds to `issueFingerprint()`. A failed `git`
+  call gives `refs-unavailable`.
+- `browser-links.test.ts`: `remainingDocumentLinks()` drops a host link whose
+  kind has an artifact.
+- A real-browser check in `scripts/check-serve-layout.mjs` style, run by
+  `npm run test:web`: a mockup script in the frame reads `document.cookie`,
+  calls `fetch("/api/board")` and reads `parent.document`. Each one throws or
+  gives nothing. The frame's `sandbox` attribute is exactly `allow-scripts`.
 
 ## Left to the builder
 
 - Internal names inside the new modules.
 - Where to put the viewer test, if no current test renders `web/artifacts.js`.
 - Exact warning text other than the text above.
+
+The README "Web board" section gets a short paragraph: the live issue page shows
+Issue documents from local and pushed branches, and mockup scripts run in an
+isolated frame.
 
 ## Frontend design
 
@@ -359,7 +385,7 @@ adds no new visual elements.
 ```mermaid
 flowchart LR
   subgraph Server["patchmill serve"]
-    D["readIssueDocuments()<br/>refs: local → origin → base"]
+    D["createIssueDocumentReader()<br/>refs: local → origin → base"]
     M["markdownBlocks()"]
     R["/files/issues/N/id<br/>CSP sandbox allow-scripts"]
   end
