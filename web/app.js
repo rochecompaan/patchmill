@@ -271,8 +271,10 @@ function openName() {
   nameInput.focus();
 }
 document.getElementById("name-form")?.addEventListener("submit", (event) => {
+  let renamed;
   try {
     name = saveName(storage, nameInput.value);
+    renamed = name !== savedName;
     savedName = name;
   } catch (error) {
     event.preventDefault();
@@ -286,7 +288,7 @@ document.getElementById("name-form")?.addEventListener("submit", (event) => {
   clearNameError();
   updateName();
   // The stream lists the new name; typing starts again under it.
-  if (typing) newTypingSignal(typing.issue);
+  if (renamed && typing) newTypingSignal(typing.issue);
   controller.rename();
   render();
 });

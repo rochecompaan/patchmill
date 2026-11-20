@@ -162,3 +162,11 @@ test("presenceChanges announces joins and leaves of others", () => {
     ["Dee joined the page.", "Cleo left the page."],
   );
 });
+
+test("rename with an unchanged name keeps the stream", async () => {
+  const f = setup(await liveIssue(), () => "Ann");
+  await f.controller.navigate(issue298);
+  f.controller.rename();
+  assert.equal(f.sockets.length, 1);
+  assert.equal(f.sockets[0]!.closed, false);
+});

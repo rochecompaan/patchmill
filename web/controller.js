@@ -29,6 +29,8 @@ export function createPageController({
   /** @type {(()=>void)|undefined} */ let cancel;
   let published = "";
   /** @type {EventSourceLike|undefined} */ let stream;
+  /** The name that the open stream is listed under. */
+  /** @type {string|null} */ let streamName = null;
   function closeStream() {
     const previous = stream;
     stream = undefined;
@@ -40,7 +42,8 @@ export function createPageController({
   function connect() {
     // Every live issue page subscribes: a Web session can start at any time.
     if (!events || stream || state.issue?.source !== "live") return;
-    const who = name?.();
+    const who = name?.() ?? null;
+    streamName = who;
     const socket = events(
       `/api/issues/${state.issue.issue.summary.number}/events` +
         (who ? "?name=" + encodeURIComponent(who) : ""),
@@ -217,7 +220,8 @@ export function createPageController({
     },
     /** Reconnect the stream, so a newly saved name is listed. */
     rename() {
-      if (!stream) return;
+      // The same name again would make others see a leave and a join.
+      if (!stream || (name?.() ?? null) === streamName) return;
       closeStream();
       connect();
       publish();
