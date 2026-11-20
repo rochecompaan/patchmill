@@ -51,6 +51,10 @@ documents and documents approved without a PR in an Interactive Issue run
 accompany its code. Required planning gates otherwise use separate branches.
 _Avoid_: One branch for every stage
 
+**Issue document**: A spec, plan, mockup, or Planning visualization of one
+issue, read from a committed Git ref of its Issue branch or of the base branch.
+The web API calls its entry an `Artifact`. _Avoid_: Issue file, attachment
+
 **Run-once workflow**: The atomic processing of one selected issue from claim
 through its terminal or resumable outcome. _Avoid_: Run loop, coordinator
 
