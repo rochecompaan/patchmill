@@ -1,10 +1,14 @@
-# Fresh Plan review brief
+# Planning review brief
 
-Review the supplied implementation plan in a fresh context against its
-specification, issue requirements, repository instructions, and existing code.
-The planner supplies exact repository/worktree, artifact paths, base revision,
-resolved decisions, and installed guidance paths. Treat the planner's summary
-and candidate file list as claims and discovery hints, not evidence.
+Review the supplied planning documents in a fresh context. Be adversarial: look
+for gaps, contradictions, wrong assumptions, and risky design choices. The scope
+is a specification, an implementation plan, or both, as the planner supplies.
+Review each document in scope against the issue requirements and acceptance
+criteria, repository instructions, existing code, and the other documents. The
+planner supplies exact repository/worktree, scope, artifact paths, input
+documents, base revision, resolved decisions, and installed guidance paths.
+Treat the planner's summary and candidate file list as claims and discovery
+hints, not evidence. Approved documents and a Parent spec are inputs, not scope.
 
 ## Authority and inputs
 
@@ -22,11 +26,11 @@ artifacts for a non-architectural change.
 
 ## Conceptual explanations
 
-Inspect the new or materially revised plan's `## Visual explanation`, including
-its inline diagrams or sketches and every linked HTML companion. Read relevant
-specification explanations too. Verify agreement with the document's concepts,
-behavior, task order, dependencies, and ownership. A UI mockup does not replace
-a conceptual explanation.
+Inspect the `## Visual explanation` of each new or materially revised document
+in scope, including its inline diagrams or sketches and every linked HTML
+companion. Read relevant explanations of input documents too. Verify agreement
+with the document's concepts, behavior, task order, dependencies, and ownership.
+A UI mockup does not replace a conceptual explanation.
 
 For HTML, verify the actual file exists in the specification's directory. Check
 that contextual and companion links resolve from the owning document and stay
@@ -42,9 +46,9 @@ hosting, image previews, or a UI-design review for conceptual documents.
 
 ## Independent architecture survey
 
-Before judging the plan, independently inspect relevant source, callers, and
-tests. Reading only the plan, specification, diff, or planner's architecture
-summary is insufficient. Determine:
+Before judging the documents in scope, independently inspect relevant source,
+callers, and tests. Reading only the plan, specification, diff, or planner's
+architecture summary is insufficient. Determine:
 
 - Domain concepts, established language, and conflicts with code or ADRs.
 - Existing modules, their interfaces, invariants, ordering, errors, and caller
@@ -59,7 +63,46 @@ this architecture. Keep inspection proportionate to the proposed change. A
 non-architectural plan can preserve the existing architecture without inventing
 a redesign.
 
+## Specification checks
+
+Apply these checks when a specification is in scope:
+
+- Each issue requirement and acceptance criterion is addressed or explicitly out
+  of scope.
+- No contradiction exists within the specification, or with the issue, the
+  Parent spec, the glossary, or an ADR.
+- Claims about current behavior match the source: names, call flows,
+  configuration, and tests.
+- Risky choices are explicit: irreversible actions, security boundaries, data
+  loss, compatibility, and unattended runs that wait for a human.
+- **Builder question:** find each place where a builder must guess and a wrong
+  guess would matter. Skip what the document leaves to the builder and what a
+  sensible builder can decide.
+- Each acceptance criterion has a verification method.
+
+## Plan checks
+
+Apply these checks when an implementation plan is in scope:
+
+- Each acceptance criterion and specification decision maps to a task.
+- Each path, symbol, signature, command, and configuration key exists in the
+  inspected base, or an earlier task creates it.
+- Review code blocks as code: correct logic, types, and imports. Each test must
+  fail before the change and assert meaningful behavior.
+- Commands can run, and the expected output is plausible.
+- Task order respects dependencies. The Testing Value Gate holds.
+
+## Combined checks
+
+Apply these checks only when the specification and the plan are both in scope:
+
+- The plan does not contradict or silently extend the specification.
+- Each specification decision that needs work has a task.
+
 ## Review rubric
+
+Apply this rubric to each plan in scope, and to each specification in scope that
+defines or changes modules, interfaces, seams, or adapters.
 
 Determine whether the plan:
 
@@ -93,9 +136,10 @@ injected adapters and appropriate test stand-ins. Replace redundant shallow
 tests with interface behavior tests rather than layer both suites without
 purpose. Do not require unrelated refactors.
 
-Retain the usual checks for spec coverage, task decomposition, interface/type
-consistency, meaningful verification, and buildability. Architectural principles
-supplement those checks rather than replace them.
+Retain the specification, plan, and combined checks, and the usual checks for
+spec coverage, task decomposition, interface/type consistency, meaningful
+verification, and buildability. Architectural principles supplement those checks
+rather than replace them.
 
 ## Findings and report
 
@@ -106,13 +150,16 @@ Return:
 3. Inspection limits, including evidence or dependencies you could not inspect.
 4. A readiness conclusion, not human approval.
 
-Each blocker must identify the violated requirement, concrete codebase evidence,
-user or maintenance impact, and the smallest required correction. Cite files and
-symbols, call flows, interfaces, seams, tests, or ADRs. Generic architectural
-preferences and hypothetical concerns do not block a plan. A conflict with an
-ADR must identify that decision and the contradiction.
+Give each finding an identifier, the document, and the severity: blocker or
+suggestion. Each finding must identify the violated requirement, concrete
+codebase evidence, user or maintenance impact, and the smallest correction. Cite
+files and symbols, call flows, interfaces, seams, tests, or ADRs. Generic
+architectural preferences, style preferences, and hypothetical concerns do not
+block a document. Mark a question that only a human can answer as such, so that
+the planner can record it as an open assumption or ask the maintainer. A
+conflict with an ADR must identify that decision and the contradiction.
 
-For a scoped confirmation, review the accepted corrections and their
-architectural effects. Do not reopen unrelated design preferences. Never grant
-approval, change a human gate, or claim implemented behavior from an unexecuted
-plan.
+For a scoped confirmation, review the accepted corrections and their effects,
+including architectural effects. Do not reopen unrelated design preferences.
+Never grant approval, change a human gate, or claim implemented behavior from an
+unexecuted plan.

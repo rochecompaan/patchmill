@@ -34,6 +34,11 @@ missing prerequisite. In interactive runs, ask the maintainer and wait for
 guidance. Do not install a substitute or replace fresh review with self-review.
 Do not recreate upstream workflows.
 
+Do not dispatch the upstream brainstorming builder check. Planning review asks
+the builder's question instead. Its piles map to dispositions: the document
+records answers that already exist, you decide minor questions, and questions
+that only a human can answer become open assumptions or maintainer questions.
+
 ## Domain and architecture analysis
 
 Before drafting a specification, determine whether it defines or changes
@@ -108,9 +113,10 @@ or issue label is not sufficient. Never grant approval or merge a pull request.
 
 - At stage `spec`, write or revise the specification at the exact Spec path, its
   applicable mockup, and justified domain companions within envelope limits.
-  Review it against the issue and project instructions. Commit and push it,
-  publish its planning pull request, and return `done`. Do not write the plan or
-  implementation before this pull request merges.
+  Review it against the issue and project instructions. The boundary check runs
+  a Planning review of the spec before the planning pull request. Commit and
+  push it, publish its planning pull request, and return `done`. Do not write
+  the plan or implementation before this pull request merges.
 - At stage `plan`, reuse the specification merged into the base. If the Spec
   path is `expected:`, the spec gate is off. Write the specification in this
   branch, then write the implementation plan. Commit and push the artifacts,
@@ -140,8 +146,8 @@ of choosing. In an interactive run, ask the maintainer in the chat. In an
 unattended run, return `needs-input`. Do not override the Parent spec in the
 Sub-issue's spec.
 
-List the Parent spec as a plan input. Give its path and base ref to the fresh
-plan reviewer as a specification input.
+List the Parent spec as a plan input. Give its path and base ref to each
+Planning review as an input document.
 
 ## Planning pull requests
 
@@ -167,7 +173,7 @@ URL, and merge requirement in the final summary.
 
 After substantive drafting, explicitly apply the installed show-me skill to each
 new or materially revised specification and plan. Do this before self-review,
-fresh Plan review, and publication. Upstream disables implicit model invocation.
+Planning review, and publication. Upstream disables implicit model invocation.
 Do not rely on automatic suggestions, download a substitute, or start a nested
 agent to apply the skill.
 
@@ -225,12 +231,13 @@ format succeeds, stop through the existing guidance channel. Prose alone does
 not satisfy the visual requirement. Missing show-me or its license remains a
 missing prerequisite, not permission to skip visualization.
 
-Review the explanation against its document. Supply the plan's inline output and
-linked companions to fresh Plan review. Commit and publish HTML with its owning
-document through the same authorized branch and PR. Keep existing gates,
-local-helper publication limits, and interactive approval rules. Committed,
-linked HTML is sufficient. GitHub shows its source, not a rendered page. Do not
-add hosting, image previews, uploads, issue comments, or PR-body mutations.
+Review the explanation against its document. Supply the inline output and linked
+companions of each document in scope to Planning review. Commit and publish HTML
+with its owning document through the same authorized branch and PR. Keep
+existing gates, local-helper publication limits, and interactive approval rules.
+Committed, linked HTML is sufficient. GitHub shows its source, not a rendered
+page. Do not add hosting, image previews, uploads, issue comments, or PR-body
+mutations.
 
 If commit, push, or required PR publication fails, preserve the document and
 companion and report the existing execution failure. Never claim publication or
@@ -290,8 +297,8 @@ Use writing-plans to write the plan at the exact Plan path. Base it on the
 specification, its linked mockups, conceptual explanations, and resolved review
 comments. List the spec, each mockup, and linked visualizations as plan inputs.
 For kernel runs, record inline execution through the sibling `executing-plans`
-skill. Fresh Plan review is required even for inline execution. If an
-interactive operator authorizes per-task implementation review, use sibling
+skill. Planning review is required even for inline execution. If an interactive
+operator authorizes per-task implementation review, use sibling
 `subagent-driven-development` with the canonical `reviewer` agent. Never require
 the disabled `code-reviewer` agent.
 
@@ -304,54 +311,137 @@ direct inspection, lint, dry runs, builds, or existing suites for those
 exclusions. State the chosen verification in the plan. Review the plan, commit
 it, and push it to the provided branch.
 
-## Fresh Plan review
+## Planning review
 
-After planner self-review, every new or revised implementation plan requires one
-fresh-context canonical `reviewer`. This includes ungated plans written at stage
-`implementation` and plans written through the local interactive helper.
-Spec-only work does not create an implementation plan to review.
+A Planning review is a fresh reviewer's adversarial assessment of the planning
+documents in its scope. The scope is a specification, an implementation plan, or
+both. Self-review comes first and never replaces Planning review. Approved,
+unchanged documents and a Parent spec are inputs, not scope. Reviewer readiness
+does not satisfy a human Spec or Plan gate and never grants merge authority.
 
-Build the task from the full `plan-review.md` in this skill directory. Supply
-exact repository/worktree, issue requirements, specification, plan, their inline
-explanations and linked visualizations, project instructions, inspected base
-revision, and installed guidance paths. Include resolved domain decisions as
-claims for independent verification. Source locations are discovery hints, not
-an authoritative architecture summary. Do not pass the planner's conversation
-history. Select the most capable available review model and pass its model and
-thinking settings explicitly. Await the complete report before continuing. Keep
-the reviewer read-only and prohibit nested agents or optional upstream
-workflows.
+### Triggers
 
-The reviewer must independently inspect relevant source and tests. Reading only
-the specification, plan, diff, or planner summary is insufficient. Record the
-architecture survey, findings, dispositions, inspection limits, and readiness
-conclusion in a concise Plan review section of the plan. Accepted blockers
-require corrections before success or human submission. Rejected findings
-require concrete counter-evidence. If a correction changes approved scope,
-respect the Spec gate instead of silently expanding the design.
+1. **On request.** In an interactive run, the maintainer can ask for a Planning
+   review at any time. Examples: after brainstorming the specification, or after
+   the specification and the plan both exist. The scope is the documents that
+   the maintainer names. If the maintainer names none, the scope is every new or
+   revised document without a current record. A request is not approval and does
+   not change a gate.
+2. **Boundary check.** Before each review boundary, check the record of each
+   document that crosses it. Review every document without a current record, in
+   one pass. A document with a current record crosses only when that record is
+   also ready. Unattended runs use only this trigger.
 
-Allow one initial review and one fresh, scoped confirmation after blocking
-corrections. The confirmation covers corrections and their architectural
-effects, not unrelated new preferences. If blockers remain or a decision needs
-human input, use the applicable interactive or unattended guidance channel. Do
-not replace missing confirmation with planner approval.
+### Review boundaries
 
-Record the reviewed revision or content identity and confirmation outcome. A
-body hash can exclude its own review receipt. Receipt-only edits do not
-invalidate review. Material task or architecture edits require a new review
-before publication. Reviewer readiness does not satisfy a human Spec or Plan
-gate and never grants merge authority.
+A review boundary is a point where planning documents leave the planner. The
+gates that apply to the issue select the boundaries. The same rule applies when
+a per-issue decision selects the gates instead of the repository configuration.
+
+| Gates that apply | Boundaries and scope                                                                   |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| Spec gate only   | Spec at the Spec gate. Plan at the start of implementation, against the approved spec. |
+| Plan gate only   | Spec and plan together at the Plan gate.                                               |
+| Both gates       | Spec at the Spec gate. Plan at the Plan gate, against the approved spec.               |
+| No gate          | Spec and plan together at the start of implementation.                                 |
+
+At stage `spec`, the boundary is the planning pull request or interactive
+submission. At stage `plan`, it is the plan pull request or interactive
+submission. At stage `implementation`, it is the `done` result or interactive
+submission. Review before you publish, submit, or return `done`.
+
+### Running a review
+
+Dispatch one fresh-context canonical `reviewer`. Build the task from the full
+`planning-review.md` in this skill directory. Supply the exact
+repository/worktree, the scope, the issue requirements and acceptance criteria,
+each document in scope, the input documents, inline explanations and linked
+visualizations, project instructions, inspected base revision, and installed
+guidance paths. Include resolved domain decisions as claims for independent
+verification. Source locations are discovery hints, not an authoritative
+architecture summary. Do not pass the planner's conversation history.
+
+Select the most capable available review model and pass its model and thinking
+settings explicitly. Run the reviewer in the foreground and await the complete
+report. Keep the reviewer read-only and prohibit nested agents or optional
+upstream workflows. The reviewer must independently inspect relevant source and
+tests. Reading only the documents, diff, or planner summary is insufficient.
+
+### Dispositions
+
+Give each finding exactly one disposition:
+
+- **Accepted:** revise the document and name the revision.
+- **Rejected:** give concrete counter-evidence.
+- **Open assumption:** only a human can answer the question. In an interactive
+  run, ask the maintainer and record the answer. In an unattended run, choose
+  the most conservative option that the issue supports. Record the question, the
+  choice, and the reason in an `## Open assumptions` section of the document
+  that owns the decision. An approved spec and a Parent spec are read-only, so a
+  plan-stage assumption goes in the plan.
+- **Escalated:** the finding conflicts with the issue, the Parent spec, or an
+  ADR, or its correction changes approved scope. Interactive runs ask the
+  maintainer. Unattended runs return `needs-input`. Respect the Spec gate
+  instead of silently expanding the design.
+
+### Bounds and outcomes
+
+Each Planning review allows one initial pass and one fresh, scoped confirmation
+after you correct accepted blockers. The confirmation examines the corrections
+and their effects, not unrelated new preferences. If a blocker remains after
+confirmation, record the outcome `blocked`. Record `escalated` for an escalated
+finding. For either outcome, interactive runs ask the maintainer and unattended
+runs return `needs-input`. A maintainer request starts a new Planning review
+with its own bound. Do not replace missing confirmation with planner approval.
+
+A later session can resume from `blocked` or `escalated` in two ways. If you
+edit the document, its record is no longer current and a new review runs. If
+maintainer guidance settles the finding without a document edit, record that
+ruling as the finding's disposition. Then the outcome becomes `ready`. Planner
+judgement alone never changes `blocked` to `ready`.
+
+### Review record
+
+Each reviewed document ends with one `## Planning review` section. Each review
+pass adds an entry with:
+
+- The scope and, for a combined pass, the other document in the scope.
+- The reviewer agent, model, thinking level, and base revision.
+- The reviewed body SHA-256 of each document in scope.
+- For a plan, the body SHA-256 of the specification that the review compared it
+  with, whether that specification was in scope or only an input.
+- A short survey, the findings with their dispositions, and inspection limits.
+- The confirmation result, the final body SHA-256, and the outcome: `ready`,
+  `blocked`, or `escalated`.
+
+The body is the document text before its `## Planning review` heading. That
+heading must be a real level-two heading outside fenced code. It must occur
+once, and it must start the last section. Compute the body hash with
+`node <skill-dir>/scripts/body-hash.mjs <document>`, where `<skill-dir>` is this
+skill's installed directory. The helper ignores headings inside fenced code. It
+fails if the record is duplicated or not last. Receipt-only edits do not change
+the hash.
+
+A specification record is **current** when its final body hash matches the
+specification. A plan record is current when its final body hash matches the
+plan and its recorded specification hash matches the current specification. A
+specification edit therefore makes the plan record stale too, and the next
+boundary reviews both documents together. A record is **ready** when its latest
+entry has the outcome `ready` and every finding has a disposition. A document
+crosses a boundary only when its record is current and ready.
 
 ## Final result
 
 Never push the base branch or force-push. Never post issue comments, change
-labels, merge, or clean up the issue workspace. In unattended runs, put
-questions and missing prerequisites in `summary` with `needs-input`. In
-interactive runs, follow the envelope's question, approval, and result protocol
-instead. Use `failed` for execution failures. Use `done` after the required
-artifact commits, push, and planning pull request publication succeed. At stage
-`implementation`, only the artifact commits and push are required. End with a
-fenced `json` block containing exactly these fields, and no text after it:
+labels, merge, or clean up the issue workspace. In unattended runs, put missing
+prerequisites, `blocked` or `escalated` Planning review outcomes, and their
+questions in `summary` with `needs-input`. A human-only question that becomes an
+open assumption does not return `needs-input`. In interactive runs, follow the
+envelope's question, approval, and result protocol instead. Use `failed` for
+execution failures. Use `done` after the required artifact commits, push, and
+planning pull request publication succeed. At stage `implementation`, only the
+artifact commits and push are required. End with a fenced `json` block
+containing exactly these fields, and no text after it:
 
 ```json
 {

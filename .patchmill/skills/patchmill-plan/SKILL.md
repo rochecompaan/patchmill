@@ -53,7 +53,7 @@ HTML in the actual spec directory. Keep conceptual visuals separate from UI
 mockups. Preserve the shared naming, relative-link, portability, fallback, and
 stage rules. This adds local documents, not publication authority.
 
-## Domain analysis and Plan review
+## Domain analysis and Planning review
 
 Apply the sibling planning skill's domain and architecture analysis while
 writing or revising specifications. Use the installed Matt Pocock guidance when
@@ -61,12 +61,16 @@ it applies. Preserve established language and relevant ADRs. Permit justified
 domain companions, but respect narrower artifact limits. Do not create domain
 documents for ceremony or rename legacy files without authorization.
 
-After planner self-review, follow the sibling's Fresh Plan review requirements
-for every new or revised implementation plan. Supply its local `plan-review.md`
-brief and exact installed guidance paths to a fresh, read-only `reviewer`. The
-reviewer must independently read relevant code and tests. Record evidence,
-dispositions, reviewed content identity, and any required scoped confirmation in
-the plan. Review readiness is not human approval. If a required skill,
+After planner self-review, follow the sibling's Planning review requirements.
+The maintainer can request a Planning review of a named scope at any time: the
+specification, the plan, or both. Before handoff, run the sibling's boundary
+check, so every new or revised document has a current, ready record. Supply its
+local `planning-review.md` brief and exact installed guidance paths to a fresh,
+read-only `reviewer`. The reviewer must independently read relevant code and
+tests. Record evidence, dispositions, body hashes from the sibling's
+`scripts/body-hash.mjs` helper, outcomes, and any required scoped confirmation
+in each reviewed document. Ask the maintainer about questions that only a human
+can answer. Review readiness is not human approval. If a required skill,
 supporting resource, reviewer, or subagent tool is absent, ask the maintainer
 and wait. Do not install dependencies or substitute self-review. These
 requirements do not authorize kernel publication steps.
