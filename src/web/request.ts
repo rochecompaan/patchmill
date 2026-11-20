@@ -8,6 +8,7 @@ import type { ServeAuth } from "./auth.ts";
 import type { RequestPolicy } from "./request-policy.ts";
 import { serveSessionRoute, sessionRoute } from "./session/routes.ts";
 import type { SessionHub } from "./session/types.ts";
+import type { Presence } from "./presence.ts";
 
 type RequestContext = {
   webRoot: string;
@@ -19,6 +20,8 @@ type RequestContext = {
   keepAliveMs: number;
   /** Absent for `--sample`: the session routes answer 404. */
   sessions?: SessionHub;
+  /** Absent for `--sample`: no presence events and no typing route. */
+  presence?: Presence;
 };
 function send(
   res: ServerResponse,
@@ -43,6 +46,7 @@ export function createRequestHandler({
   closing,
   keepAliveMs,
   sessions,
+  presence,
 }: RequestContext) {
   return (req: IncomingMessage, res: ServerResponse) => {
     const method = req.method ?? "GET",
@@ -82,7 +86,11 @@ export function createRequestHandler({
           res,
           method,
           rawNumber,
+          query: target.includes("?")
+            ? target.slice(target.indexOf("?") + 1)
+            : "",
           source,
+          ...(presence ? { presence } : {}),
           streams,
           closing,
           keepAliveMs,

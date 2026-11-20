@@ -10,6 +10,7 @@ import { probeIssueLock } from "../../../kernel/lock.ts";
 import { consoleLockHeld } from "../../../console/console-lock.ts";
 import { createSessionHub } from "../../../web/session/hub.ts";
 import type { SessionHub } from "../../../web/session/types.ts";
+import { createPresence, type Presence } from "../../../web/presence.ts";
 import { createSessionLauncher } from "./session-launcher.ts";
 
 export async function createServeSource(input: {
@@ -17,8 +18,12 @@ export async function createServeSource(input: {
   repoRoot: string;
   runner: CommandRunner;
   warn: (message: string) => void;
-}): Promise<{ source: RunDataSource; sessions?: SessionHub }> {
-  // Sample data stays view only: it has no Session hub.
+}): Promise<{
+  source: RunDataSource;
+  sessions?: SessionHub;
+  presence?: Presence;
+}> {
+  // Sample data stays view only: it has no Session hub and no presence.
   if (input.sample) return { source: createSampleRunDataSource() };
   const config = await loadConfig(input.repoRoot);
   const host = createHost(config, input.runner, input.repoRoot);
@@ -61,5 +66,14 @@ export async function createServeSource(input: {
       pushRepository: { slug: pushSlug, url: pushed.publicUrl },
     },
   });
-  return { source, sessions };
+  const presence = createPresence({
+    clock: {
+      after(ms, fn) {
+        const timer = setTimeout(fn, ms);
+        timer.unref();
+        return () => clearTimeout(timer);
+      },
+    },
+  });
+  return { source, sessions, presence };
 }

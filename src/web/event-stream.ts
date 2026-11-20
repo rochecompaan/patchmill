@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RunDataSource } from "./run-data.ts";
+import type { Presence } from "./presence.ts";
+import { PERSON_NAME_RULE, parsePersonName } from "./person-name.ts";
 
 export function issueEventsPath(path: string): string | null {
   return /^\/api\/issues\/([^/]*)\/events$/.exec(path)?.[1] ?? null;
@@ -9,7 +11,11 @@ export async function serveIssueEvents(input: {
   res: ServerResponse;
   method: string;
   rawNumber: string;
+  /** The raw query string of the request, without `?`. */
+  query: string;
   source: RunDataSource;
+  /** Absent for `--sample`: the stream sends no presence events. */
+  presence?: Presence;
   streams: Set<ServerResponse>;
   closing(): boolean;
   keepAliveMs: number;
@@ -34,6 +40,12 @@ export async function serveIssueEvents(input: {
     fail(400, "invalid_issue", "Use a positive issue number.");
     return;
   }
+  const names = new URLSearchParams(input.query).getAll("name");
+  const name = names[0] ? parsePersonName(names[0]) : null;
+  if (names.length > 1 || (names[0] && !name)) {
+    fail(400, "invalid_author", PERSON_NAME_RULE);
+    return;
+  }
   const snapshot = await source.snapshot({ issue });
   if (res.destroyed || req.destroyed) return;
   if (!snapshot.details[String(issue)]) {
@@ -49,12 +61,16 @@ export async function serveIssueEvents(input: {
   res.flushHeaders();
   let stopped = false;
   let unsubscribe: (() => void) | undefined;
+  // cleanup can run before join returns, so leave cannot be a const.
+  // eslint-disable-next-line prefer-const
+  let leave: (() => void) | undefined;
   const cleanup = () => {
     if (stopped) return;
     stopped = true;
     clearInterval(timer);
     streams.delete(res);
     unsubscribe?.();
+    leave?.();
   };
   const write = (text: string) => {
     if (stopped || res.destroyed || res.writableEnded) return;
@@ -87,5 +103,16 @@ export async function serveIssueEvents(input: {
     res.destroy();
     throw error;
   }
-  if (stopped) unsubscribe();
+  if (stopped) {
+    unsubscribe();
+    return;
+  }
+  // Presence events have no id: they never enter the replay log.
+  leave = input.presence?.join(issue, name, (people) =>
+    write(
+      `event: presence\ndata: ${JSON.stringify({ kind: "presence", people })}\n\n`,
+    ),
+  );
+  // A write inside join can cut the stream before leave is known.
+  if (stopped) leave?.();
 }
