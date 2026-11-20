@@ -8,6 +8,8 @@ import { mountArtifactViewer } from "./artifacts.js";
 import { mountSyncStatus } from "./sync-status.js";
 import { liveElapsedSeconds } from "./live-issue.js";
 import { elapsed } from "./dom.js";
+import { createTypingSignal } from "./typing.js";
+import { paintPresence, presenceChanges } from "./presence-view.js";
 const mount = /** @type {HTMLElement} */ (document.getElementById("app"));
 const notice = /** @type {HTMLElement} */ (document.getElementById("notice"));
 const nameDialog = /** @type {HTMLDialogElement} */ (
@@ -45,8 +47,20 @@ const announcement = document.createElement("p");
 announcement.className = "visually-hidden";
 announcement.setAttribute("role", "status");
 mount.after(announcement);
+// Joins and leaves get their own polite status element, so they do not
+// replace a run announcement.
+const presenceStatus = document.createElement("p");
+presenceStatus.className = "visually-hidden";
+presenceStatus.setAttribute("role", "status");
+announcement.after(presenceStatus);
 let linkedArtifact = "";
-let name = readName(storage) ?? "You";
+/** The one name for the stream, the own avatar and typing signals. */
+let savedName = readName(storage);
+let name = savedName ?? "You";
+/** @type {readonly import('../src/web/api-types.ts').PresencePerson[]|null} */
+let people = null;
+/** @type {{issue:number,signal:ReturnType<typeof createTypingSignal>}|null} */
+let typing = null;
 const drafts = createDraftStore();
 const viewState = createViewState(mount, drafts);
 const { captureDraft } = viewState;
@@ -104,6 +118,7 @@ function render() {
       behavior: "instant",
     });
   openLinkedArtifact(current);
+  paintPresence(mount, savedName ?? name, people);
 }
 const api = createApi();
 /**
@@ -118,7 +133,7 @@ async function sessionInput(action, body = {}) {
     showNote();
     return false;
   }
-  if (!readName(storage)) {
+  if (!savedName) {
     openName();
     return false;
   }
@@ -131,7 +146,7 @@ async function sessionInput(action, body = {}) {
   try {
     const result = await api.session(number, action, {
       ...body,
-      author: name,
+      author: savedName,
     });
     if (!result.ok) showNote(result.message);
     return result.ok;
@@ -140,10 +155,43 @@ async function sessionInput(action, body = {}) {
   }
 }
 /** @type {Set<number>} */ const pendingInputs = new Set();
+/** @param {number} issue */
+function newTypingSignal(issue) {
+  typing?.signal.dispose();
+  typing = {
+    issue,
+    signal: createTypingSignal({
+      send: (t) =>
+        savedName ? api.typing(issue, savedName, t) : Promise.resolve(false),
+      clock: { now: () => Date.now() },
+    }),
+  };
+}
+/** Keep one typing signal for the live issue on screen. @param {import('./controller.js').PageState} state */
+function syncTypingSignal(state) {
+  const issue = state.issue;
+  const number =
+    state.route.view === "issue" && issue?.source === "live" && issue.sessions
+      ? issue.issue.summary.number
+      : null;
+  if (typing && typing.issue !== number) {
+    typing.signal.dispose();
+    typing = null;
+  }
+  if (number !== null && !typing) newTypingSignal(number);
+}
 const controller = createPageController({
   api,
   events: (url) => new EventSource(url),
+  name: () => savedName,
+  onPresence: (next) => {
+    const lines = presenceChanges(people, next ?? [], savedName ?? name);
+    if (next && lines.length) presenceStatus.textContent = lines.join(" ");
+    people = next;
+    paintPresence(mount, savedName ?? name, people);
+  },
   onState: (state) => {
+    syncTypingSignal(state);
     const previousBoard = current?.board;
     const wasActive = current?.issue?.issue.run?.outcome === "active";
     current = state;
@@ -197,6 +245,7 @@ document.addEventListener("visibilitychange", () =>
 );
 window.addEventListener("pagehide", () => {
   controller.dispose();
+  typing?.signal.dispose();
   window.clearInterval(elapsedTimer);
   syncStatus.dispose();
 });
@@ -222,8 +271,11 @@ function openName() {
   nameInput.focus();
 }
 document.getElementById("name-form")?.addEventListener("submit", (event) => {
+  let renamed;
   try {
     name = saveName(storage, nameInput.value);
+    renamed = name !== savedName;
+    savedName = name;
   } catch (error) {
     event.preventDefault();
     nameError.textContent =
@@ -235,6 +287,9 @@ document.getElementById("name-form")?.addEventListener("submit", (event) => {
   }
   clearNameError();
   updateName();
+  // The stream lists the new name; typing starts again under it.
+  if (renamed && typing) newTypingSignal(typing.issue);
+  controller.rename();
   render();
 });
 const osTheme = matchMedia("(prefers-color-scheme: light)");
@@ -319,6 +374,7 @@ document.addEventListener("submit", (event) => {
       const text = input.value;
       void sessionInput("messages", { text }).then((ok) => {
         if (!ok || number === undefined) return;
+        if (typing?.issue === number) typing.signal.sent();
         // A render can replace the textarea before the post returns: clear
         // the current one, and only when it still holds the sent text.
         if (drafts.get(number) === text) drafts.set(number, "");
@@ -338,6 +394,8 @@ document.addEventListener("submit", (event) => {
 document.addEventListener("input", (event) => {
   if (event.target instanceof HTMLTextAreaElement) {
     captureDraft();
+    if (event.target.id === "composer-input" && savedName)
+      typing?.signal.input(event.target.value.trim() !== "");
     event.target.rows = Math.min(
       7,
       Math.max(1, event.target.value.split("\n").length),

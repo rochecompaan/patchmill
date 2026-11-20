@@ -2,7 +2,7 @@
 /** @typedef {import('../src/web/api-types.ts').IssueResponse} IssueResponse */
 /** @typedef {'start'|'messages'|'answers'|'stop-reply'|'pause'} SessionAction */
 /** @typedef {{ok:true,duplicate:boolean}|{ok:false,status:number,code:string,message:string}} SessionResult */
-/** @typedef {{board(signal?:AbortSignal):Promise<BoardResponse>,issue(number:number,signal?:AbortSignal):Promise<IssueResponse>,session(issue:number,action:SessionAction,body:Record<string,string>):Promise<SessionResult>}} ApiClient */
+/** @typedef {{board(signal?:AbortSignal):Promise<BoardResponse>,issue(number:number,signal?:AbortSignal):Promise<IssueResponse>,session(issue:number,action:SessionAction,body:Record<string,string>):Promise<SessionResult>,typing(issue:number,author:string,typing:boolean):Promise<boolean>}} ApiClient */
 export class ApiRequestError extends Error {
   /** @param {number} status */
   constructor(status) {
@@ -27,6 +27,20 @@ export function createApi(
   }
   return {
     board: (signal) => get("/api/board", signal),
+    /** A best-effort typing signal; it never throws. */
+    async typing(issue, author, typing) {
+      try {
+        const response = await fetcher(`/api/issues/${issue}/typing`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ author, typing }),
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
     issue: async (number, signal) => {
       if (!Number.isSafeInteger(number) || number < 1)
         throw new ApiRequestError(400);

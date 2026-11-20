@@ -9,9 +9,18 @@ function read(storage, key) {
 }
 /** @param {string} value */
 function validName(value) {
-  const name = value.trim();
-  if (!name || name.length > 32)
-    throw new Error("Enter a name of 1 to 32 characters.");
+  const name = value.isWellFormed() ? value.trim().normalize("NFC") : "";
+  // The server refuses these names too (src/web/person-name.ts).
+  if (
+    !name ||
+    Array.from(name).length > 32 ||
+    // eslint-disable-next-line no-control-regex -- the rule is about them
+    /[\u0000-\u001f\u007f-\u009f]/.test(name) ||
+    name.startsWith("/")
+  )
+    throw new Error(
+      "Enter a name of 1 to 32 characters that does not start with /.",
+    );
   return name;
 }
 /** @param {PreferenceStorage} storage @returns {string|null} */

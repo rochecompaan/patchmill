@@ -12,7 +12,7 @@ import { cleanupGit, cleanupWorkspaces } from "./cleanup-workspaces.ts";
 import { errorMessage } from "./errors.ts";
 import type { KernelGit } from "./git.ts";
 import type { IssueLock } from "./lock.ts";
-import { isIssueBranch, planningBranchName } from "./names.ts";
+import { isIssueBranch, parsePlanningBranch } from "./names.ts";
 import { findPullRequest } from "./pull-request.ts";
 import { closesIssue } from "./verify.ts";
 
@@ -41,11 +41,7 @@ async function mergedIdentity(
     !Number.isSafeInteger(input.issue) ||
     input.issue <= 0 ||
     !isIssueBranch(input.issue, input.branch) ||
-    ["spec", "plan"].some(
-      (stage) =>
-        input.branch ===
-        planningBranchName(input.issue, stage as "spec" | "plan"),
-    )
+    parsePlanningBranch(input.issue, input.branch) !== undefined
   )
     return undefined;
   const issue = await input.host.viewIssue(input.issue);

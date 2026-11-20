@@ -6,6 +6,7 @@ import {
   type CleanupServices,
 } from "../src/kernel/merged-cleanup.ts";
 import { acquireLock } from "../src/kernel/lock.ts";
+import { planningBranchName, worktreeDirName } from "../src/kernel/names.ts";
 import {
   branch,
   implement,
@@ -50,11 +51,14 @@ export async function setupCleanup(t: TestContext, hook = true) {
       await lock.release();
     }
   };
-  const planning = async () => {
-    const workspaces = ["spec", "plan"].map((stage) => ({
-      branch: `agent/issue-9--${stage}`,
-      path: join(dirname(c.worktree), `agent-issue-9--${stage}`),
-    }));
+  const planning = async (slug = "") => {
+    const workspaces = (["spec", "plan"] as const).map((stage) => {
+      const branch = planningBranchName(9, stage, slug);
+      return {
+        branch,
+        path: join(dirname(c.worktree), worktreeDirName(branch)),
+      };
+    });
     for (const workspace of workspaces)
       await c.git(["worktree", "add", "-b", workspace.branch, workspace.path]);
     return workspaces;

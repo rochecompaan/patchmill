@@ -9,6 +9,8 @@ import type { RequestPolicy } from "./request-policy.ts";
 import { serveSessionRoute, sessionRoute } from "./session/routes.ts";
 import { issueFilePath, serveIssueFile } from "./issue-file-route.ts";
 import type { SessionHub } from "./session/types.ts";
+import type { Presence } from "./presence.ts";
+import { serveTypingRoute, typingRoute } from "./presence-routes.ts";
 
 type RequestContext = {
   webRoot: string;
@@ -20,6 +22,8 @@ type RequestContext = {
   keepAliveMs: number;
   /** Absent for `--sample`: the session routes answer 404. */
   sessions?: SessionHub;
+  /** Absent for `--sample`: no presence events and no typing route. */
+  presence?: Presence;
 };
 function send(
   res: ServerResponse,
@@ -44,6 +48,7 @@ export function createRequestHandler({
   closing,
   keepAliveMs,
   sessions,
+  presence,
 }: RequestContext) {
   return (req: IncomingMessage, res: ServerResponse) => {
     const method = req.method ?? "GET",
@@ -83,7 +88,11 @@ export function createRequestHandler({
           res,
           method,
           rawNumber,
+          query: target.includes("?")
+            ? target.slice(target.indexOf("?") + 1)
+            : "",
           source,
+          ...(presence ? { presence } : {}),
           streams,
           closing,
           keepAliveMs,
@@ -105,6 +114,15 @@ export function createRequestHandler({
           route: file,
           source,
           send: (status, body, type) => send(res, method, status, body, type),
+        });
+      const typingIssue = typingRoute(path);
+      if (typingIssue !== null)
+        return serveTypingRoute({
+          req,
+          res,
+          method,
+          rawIssue: typingIssue,
+          presence,
         });
       if (method !== "GET" && method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");

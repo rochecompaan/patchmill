@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { isIssueBranch, planningBranchName } from "./names.ts";
+import { isIssueBranch, parsePlanningBranch } from "./names.ts";
 
 export type CleanupIdentity = {
   repository: string;
@@ -41,11 +41,7 @@ function validReceipt(value: unknown): value is CleanupReceipt {
     text(id.baseBranch) &&
     text(id.branch) &&
     isIssueBranch(id.issue, id.branch) &&
-    !["spec", "plan"].some(
-      (stage) =>
-        id.branch ===
-        planningBranchName(id.issue as number, stage as "spec" | "plan"),
-    ) &&
+    parsePlanningBranch(id.issue as number, id.branch) === undefined &&
     typeof value.completedAt === "string" &&
     Number.isFinite(Date.parse(value.completedAt)) &&
     (hook.status === "not-configured" ||

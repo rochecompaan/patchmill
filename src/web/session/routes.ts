@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { HubResult, SessionHub, SessionInput } from "./types.ts";
+import { BadRequest, badRequest, json, readBody } from "../json-request.ts";
+import { PERSON_NAME_RULE, parsePersonName } from "../person-name.ts";
 
 export type SessionAction =
   | "start"
@@ -12,7 +14,6 @@ const MAX_BODY = 64 * 1024;
 const MAX_TEXT = 64 * 1024;
 const MAX_FIELD = 2000;
 const REQUEST_ID = /^[A-Za-z0-9-]{8,64}$/;
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 export function sessionRoute(
   path: string,
@@ -24,50 +25,6 @@ export function sessionRoute(
   return ACTIONS.has(action)
     ? { issue: match[1] ?? "", action: action as SessionAction }
     : null;
-}
-
-class BadRequest extends Error {
-  readonly status: number;
-  readonly code: string;
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-function json(res: ServerResponse, status: number, body: unknown) {
-  const text = JSON.stringify(body);
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Content-Length", Buffer.byteLength(text));
-  res.end(text);
-}
-
-async function readBody(req: IncomingMessage): Promise<unknown> {
-  const type = (req.headers["content-type"] ?? "").toLowerCase();
-  if (!/^application\/json\s*(?:;\s*charset=[\w-]+\s*)?$/.test(type))
-    throw new BadRequest(
-      415,
-      "unsupported_media_type",
-      "Send the body as application/json.",
-    );
-  const declared = Number(req.headers["content-length"]);
-  if (Number.isFinite(declared) && declared > MAX_BODY)
-    throw new BadRequest(413, "too_large", "The request body is too large.");
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req as AsyncIterable<Buffer>) {
-    size += chunk.length;
-    if (size > MAX_BODY)
-      throw new BadRequest(413, "too_large", "The request body is too large.");
-    chunks.push(chunk);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
-  } catch {
-    throw new BadRequest(400, "invalid_request", "The body is not JSON.");
-  }
 }
 
 const invalid = (message: string) =>
@@ -86,19 +43,8 @@ function sessionInput(body: unknown): {
   if (typeof body !== "object" || body === null || Array.isArray(body))
     throw invalid("The body must be a JSON object.");
   const record = body as Record<string, unknown>;
-  const raw = record.author;
-  const author = typeof raw === "string" ? raw.trim() : "";
-  if (
-    !author ||
-    Array.from(author).length > 80 ||
-    CONTROL.test(author) ||
-    author.startsWith("/")
-  )
-    throw new BadRequest(
-      400,
-      "invalid_author",
-      "Give a name of 1 to 80 characters that does not start with /.",
-    );
+  const author = parsePersonName(record.author);
+  if (!author) throw new BadRequest(400, "invalid_author", PERSON_NAME_RULE);
   const requestId = record.requestId;
   if (typeof requestId !== "string" || !REQUEST_ID.test(requestId))
     throw invalid("Give requestId as 8 to 64 letters, digits or dashes.");
@@ -137,7 +83,7 @@ export async function serveSessionRoute(input: {
       error: { code: "not_found", message: "This server has no Web sessions." },
     });
   try {
-    const { body, input: person } = sessionInput(await readBody(req));
+    const { body, input: person } = sessionInput(await readBody(req, MAX_BODY));
     switch (route.action) {
       case "start":
         return respond(res, await sessions.start(issue, person));
@@ -165,10 +111,6 @@ export async function serveSessionRoute(input: {
     }
   } catch (error) {
     if (!(error instanceof BadRequest)) throw error;
-    // Unread body bytes would otherwise keep the connection busy.
-    if (error.status === 413) res.setHeader("Connection", "close");
-    json(res, error.status, {
-      error: { code: error.code, message: error.message },
-    });
+    badRequest(res, error);
   }
 }

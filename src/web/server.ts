@@ -8,6 +8,7 @@ import { createRequestHandler } from "./request.ts";
 import type { RunDataSource } from "./run-data.ts";
 import type { ServeAuth } from "./auth.ts";
 import type { SessionHub } from "./session/types.ts";
+import type { Presence } from "./presence.ts";
 export type ServeOptions = {
   host: string;
   port: number;
@@ -17,6 +18,8 @@ export type ServeOptions = {
   keepAliveMs?: number;
   /** Live data only. `--sample` has no Session hub. */
   sessions?: SessionHub;
+  /** Live data only. `--sample` has no presence. */
+  presence?: Presence;
 };
 export type Serving = {
   origin: string;
@@ -83,6 +86,7 @@ export async function startServeServer(
         closing: () => closing !== undefined,
         keepAliveMs: options.keepAliveMs ?? 15000,
         ...(options.sessions ? { sessions: options.sessions } : {}),
+        ...(options.presence ? { presence: options.presence } : {}),
       }),
     );
     server.on("upgrade", (_req, socket) => socket.destroy());

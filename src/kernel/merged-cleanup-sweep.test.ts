@@ -175,37 +175,47 @@ test("sweep orders candidates and holds at most its current issue lock", async (
   assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\nhook ran\n");
 });
 
-for (const authorized of [true, false]) {
-  test(`planning-only leftovers use the receipt but fresh host facts authorize removal: ${authorized}`, async (t) => {
-    const c = await setupCleanup(t);
-    const planning = await c.planning();
-    await fs.writeFile(join(planning[0]!.path, "dirty"), "keep");
-    assert.equal((await c.cleanup()).status, "kept");
-    await assert.rejects(fs.access(c.worktree));
-    await fs.rm(join(planning[0]!.path, "dirty"));
-    if (!authorized)
-      await c.mutate((state) => {
-        state.pullRequests[0]!.state = "open";
-      });
-    assert.deepEqual(await discoverCleanupCandidates(c.services), [
-      { issue: 9, branch },
-    ]);
-    await sweepMergedIssues(c.services);
-    if (authorized) await assert.rejects(fs.access(planning[0]!.path));
-    else await fs.access(planning[0]!.path);
-    assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\n");
-  });
-}
+for (const slug of ["", "add-login"])
+  for (const authorized of [true, false]) {
+    test(`planning-only leftovers use the receipt but fresh host facts authorize removal: ${authorized}${slug ? ", slugged" : ""}`, async (t) => {
+      const c = await setupCleanup(t);
+      const planning = await c.planning(slug);
+      await fs.writeFile(join(planning[0]!.path, "dirty"), "keep");
+      assert.equal((await c.cleanup()).status, "kept");
+      await assert.rejects(fs.access(c.worktree));
+      await fs.rm(join(planning[0]!.path, "dirty"));
+      if (!authorized)
+        await c.mutate((state) => {
+          state.pullRequests[0]!.state = "open";
+        });
+      assert.deepEqual(await discoverCleanupCandidates(c.services), [
+        { issue: 9, branch },
+      ]);
+      await sweepMergedIssues(c.services);
+      if (authorized) await assert.rejects(fs.access(planning[0]!.path));
+      else await fs.access(planning[0]!.path);
+      assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\n");
+    });
+  }
 
-test("planning-only branches without a receipt never trigger cleanup", async (t) => {
+for (const slug of ["", "add-login"])
+  test(`planning-only branches without a receipt never trigger cleanup${slug ? ", slugged" : ""}`, async (t) => {
+    const c = await setupCleanup(t);
+    const planning = await c.planning(slug);
+    await c.git(["worktree", "remove", c.worktree]);
+    await c.git(["branch", "-D", branch]);
+    assert.deepEqual(await discoverCleanupCandidates(c.services), []);
+    await sweepMergedIssues(c.services);
+    for (const workspace of planning) await fs.access(workspace.path);
+    await assert.rejects(fs.access(c.counter));
+  });
+
+test("slugged planning branches are never implementation candidates", async (t) => {
   const c = await setupCleanup(t);
-  const planning = await c.planning();
-  await c.git(["worktree", "remove", c.worktree]);
-  await c.git(["branch", "-D", branch]);
-  assert.deepEqual(await discoverCleanupCandidates(c.services), []);
-  await sweepMergedIssues(c.services);
-  for (const workspace of planning) await fs.access(workspace.path);
-  await assert.rejects(fs.access(c.counter));
+  await c.planning("add-login");
+  assert.deepEqual(await discoverCleanupCandidates(c.services), [
+    { issue: 9, branch },
+  ]);
 });
 
 test("repeated sweeps retain dirt without repeating a successful hook", async (t) => {

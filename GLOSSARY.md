@@ -55,6 +55,11 @@ _Avoid_: One branch for every stage
 issue, read from a committed Git ref of its Issue branch or of the base branch.
 The web API calls its entry an `Artifact`. _Avoid_: Issue file, attachment
 
+**Planning branch**: The branch that holds a required gate's planning documents
+and is the head of its Planning pull request when one opens. Its name carries
+the issue number, a title slug that is fixed when the issue's first Planning
+branch is created, and its stage. _Avoid_: Spec worktree, gate branch
+
 **Run-once workflow**: The atomic processing of one selected issue from claim
 through its terminal or resumable outcome. _Avoid_: Run loop, coordinator
 
@@ -113,6 +118,16 @@ _Avoid_: Issue lock
 **Session hub**: The part of `patchmill serve` that holds at most one Web
 session per issue, its input queue and its open question. _Avoid_: Session
 manager
+
+**Presence**: The names of the people who have an issue page open in one
+`patchmill serve` process, taken from the open event streams of that issue. Each
+name counts once. A name is a label, not an identity. Presence is not stored,
+and a presence update is not an Issue update. _Avoid_: Viewers, online users
+
+**Typing signal**: A short-lived note from a browser that a named person types
+in the issue page composer. It ends when the message is sent, after a few
+seconds without a new signal, or when the person leaves the page. _Avoid_:
+Typing event
 
 **Review wait**: The part of an Interactive Issue run after the implementation
 pull request is verified and labeled `agent-done`, and before it is merged.

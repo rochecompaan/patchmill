@@ -17,7 +17,7 @@ import {
 } from "./launch.ts";
 import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
-import { planningBranchName } from "./names.ts";
+import { parsePlanningBranch } from "./names.ts";
 import { planningGateComment } from "./comments.ts";
 
 export async function continueGate(
@@ -179,7 +179,8 @@ export async function preparePhasePrompt(
             plansDir: config.paths.plansDir,
             ...(facts.parentSpec ? { parentSpec: facts.parentSpec } : {}),
             ...(facts.stage === "plan" &&
-            facts.branch !== planningBranchName(issue.number, facts.stage)
+            parsePlanningBranch(issue.number, facts.branch)?.stage !==
+              facts.stage
               ? { earlierStage: "spec" as const }
               : {}),
           },
@@ -187,7 +188,8 @@ export async function preparePhasePrompt(
             required: facts.stage !== "implementation",
             pullRequest:
               facts.stage !== "implementation" &&
-              facts.branch === planningBranchName(issue.number, facts.stage),
+              parsePlanningBranch(issue.number, facts.branch)?.stage ===
+                facts.stage,
           },
         }
       : {}),

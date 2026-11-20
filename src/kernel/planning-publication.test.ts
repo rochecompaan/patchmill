@@ -13,7 +13,7 @@ import {
 } from "../../test-support/run-once-fixture.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
 
-const specBranch = "agent/issue-9--spec";
+const specBranch = "agent/issue-9-add-login--spec";
 const specification = {
   writeFiles: { [spec]: "approved spec" },
   commit: "Spec",

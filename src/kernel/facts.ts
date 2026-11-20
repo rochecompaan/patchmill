@@ -1,9 +1,10 @@
-import { relative, resolve } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import {
   artifactFileName,
+  artifactSlug,
+  parsePlanningBranch,
   worktreeDirName,
   type ArtifactKind,
-  planningBranchName,
 } from "./names.ts";
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue, PullRequest } from "../host/types.ts";
@@ -82,11 +83,7 @@ async function selectWorkspace(
     (await host.repository()).defaultBranch;
   const branches = await git.remoteBranches(issue.number);
   const implementation = branches.filter(
-    (branch) =>
-      !["spec", "plan"].some(
-        (stage) =>
-          branch === planningBranchName(issue.number, stage as ArtifactKind),
-      ),
+    (branch) => parsePlanningBranch(issue.number, branch) === undefined,
   );
   const approved =
     implementation.length === 1
@@ -98,6 +95,7 @@ async function selectWorkspace(
     issue,
     branches,
     baseBranch,
+    baseSlugs: await baseSlugs(deps, issue.number, baseBranch),
     selected,
     implementationArtifacts: {
       spec: !!(await approved?.find(config.paths.specsDir, "spec")),
@@ -119,6 +117,34 @@ async function selectWorkspace(
       baseBranch,
     },
   };
+}
+
+/** Slugs of the issue's newest artifacts on base, which fix planning names. */
+async function baseSlugs(
+  deps: Deps,
+  issue: number,
+  baseBranch: string,
+): Promise<string[]> {
+  const base = refArtifacts(
+    deps.git,
+    deps.repoRoot,
+    `origin/${baseBranch}`,
+    issue,
+  );
+  const slugs: string[] = [];
+  for (const [directory, kind] of [
+    [deps.config.paths.specsDir, "spec"],
+    [deps.config.paths.plansDir, "plan"],
+  ] as const) {
+    const path = await base.find(directory, kind);
+    const slug =
+      path === undefined
+        ? undefined
+        : artifactSlug(kind, issue, basename(path));
+    if (slug !== undefined && slug !== "" && !slugs.includes(slug))
+      slugs.push(slug);
+  }
+  return slugs;
 }
 
 function worktreeInput(workspace: Workspace) {

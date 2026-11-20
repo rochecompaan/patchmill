@@ -63,7 +63,7 @@ test("gated planning publishes a spec PR and keeps in-progress with one cost com
   );
   assert.equal(c.host.state().pullRequests[0]!.draft, true);
   assert.equal(
-    await c.git(["show", `origin/agent/issue-9--spec:${spec}`]),
+    await c.git(["show", `origin/agent/issue-9-add-login--spec:${spec}`]),
     "design",
   );
   const record = await c.records();
