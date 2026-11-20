@@ -17,8 +17,12 @@ conversation. If the issue is ambiguous, ask before proceeding.
 Read the root `patchmill.config.json` and local Git state. Resolve the
 implementation branch and worktree from configured paths and Git registration.
 Ungated planning documents share that workspace. Required planning gates can
-also leave `agent/issue-N--spec` and `agent/issue-N--plan` workspaces. Inspect
-those separately. Do not invent separate workspaces for ungated documents.
+also leave `agent/issue-N-<title-slug>--spec` and
+`agent/issue-N-<title-slug>--plan` workspaces. Their slug is fixed when the
+first planning branch is created, so it can differ from the current title.
+Legacy `agent/issue-N--spec` and `agent/issue-N--plan` names are also planning
+workspaces. Inspect those separately. Do not invent separate workspaces for
+ungated documents.
 
 For each proposed target, show its absolute path, branch, base, dirty files,
 untracked files, unique commits, and merge state. Describe the work that removal

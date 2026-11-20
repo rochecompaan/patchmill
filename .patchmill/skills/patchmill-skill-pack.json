@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-11-20T07:31:34.749Z",
+  "installedAt": "2026-11-20T12:20:15.728Z",
   "sources": {
     "patchmill": "1.0.0",
     "superpowers": "7.0.2",
@@ -113,7 +113,7 @@
     },
     {
       "path": "patchmill-cleanup/SKILL.md",
-      "sha256": "bbdeec56cb8ae00e850805742c2375b2ff0853ccfb442104eb6bed78f1c3a580"
+      "sha256": "9078e90314ed0021cc221b3318954cf97ae9cb107db911d01563efa91e483d02"
     },
     {
       "path": "patchmill-frontend-review/LICENSE",
@@ -149,7 +149,7 @@
     },
     {
       "path": "patchmill-plan/SKILL.md",
-      "sha256": "8edb1ab064b02d1381dd33e50c91ff8c1f34ae8c982b379a3b731fd1a84c1041"
+      "sha256": "25f5b4f171a4ec292f00761e2c1fab915c1a02ded52a695137bd5502ff7eab37"
     },
     {
       "path": "patchmill-planning/planning-review.md",

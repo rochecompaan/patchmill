@@ -117,12 +117,18 @@ request. Patchmill does not merge or automatically retry failed attempts.
 | Item                  | Default rule                                                   |
 | --------------------- | -------------------------------------------------------------- |
 | Implementation branch | `agent/issue-N-<title-slug>`, with at most 48 slug characters. |
-| Required spec branch  | `agent/issue-N--spec`.                                         |
-| Required plan branch  | `agent/issue-N--plan`.                                         |
+| Required spec branch  | `agent/issue-N-<title-slug>--spec`.                            |
+| Required plan branch  | `agent/issue-N-<title-slug>--plan`.                            |
 | Worktree              | `.worktrees/<branch-with-slashes-replaced-by-hyphens>`.        |
 | Spec                  | `docs/specs/YYYY-MM-DD-issue-N-<slug>-design.md`.              |
 | Plan                  | `docs/plans/YYYY-MM-DD-issue-N-<slug>-plan.md`.                |
 | Run output            | `.patchmill/runs/issue-N/<run-id>/`.                           |
+
+A planning branch keeps the slug that it got when Patchmill created the first
+planning branch for the issue. A later title edit does not rename it. Branches
+from earlier versions use the legacy `agent/issue-N--spec` and
+`agent/issue-N--plan` names. Patchmill still recognises them, so you do not need
+to rename them.
 
 Only these spec and plan names count as artifacts. The slug comes from the issue
 title and only describes the file. The issue number and the `-design` or `-plan`
