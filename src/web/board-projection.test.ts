@@ -71,6 +71,23 @@ test("each current workflow input selects its board column", () => {
   }
 });
 
+test("slugged planning pull requests keep their spec and plan kinds", () => {
+  for (const [branch, kind] of [
+    ["agent/issue-9-add-login--spec", "spec"],
+    ["agent/issue-9-add-login--plan", "plan"],
+  ] as const) {
+    const pullRequests = prs(branch);
+    assert.deepEqual(
+      pullRequests.map((pr) => pr.kind),
+      [kind],
+    );
+    assert.equal(
+      projectBoardIssue(input([], boardObservation(), pullRequests))?.column,
+      "review",
+    );
+  }
+});
+
 test("furthest step wins adjacent conflicts and unsuitable excludes blocked live issues", () => {
   const cases = [
     [input(["needsInfo", "ready"]), "ready"],

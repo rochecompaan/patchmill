@@ -85,7 +85,8 @@ async function selectWorkspace(
     (branch) =>
       !["spec", "plan"].some(
         (stage) =>
-          branch === planningBranchName(issue.number, stage as ArtifactKind),
+          branch ===
+          planningBranchName(issue.number, stage as ArtifactKind, ""),
       ),
   );
   const approved =

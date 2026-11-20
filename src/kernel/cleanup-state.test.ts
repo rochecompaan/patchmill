@@ -49,6 +49,14 @@ for (const raw of [
     ...receipt,
     identity: { ...receipt.identity, branch: "agent/issue-99-other" },
   }),
+  JSON.stringify({
+    ...receipt,
+    identity: { ...receipt.identity, branch: "agent/issue-9--plan" },
+  }),
+  JSON.stringify({
+    ...receipt,
+    identity: { ...receipt.identity, branch: "agent/issue-9-add-login--plan" },
+  }),
 ]) {
   test(`invalid receipt is not treated as absent: ${raw}`, async (t) => {
     const dir = await fs.mkdtemp(join(tmpdir(), "cleanup-state-"));

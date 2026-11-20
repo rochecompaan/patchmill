@@ -52,8 +52,8 @@ export async function discoverCleanupCandidates(
   for (const [issue, branches] of [...groups].sort(([a], [b]) => a - b)) {
     const implementation = [...branches].filter(
       (branch) =>
-        branch !== planningBranchName(issue, "spec") &&
-        branch !== planningBranchName(issue, "plan"),
+        branch !== planningBranchName(issue, "spec", "") &&
+        branch !== planningBranchName(issue, "plan", ""),
     );
     if (implementation.length > 1) {
       input.report(

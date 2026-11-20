@@ -103,8 +103,8 @@ export async function cleanupWorkspaces(input: {
   const result: CleanupWorkspace[] = [];
   for (const branch of [
     input.branch,
-    planningBranchName(input.issue, "spec"),
-    planningBranchName(input.issue, "plan"),
+    planningBranchName(input.issue, "spec", ""),
+    planningBranchName(input.issue, "plan", ""),
   ]) {
     const worktree = resolve(
       input.repoRoot,

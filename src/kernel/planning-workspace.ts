@@ -27,8 +27,8 @@ export async function planningWorkspace(input: {
   const { host, workflow, issue, branches, baseBranch, selected } = input;
   const pullRequest = (branch: string) =>
     findPullRequest(host, branch, baseBranch);
-  const specBranch = planningBranchName(issue.number, "spec");
-  const planBranch = planningBranchName(issue.number, "plan");
+  const specBranch = planningBranchName(issue.number, "spec", "");
+  const planBranch = planningBranchName(issue.number, "plan", "");
   const implementation = branches.filter(
     (b) => b !== specBranch && b !== planBranch,
   );

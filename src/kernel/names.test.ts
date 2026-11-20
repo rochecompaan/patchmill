@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   artifactFileName,
+  artifactSlug,
   branchName,
   isArtifactFile,
   isIssueBranch,
   newRunId,
+  parsePlanningBranch,
+  planningBranchName,
   runDirectory,
   slugify,
   worktreeDirName,
@@ -35,6 +38,69 @@ test("branchName omits the slug separator for an empty slug", () => {
 test("isIssueBranch requires the complete issue number", () => {
   assert.equal(isIssueBranch(1, "agent/issue-12-foo"), false);
   assert.equal(isIssueBranch(1, "agent/issue-1"), true);
+});
+
+test("planningBranchName adds the slug before the stage suffix", () => {
+  assert.equal(
+    planningBranchName(42, "spec", "add-export-button"),
+    "agent/issue-42-add-export-button--spec",
+  );
+  assert.equal(planningBranchName(42, "plan", ""), "agent/issue-42--plan");
+});
+
+test("parsePlanningBranch recognises slugged and legacy planning branches", () => {
+  assert.deepEqual(
+    parsePlanningBranch(42, "agent/issue-42-add-export-button--plan"),
+    { stage: "plan", slug: "add-export-button" },
+  );
+  assert.deepEqual(parsePlanningBranch(42, "agent/issue-42--spec"), {
+    stage: "spec",
+    slug: "",
+  });
+});
+
+test("parsePlanningBranch rejects implementation branches, neighbours, and bad slugs", () => {
+  for (const branch of [
+    "agent/issue-42-write-the-spec",
+    "agent/issue-42-add-export",
+    "agent/issue-420--spec",
+    "agent/issue-4--spec",
+    "agent/issue-42-Add--spec",
+    "agent/issue-42-a--b--spec",
+    "agent/issue-42---spec",
+    "agent/issue-42--specs",
+    `agent/issue-42-${"a".repeat(49)}--spec`,
+  ])
+    assert.equal(parsePlanningBranch(42, branch), undefined, branch);
+});
+
+test("planning names round-trip through the parser for every title", () => {
+  for (const title of ["Add export button", "???", "word ".repeat(12)])
+    for (const stage of ["spec", "plan"] as const)
+      assert.deepEqual(
+        parsePlanningBranch(42, planningBranchName(42, stage, slugify(title))),
+        { stage, slug: slugify(title) },
+      );
+});
+
+test("artifactSlug reads the slug from recognised artifact names", () => {
+  assert.equal(
+    artifactSlug("spec", 42, "2026-11-20-issue-42-add-export-button-design.md"),
+    "add-export-button",
+  );
+  assert.equal(artifactSlug("plan", 42, "2026-11-20-issue-42-plan.md"), "");
+  assert.equal(
+    artifactSlug("spec", 42, "2026-11-20-issue-42-add-export-plan.md"),
+    undefined,
+  );
+  assert.equal(
+    artifactSlug("spec", 4, "2026-11-20-issue-42-add-export-design.md"),
+    undefined,
+  );
+  assert.equal(
+    artifactSlug("spec", 42, "2026-11-20-issue-42-add--export-design.md"),
+    undefined,
+  );
 });
 
 test("worktreeDirName replaces every branch separator", () => {

@@ -17,12 +17,23 @@ for (const mode of [
   "open issue",
   "open replacement",
   "planning",
+  "slugged planning",
 ] as const) {
   test(`merge authorization refuses ${mode}`, async (t) => {
     const c = await setupCleanup(t);
+    const planningBranch =
+      mode === "planning"
+        ? "agent/issue-9--spec"
+        : mode === "slugged planning"
+          ? "agent/issue-9-add-login--spec"
+          : undefined;
     if (mode === "planning") await c.planning();
+    // A present target keeps the guard as the only reason to skip.
+    if (mode === "slugged planning") await c.git(["branch", planningBranch!]);
     await c.mutate((state) => {
       const pr = state.pullRequests[0]!;
+      // Only the planning-branch guard may refuse a closing merged head.
+      if (planningBranch) pr.headBranch = planningBranch;
       if (mode === "open") pr.state = "open";
       if (mode === "closed-unmerged") pr.state = "closed";
       if (mode === "wrong target") pr.baseBranch = "release";
@@ -33,15 +44,7 @@ for (const mode of [
       if (mode === "open replacement")
         state.pullRequests.push({ ...pr, number: 2, state: "open" });
     });
-    assert.equal(
-      (
-        await c.cleanup(
-          {},
-          mode === "planning" ? "agent/issue-9--spec" : undefined,
-        )
-      ).status,
-      "skipped",
-    );
+    assert.equal((await c.cleanup({}, planningBranch)).status, "skipped");
     await fs.access(c.worktree);
     assert.equal(await c.localBranch(), true);
     await assert.rejects(fs.access(c.counter));
