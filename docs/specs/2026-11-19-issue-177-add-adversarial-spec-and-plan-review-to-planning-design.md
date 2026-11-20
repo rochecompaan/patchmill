@@ -340,3 +340,30 @@ loop is the same at each boundary.
 ## Companion artifacts
 
 - `GLOSSARY.md`: [Planning review and Review boundary terms](../../GLOSSARY.md)
+
+## Planning review
+
+Combined Planning review of this spec and its plan, before the start of
+implementation (no gate applies). The planning envelope still named the existing
+"Fresh Plan review" contract, so this review applied that brief to both
+documents and added the adversarial checks from this spec. The plan's record
+holds the full findings.
+
+- Reviewer: canonical `reviewer`, `openai-codex/gpt-6.1-sol:xhigh`, base
+  `8f363d0802381662fb739ed5bcd7e24875529ceb`.
+- Initial spec body SHA-256:
+  `4c3ef6d387f06e815d27fff14654756d8672fb7cb86fe6c3c30c07d4b5b11f37`.
+- Spec findings: B1 (hash command not fence-aware), B2 (a blocked record could
+  cross a boundary), and B3 (a spec edit did not make the plan stale). All three
+  were accepted. "Review record", "Bounds and outcomes", and "Triggers" now
+  define the body-hash helper, the outcomes, current and ready records, and the
+  plan's reviewed spec hash.
+- Builder question: the review found no other place where a builder must guess.
+- Limits: no helper, updater, or suites ran. Planning documents only.
+- Confirmation 1 resolved B2 and B3. Its two new helper findings (C1 and C2)
+  concerned only the plan. Confirmation 2, authorized by the maintainer,
+  resolved them with no new blockers.
+- Final spec body SHA-256:
+  `bcbba04022ea69323e9c650e3a8b60c2383b971d22d4049771447b76bfbb3887`. The hash
+  covers the text before this section.s heading.
+- Outcome: `ready`. This is not human approval.

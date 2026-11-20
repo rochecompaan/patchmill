@@ -369,3 +369,45 @@ flowchart LR
 
 Task 1 owns the only code. Task 2 owns all contract text and names the helper.
 Task 3 only verifies, and it sends any ambiguity back to the Task 2 files.
+
+## Planning review
+
+Combined Planning review of this plan and its spec, before the start of
+implementation (no gate applies). It used the installed `plan-review.md` brief,
+the adversarial spec, plan, and combined checks from the spec, and the canonical
+`reviewer` with `openai-codex/gpt-6.1-sol:xhigh`. Base:
+`8f363d0802381662fb739ed5bcd7e24875529ceb`.
+
+- Initial plan body SHA-256:
+  `35e6960e45e61e4a7b9cb9c31e836e86841f94c069006a4bc8bd444fa89b91f5`. Reviewed
+  spec body SHA-256:
+  `4c3ef6d387f06e815d27fff14654756d8672fb7cb86fe6c3c30c07d4b5b11f37`.
+- Survey: `skills/patchmill-planning/SKILL.md:307–343` owns the current review
+  contract. `plan-review.md` is the reviewer interface. `agent-dir.ts:6–20`
+  provisions `reviewer`. `kernel/planning-workspace.ts:55–77` and
+  `kernel/verify.ts:56–89` select stages and verify publication only. The
+  updater (`skills/main.ts:103–115`, test `main.test.ts:64–91`) removes dropped
+  files, so the rename is safe. The installer copies subdirectories and keeps
+  executable modes.
+- B1 accepted: the awk hash command was not fence-aware. It also resumed hashing
+  inside the record. It was replaced by Task 1's tested `body-hash.mjs` helper.
+- B2 accepted: a blocked record could count as current. The record now carries
+  `ready`, `blocked`, or `escalated`, and crossing needs current and ready.
+  Scenario I covers this.
+- B3 accepted: a spec edit did not make the plan stale. The plan record stores
+  the reviewed spec hash. Scenario J covers this.
+- S1 accepted: Task 2 aligns the "Final result" `needs-input` text. S2 accepted:
+  scenario B covers the Plan-gate-only case.
+- Confirmation 1 resolved B2, B3, S1, and S2. It found C1 (the entry guard needs
+  `pathToFileURL` from `node:url`) and C2 (a backtick line with a backtick info
+  string was taken as a fence). Both were accepted and fixed in Task 1, with a
+  regression test. The suggested command-line error tests were also added.
+- The maintainer authorized a second scoped confirmation. It resolved C1 and C2
+  with no new blockers or suggestions.
+- Limits: the helper, tests, updater, and suites do not exist or have not run
+  yet. The reviewer used read-only probes and in-memory models of the parsing
+  rules.
+- Final plan body SHA-256 and reviewed spec body SHA-256: see the commit that
+  adds this record. Compute each as the SHA-256 of the text before its
+  document's `## Planning review` heading.
+- Outcome: `ready`. This is not human approval and does not change a gate.
