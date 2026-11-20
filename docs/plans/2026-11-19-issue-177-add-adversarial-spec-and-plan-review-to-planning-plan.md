@@ -407,7 +407,9 @@ the adversarial spec, plan, and combined checks from the spec, and the canonical
 - Limits: the helper, tests, updater, and suites do not exist or have not run
   yet. The reviewer used read-only probes and in-memory models of the parsing
   rules.
-- Final plan body SHA-256 and reviewed spec body SHA-256: see the commit that
-  adds this record. Compute each as the SHA-256 of the text before its
-  document's `## Planning review` heading.
+- Final plan body SHA-256:
+  `ccb46d639e3b9c0706ec268444bcfd2b93310e4de126b2905e1c2dcc928e07b4`. Final
+  reviewed spec body SHA-256:
+  `bcbba04022ea69323e9c650e3a8b60c2383b971d22d4049771447b76bfbb3887`. Each hash
+  covers the text before its document's `## Planning review` heading.
 - Outcome: `ready`. This is not human approval and does not change a gate.

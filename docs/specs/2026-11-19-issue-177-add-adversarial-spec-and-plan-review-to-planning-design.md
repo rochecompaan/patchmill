@@ -365,5 +365,5 @@ holds the full findings.
   resolved them with no new blockers.
 - Final spec body SHA-256:
   `bcbba04022ea69323e9c650e3a8b60c2383b971d22d4049771447b76bfbb3887`. The hash
-  covers the text before this section.s heading.
+  covers the text before this section's heading.
 - Outcome: `ready`. This is not human approval.
