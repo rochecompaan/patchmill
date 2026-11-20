@@ -51,7 +51,8 @@ review of this plan and the spec happened before implementation.
 - Warning: `Could not read documents for issue #N.`
 - A document failure never fails the issue page or the issue feed.
   `issueRefsFingerprint` returns `refs-unavailable` instead of throwing.
-- One content cache for each live source, keyed by blob ID, 64 entries.
+- One content cache for each live source, keyed by blob ID, 64 entries and 32
+  MiB.
 
 ## Review Focus
 
@@ -167,8 +168,9 @@ review of this plan and the spec happened before implementation.
     provider: HostProviderId;
     runner: CommandRunner;
   };
-  export type DocumentCache = Map<string, unknown>; // blob ID → parsed content
-  export function createDocumentCache(limit?: number): DocumentCache; // default 64, oldest out
+  // Opaque: only createDocumentCache() makes one. Blob ID → parsed result.
+  export type DocumentCache = { readonly __brand: "DocumentCache" };
+  export function createDocumentCache(): DocumentCache; // 64 entries, 32 MiB, oldest out
   export function createIssueDocumentReader(
     input: DocumentRepositoryInput & {
       warn(message: string): void;
@@ -257,9 +259,10 @@ review of this plan and the spec happened before implementation.
   `createDocumentLinkReader` does). Read blobs with `git cat-file blob <sha>`
   after `git ls-tree -z <commit> -- <path>` confirms mode `100644`/`100755` and
   gives the blob ID and size (`ls-tree -l`). Draft and `sourceUrl` compare blob
-  IDs with `origin/<branch>` and `origin/<base>`. Keep parsed blocks and HTML
-  bytes in the `cache` by blob ID (a private cache when none is passed).
-  `issueRefsFingerprint` runs
+  IDs with `origin/<branch>` and `origin/<base>`. Keep the parsed result of each
+  blob in the `cache` by blob ID: blocks, title and links for Markdown, bytes
+  for HTML (a private cache when none is passed). Warn about an oversized blob
+  once for each blob ID. `issueRefsFingerprint` runs
   `git for-each-ref --format=%(refname) %(objectname)` over `refs/heads/agent/`,
   `refs/remotes/origin/agent/` and `refs/remotes/origin/<base>`, then keeps
   lines where `isIssueBranch(issue, …)` holds for the branch part, plus the base
@@ -368,8 +371,9 @@ review of this plan and the spec happened before implementation.
     returns the bytes; `source.documentFile(10, mockupId)` returns `null`.
   - `document failure keeps the issue page`: a runner that fails every `git`
     call. The detail has `artifacts: []`, and `warn` received
-    `Could not read documents for issue #9.` once. A feed subscriber for issue 9
-    still gets its `reset` update.
+    `Could not read documents for issue #9.` once, checked before any feed
+    subscription. Then a feed subscriber for issue 9 still gets its `reset`
+    update.
   - `documentFile follows page eligibility`: an issue with the `unsuitable`
     label and a closed issue return `null`, even with a matching mockup on their
     branch.
@@ -527,3 +531,71 @@ the adapter and the browser. Task 6 proves isolation in a real browser.
 
 - `docs/mockups/2026-11-20-issue-384-live-issue-documents.html`:
   [Full-page mockup](../mockups/2026-11-20-issue-384-live-issue-documents.html)
+
+## Planning review
+
+### Pass 1: combined spec and plan review
+
+- Scope: this plan and the spec
+  (`docs/specs/2026-11-20-issue-384-show-an-issue-s-spec-plan-and-mockups-on-the-liv-design.md`),
+  together, at the start-of-implementation boundary. No gate applies.
+- Reviewer: `reviewer` agent, model `claude-bridge/claude-opus-5-5`, thinking
+  `high`. Base revision `19d588e` (`main`); documents at `ba11d71`.
+- Reviewed body SHA-256: spec
+  `e8b904565fa5d2f7d2aee8edb0c5653506819b18f7dbca379e8e797524758141`, plan
+  `51358a7bb75050fe0a7a8974681e9a5bba1062c8d547fefa165e19fb1bd16b34`. The plan
+  was compared with that spec hash.
+- Survey: the reviewer read the issue path through `apiResponse`, `projectIssue`
+  and `readIssueDetail`; `document-links.ts`, `kernel/git.ts` and
+  `kernel/names.ts`; the request order in `request.ts`, `publicPath`,
+  `request-policy.ts` and `auth.ts`; the 1-second feed tick in `issue-feed.ts`;
+  and `web/links.js`, `web/artifacts.js`, `web/issue.js`. It confirmed the
+  current-state claims, the `RunDataSource` seam with two real adapters, and the
+  sandbox reasoning.
+- Findings (all suggestions, no blockers), all **Accepted** in `c05b915`:
+  - S1: Task 1 test expectations contradicted the merge and title rules. Fixed
+    the expected values.
+  - S2: Task 6 assumed `document.cookie` returns `""` and that the check can
+    skip. Probes now use try/catch, the frame's `sandbox` value is asserted, and
+    the check never skips.
+  - S3: location, commit and `sourceUrl` for a base blob on an unpushed branch.
+    The first remote ref with the same blob now decides all three; a test was
+    added.
+  - S4: `issueRefsFingerprint` had no error contract and could stop the feed. It
+    now returns `refs-unavailable`; the failure test subscribes.
+  - S5: no `warn` on the reader and no fallback rule for oversized files. Added
+    `warn` and a no-fallback rule with a test.
+  - S6: `documentFile` duplicated branch and eligibility logic. One helper now
+    serves the page and `documentFile`; eligibility test added.
+  - S7: the per-snapshot cache re-parsed documents every second. The content
+    cache now lives for the source and is keyed by blob ID.
+  - S8: the existing header test would fail on `unsafe-inline`. The plan now
+    scopes that assertion.
+  - S9: the `documentLinks` filter had no test. Added pure
+    `remainingDocumentLinks` with a test.
+  - S10: README "Web board" was not updated. Added to Task 5.
+  - S11: UTF-8 note, ref fingerprint coverage note, diagram name and mockup text
+    fixed.
+- Limits: read-only; no tests, browser or server were run.
+
+### Pass 2: scoped confirmation
+
+- Same reviewer, model and thinking; documents at `c05b915`. Reviewed body
+  SHA-256: spec
+  `5183793607ca0b5a784efb4fc75c08777d15e14587963ba9118940179f314c19`, plan
+  `77426f537a1e1ddd2a0b58b3ff6f4d3286add742dfe59f3d495ef9b441b70459`.
+- Result: S1–S11 adequate, no new contradiction, no blocker.
+- New optional suggestions, all **Accepted** after confirmation with wording
+  edits only: N1 check the warning count before subscribing; N2 the cache holds
+  title and links too; N3 opaque cache type and a 32 MiB cap; N4 warn once per
+  blob ID; N5 mockup table header. These edits were not re-confirmed by the
+  reviewer.
+- Limits: the reviewer did not render the mockup or run Chromium.
+
+### Outcome
+
+- Final body SHA-256: spec
+  `64aa42c2082d639cffbe31576cc35a575937fba6c421a42c946d550841cfdd3c`, plan
+  `bb1b2f62f30970eeaefc5ff11f0cb574b7ac1f8bbe5bf8c1f04c69a70291c38e`. The plan
+  record compares with that spec hash.
+- Outcome: `ready`.
