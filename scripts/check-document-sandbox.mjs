@@ -23,6 +23,7 @@ const MOCKUP = `<!doctype html><title>probe</title><p id="p">probe</p><script>
 </script>`;
 
 const sample = createSampleRunDataSource();
+const timers = [];
 const server = await startServeServer({
   host: "127.0.0.1",
   port: 0,
@@ -32,9 +33,10 @@ const server = await startServeServer({
     async snapshot(selection) {
       const snapshot = await sample.snapshot(selection);
       const detail = snapshot.details["210"];
-      if (!detail) return snapshot;
+      if (!detail) return { ...snapshot, source: "live" };
       return {
         ...snapshot,
+        source: "live",
         details: {
           ...snapshot.details,
           210: {
@@ -56,6 +58,33 @@ const server = await startServeServer({
           },
         },
       };
+    },
+    // Like a live run: a header update every 300 ms re-renders the page.
+    subscribe({ issue }, listener) {
+      let n = 1;
+      void this.snapshot({ issue }).then((snapshot) => {
+        const detail = snapshot.details[String(issue)];
+        if (!detail) return listener({ kind: "unavailable", id: "0-1" });
+        listener({
+          kind: "reset",
+          id: `0-${n}`,
+          issue: { schemaVersion: 1, ...snapshot, issue: detail },
+        });
+        const { thread: _thread, session: _session, ...header } = detail;
+        timers.push(
+          setInterval(
+            () =>
+              listener({
+                kind: "header",
+                id: `0-${++n}`,
+                header,
+                syncedAt: new Date().toISOString(),
+              }),
+            300,
+          ),
+        );
+      });
+      return () => timers.splice(0).forEach(clearInterval);
     },
     async documentFile(issue, id) {
       return issue === 210 && id === ID
@@ -204,7 +233,7 @@ try {
   );
   await evaluate(
     page,
-    "localStorage.setItem('patchmill-name','Checker'); location.hash='#/issue/210'; true",
+    "localStorage.setItem('patchmill-name','Checker'); location.hash='#/issue/210'; location.reload(); true",
   );
   await until(
     () =>
@@ -260,6 +289,38 @@ try {
   assert.equal(frame.parent, "threw", "frame parent access");
   assert.equal(frame.origin, "null", "frame origin");
 
+  // Live updates replace the chips. Focus must stay on the chip, and closing
+  // the viewer must return focus to the chip that opened it.
+  const chip = `button[data-artifact-id="${ID}"]`;
+  const focusedChip = `document.activeElement?.matches?.('${chip}') ?? false`;
+  await evaluate(page, `document.querySelector('${chip}') !== null`);
+  await evaluate(
+    page,
+    "document.querySelector('#viewer').close(); new Promise((r) => setTimeout(r, 100))",
+  );
+  await evaluate(page, `document.querySelector('${chip}').focus(); true`);
+  const rerendered = await evaluate(
+    page,
+    `new Promise((resolve) => { const old = document.querySelector('${chip}'); setTimeout(() => resolve(!old.isConnected), 1000); })`,
+  );
+  assert.ok(rerendered, "a header update re-renders the chips");
+  assert.ok(await evaluate(page, focusedChip), "focus stays on the chip");
+  await evaluate(page, `document.querySelector('${chip}').click(); true`);
+  await until(
+    () => evaluate(page, "document.querySelector('#viewer').open"),
+    "viewer open",
+  );
+  await evaluate(page, "new Promise((r) => setTimeout(r, 1000))");
+  await evaluate(
+    page,
+    "document.querySelector('#viewer .vw-close').click(); true",
+  );
+  await evaluate(page, "new Promise((r) => setTimeout(r, 100))");
+  assert.ok(
+    await evaluate(page, focusedChip),
+    "closing the viewer returns focus to the chip",
+  );
+
   // Opened as its own tab, the file still has an opaque origin.
   const tab = await open(server.origin + FILE);
   const top = await until(
@@ -270,13 +331,14 @@ try {
   assert.ok(top.cookie === "threw" || top.cookie === "", "top-level cookie");
   assert.equal(top.fetch, "threw", "top-level fetch");
   console.log(
-    "Document sandbox check passed: frame sandbox allow-scripts, opaque origin, no cookie, no API, no parent access, also as a top-level tab.",
+    "Document sandbox check passed: frame sandbox allow-scripts, opaque origin, no cookie, no API, no parent access, also as a top-level tab; chip focus survives live updates and returns after the viewer closes.",
   );
 } finally {
   socket?.close();
   const closed = once(browser, "close");
   browser.kill("SIGTERM");
   await closed;
+  timers.splice(0).forEach(clearInterval);
   await server.close();
   await fs.rm(profile, { recursive: true, force: true });
 }

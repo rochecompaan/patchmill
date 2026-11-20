@@ -167,7 +167,15 @@ export function mountArtifactViewer(dialog) {
   dialog.addEventListener("close", () => {
     if (dialog.open) return;
     active = null;
-    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    // A live update can replace the chip while the viewer is open; return
+    // focus to the chip that now stands for the same artifact.
+    const id = trigger?.dataset.artifactId;
+    const target = trigger?.isConnected
+      ? trigger
+      : id
+        ? doc.querySelector(`button[data-artifact-id="${CSS.escape(id)}"]`)
+        : null;
+    if (target instanceof HTMLElement) target.focus({ preventScroll: true });
     trigger = null;
   });
   dialog.addEventListener("click", (event) => {

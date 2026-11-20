@@ -151,6 +151,8 @@ function renderArtifactChips(doc, entries) {
       );
       chip.type = "button";
       chip.dataset.artifactId = artifact.id;
+      // A stable key, so focus survives the re-render of a live update.
+      chip.dataset.key = `artifact:${artifact.id}`;
       chip.setAttribute("aria-haspopup", "dialog");
       const label = {
         spec: "Spec",
