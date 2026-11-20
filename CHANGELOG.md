@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.1.0](https://github.com/rochecompaan/patchmill/compare/v1.0.0...v1.1.0) (2026-11-20)
+
+
+### Features
+
+* **console:** show current issue and run state in the Pi status bar ([#369](https://github.com/rochecompaan/patchmill/issues/369)) ([84fde05](https://github.com/rochecompaan/patchmill/commit/84fde05691d86960f344187f6382f40745f4bfb3))
+* **kernel:** recognise slugged and legacy planning branches ([#390](https://github.com/rochecompaan/patchmill/issues/390)) ([26f4472](https://github.com/rochecompaan/patchmill/commit/26f4472d777d3cccda66a7472f9b2ae4cfb7bc3a))
+* **kernel:** Run Pi in RPC mode in the run-once workflow ([#373](https://github.com/rochecompaan/patchmill/issues/373)) ([8f363d0](https://github.com/rochecompaan/patchmill/commit/8f363d0802381662fb739ed5bcd7e24875529ceb))
+* **plan:** give sub-issue runs their parent spec ([#368](https://github.com/rochecompaan/patchmill/issues/368)) ([e9984a5](https://github.com/rochecompaan/patchmill/commit/e9984a5a35e629cbc55d3269361ba75ce2752f12))
+* **planning:** add adversarial Planning review of specs and plans ([#387](https://github.com/rochecompaan/patchmill/issues/387)) ([e514ace](https://github.com/rochecompaan/patchmill/commit/e514ace781ec7c7e917ba914931f685203ea7b9a))
+* **planning:** add conceptual show-me visualizations ([#366](https://github.com/rochecompaan/patchmill/issues/366)) ([e89d81f](https://github.com/rochecompaan/patchmill/commit/e89d81fe46f024ad9a5f84766ff4e6656ab30978))
+* **skills:** add domain-aware planning and fresh architecture review ([#347](https://github.com/rochecompaan/patchmill/issues/347)) ([55b551e](https://github.com/rochecompaan/patchmill/commit/55b551e60ebaddc39fbae402e62db540f7e74325))
+* **web:** add authenticated sample web server ([#349](https://github.com/rochecompaan/patchmill/issues/349)) ([e6d875b](https://github.com/rochecompaan/patchmill/commit/e6d875b86d80f87a3d797578c16128f4d594f204))
+* **web:** run interactive Issue sessions from the web page ([#380](https://github.com/rochecompaan/patchmill/issues/380)) ([19d588e](https://github.com/rochecompaan/patchmill/commit/19d588e9033995a53c0f2b22da0b28da6076532b))
+* **web:** Show an issue's spec, plan and mockups on the live web issue page ([#392](https://github.com/rochecompaan/patchmill/issues/392)) ([aed0898](https://github.com/rochecompaan/patchmill/commit/aed08980b846abf3aaaa89e13a0aa7910e58ed5a))
+* **web:** show finished Issue run threads ([#365](https://github.com/rochecompaan/patchmill/issues/365)) ([d8ffd5d](https://github.com/rochecompaan/patchmill/commit/d8ffd5d248ef680c5cdcee876043a10efde4a157))
+* **web:** show real issues on the board ([#355](https://github.com/rochecompaan/patchmill/issues/355)) ([7dbac52](https://github.com/rochecompaan/patchmill/commit/7dbac5292d49753be55e73189b66bfa1ba548192))
+* **web:** show who is on a web issue page and who is typing ([#391](https://github.com/rochecompaan/patchmill/issues/391)) ([4a19f6f](https://github.com/rochecompaan/patchmill/commit/4a19f6f2545761b441286915761901d9e9c89878))
+* **web:** stream live progress to the web issue page ([#370](https://github.com/rochecompaan/patchmill/issues/370)) ([39f01b2](https://github.com/rochecompaan/patchmill/commit/39f01b218c792ddafe9c21bb955f2c86e713910c))
+
+
+### Bug Fixes
+
+* **kernel:** restore cleanupHook and clean merged issues in every run mode ([#351](https://github.com/rochecompaan/patchmill/issues/351)) ([5892ab4](https://github.com/rochecompaan/patchmill/commit/5892ab4d3b9b8dd083ed0cafb69037e6966741a1))
+* **web:** keep the scroll inside tool results across live updates ([#394](https://github.com/rochecompaan/patchmill/issues/394)) ([f35c3f2](https://github.com/rochecompaan/patchmill/commit/f35c3f2f27610b13054927b2f8d02ed85c18cc9e))
+* **web:** make request IDs on plain-HTTP hosts ([#393](https://github.com/rochecompaan/patchmill/issues/393)) ([80af9c6](https://github.com/rochecompaan/patchmill/commit/80af9c67cb358a3bee9ab894aa2a391e44729a39))
+
 ## [1.0.0](https://github.com/rochecompaan/patchmill/compare/v0.20.0...v1.0.0) (2026-11-10)
 
 
