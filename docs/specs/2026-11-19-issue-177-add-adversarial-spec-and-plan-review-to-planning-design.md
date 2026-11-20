@@ -105,9 +105,11 @@ These decisions come from the planning conversation for this issue:
 
 ## Domain and module ownership
 
-This change alters a workflow contract and its terminology. It does not change
-code modules, interfaces, seams, or adapters, so `codebase-design` does not
-apply. Domain modeling applies to the terms.
+This change alters a workflow contract and its terminology. Domain modeling
+applies to the terms. The only new code is one small helper script that computes
+a document's body hash. It has no seam or adapter. Its interface is one function
+and one command, and it hides Markdown fence parsing from planners. No runtime
+module changes, so the wider `codebase-design` analysis does not apply.
 
 Resolved terms, captured in `GLOSSARY.md`:
 
@@ -124,12 +126,13 @@ No ADR is necessary. The skill text can change again at low cost.
 
 Ownership:
 
-| Owner                                          | Responsibility                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------------- |
-| `skills/patchmill-planning/SKILL.md`           | Triggers, scope, boundaries, bounds, dispositions, record format, and outcomes. |
-| `skills/patchmill-planning/planning-review.md` | The reviewer brief: adversarial checks for specs, plans, and combined scopes.   |
-| `skills/patchmill-plan/SKILL.md`               | The interactive helper follows the same contract without publication authority. |
-| Canonical `reviewer` agent                     | Read-only, fresh-context review. Unchanged.                                     |
+| Owner                                             | Responsibility                                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `skills/patchmill-planning/SKILL.md`              | Triggers, scope, boundaries, bounds, dispositions, record format, and outcomes. |
+| `skills/patchmill-planning/planning-review.md`    | The reviewer brief: adversarial checks for specs, plans, and combined scopes.   |
+| `skills/patchmill-plan/SKILL.md`                  | The interactive helper follows the same contract without publication authority. |
+| `skills/patchmill-planning/scripts/body-hash.mjs` | Fence-aware body extraction and SHA-256 for review records.                     |
+| Canonical `reviewer` agent                        | Read-only, fresh-context review. Unchanged.                                     |
 
 ## Design
 
@@ -162,9 +165,10 @@ change.
    is every new or revised document without a current review record. A request
    is not approval and does not change a gate.
 2. **Boundary check.** Before each boundary, the planner checks the review
-   record of each document that crosses it. A record is current when its body
-   hash matches the document. The planner reviews every document without a
-   current record, in one pass. Unattended runs use only this trigger.
+   record of each document that crosses it. The planner reviews every document
+   without a current record, in one pass. A document with a current record can
+   cross only when that record is also ready. "Review record" below defines both
+   terms. Unattended runs use only this trigger.
 
 ### Reviewer brief
 
@@ -234,9 +238,16 @@ The planner gives each finding exactly one disposition:
 Each Planning review allows one initial pass and one fresh, scoped confirmation
 after the planner corrects accepted blockers. The confirmation examines the
 corrections and their effects. It does not reopen unrelated preferences. If a
-blocker remains after confirmation, interactive runs ask the maintainer and
-unattended runs return `needs-input`. A maintainer request starts a new Planning
-review with its own bound.
+blocker remains after confirmation, the planner records the outcome `blocked`.
+Interactive runs ask the maintainer and unattended runs return `needs-input`. An
+escalated finding records the outcome `escalated` in the same way. A maintainer
+request starts a new Planning review with its own bound.
+
+A later session can resume from `blocked` or `escalated` in two ways. If the
+planner edits the document, the record is no longer current and a new review
+runs. If maintainer guidance settles the finding with no document edit, the
+planner records that ruling as the finding's disposition. Then the outcome
+becomes `ready`. Planner judgement alone never changes `blocked` to `ready`.
 
 Missing reviewer capability keeps the current rule. Interactive runs ask the
 maintainer. Unattended runs return `needs-input`. Self-review never replaces
@@ -251,19 +262,26 @@ pass adds an entry with:
 - The reviewer agent, model, thinking level, and base revision.
 - The reviewed body SHA-256 of each document in scope.
 - A short survey, the findings with their dispositions, and inspection limits.
-- The confirmation outcome, the final body SHA-256, and the readiness
-  conclusion.
+- For a plan, the body SHA-256 of the spec that the review compared it with,
+  whether the spec was in scope or only an input.
+- The confirmation result, the final body SHA-256, and the outcome: `ready`,
+  `blocked`, or `escalated`.
 
-The body hash excludes the `## Planning review` section, so receipt-only edits
-keep the record current. The section must be last. The skill gives one command
-for the hash:
+The body is the document text before its `## Planning review` heading. That
+heading must be a real level-two heading outside fenced code. It must occur
+once, and it must start the last section. The helper
+`node <skill-dir>/scripts/body-hash.mjs <document>` prints the body SHA-256. It
+fails with a clear message if the record section is duplicated or not last. It
+ignores headings inside fenced code blocks. Receipt-only edits do not change the
+hash.
 
-```bash
-awk '/^## Planning review$/{s=1;next} s&&/^## /{s=0} !s' "$DOC" | sha256sum
-```
-
-A material edit after a review changes the hash, so the next boundary check
-reviews the document again.
+A spec record is **current** when its final body hash matches the spec. A plan
+record is current when its final body hash matches the plan and its recorded
+spec hash matches the current spec. A spec edit therefore makes the plan's
+record stale too, and the next boundary reviews both documents together with the
+combined checks. A record is **ready** when its latest entry has the outcome
+`ready` and every finding has a disposition. A document crosses a boundary only
+when its record is current and ready.
 
 ### Builder check
 
@@ -280,11 +298,11 @@ browser-visible change.
 
 ## Verification and acceptance
 
-| Acceptance criterion                                     | Verification                                                                                 |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Planning reviews the spec and plan before implementation | Walk through each gate combination in the boundary table against the updated skill text.     |
-| Findings are recorded and acted on                       | Inspect the record and disposition rules. Exercise the hash command on a temporary document. |
-| Fits the workflow without blocking unattended runs       | Walk through unattended open-assumption, escalation, and missing-reviewer scenarios.         |
+| Acceptance criterion                                     | Verification                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Planning reviews the spec and plan before implementation | Walk through each gate combination in the boundary table against the updated skill text.      |
+| Findings are recorded and acted on                       | Inspect the record, disposition, and ready rules. Automated tests cover the body-hash helper. |
+| Fits the workflow without blocking unattended runs       | Walk through unattended open-assumption, escalation, and missing-reviewer scenarios.          |
 
 Run `patchmill skills update` through the source command. Confirm that the
 installed pack drops `plan-review.md` and adds `planning-review.md`. Run
@@ -301,15 +319,17 @@ flowchart TD
   req -- yes --> review
   req -- no --> boundary{At a review boundary?}
   boundary -- no --> draft
-  boundary -- yes --> current{Every crossing document has a current record?}
-  current -- yes --> cross[Publish, submit, or return done]
+  boundary -- yes --> current{Every crossing record current? Plan record also matches spec hash}
+  current -- yes --> ready{Every record ready?}
+  ready -- yes --> cross[Publish, submit, or return done]
+  ready -- no --> human
   current -- no --> review[Planning review of stale documents in one pass]
   review --> disp[Dispose each finding]
   disp --> blk{Accepted blockers?}
   blk -- no --> record[Write record with body hashes]
   blk -- yes --> fix[Correct] --> confirm[Scoped confirmation]
   confirm -- resolved --> record
-  confirm -- blocker remains --> human[Interactive: ask maintainer / Unattended: needs-input]
+  confirm -- blocker remains --> human[Record blocked or escalated. Interactive: ask maintainer. Unattended: needs-input]
   disp -- escalated --> human
   record --> boundary
 ```
