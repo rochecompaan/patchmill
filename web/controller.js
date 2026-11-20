@@ -4,8 +4,17 @@ import { applyIssueUpdate } from "./live-issue.js";
 /** @typedef {import('./api.js').ApiClient} ApiClient */
 /** @typedef {import('./state.js').Route} Route */
 /** @typedef {{route:Route,status:'loading'|'ready'|'unauthorized'|'not-found'|'error',board:import('./api.js').BoardResponse|null,issue:import('./api.js').IssueResponse|null,message:string|null,connection?:'connecting'|'live'|'reconnecting'|null}} PageState */
-/** @param {{api:ApiClient,onState:(state:PageState)=>void,visible:()=>boolean,clock:{after:(ms:number,fn:()=>void)=>(()=>void)},events?:(url:string)=>EventSourceLike}} options */
-export function createPageController({ api, onState, visible, clock, events }) {
+/** @typedef {import('../src/web/api-types.ts').PresencePerson} PresencePerson */
+/** @param {{api:ApiClient,onState:(state:PageState)=>void,visible:()=>boolean,clock:{after:(ms:number,fn:()=>void)=>(()=>void)},events?:(url:string)=>EventSourceLike,name?:()=>string|null,onPresence?:(people:readonly PresencePerson[]|null)=>void}} options */
+export function createPageController({
+  api,
+  onState,
+  visible,
+  clock,
+  events,
+  name,
+  onPresence,
+}) {
   /** @type {PageState} */ let state = {
     route: { view: "board" },
     status: "loading",
@@ -25,12 +34,16 @@ export function createPageController({ api, onState, visible, clock, events }) {
     stream = undefined;
     previous?.close();
     state = { ...state, connection: null };
+    // Presence lives only as long as its stream.
+    if (previous) onPresence?.(null);
   }
   function connect() {
     // Every live issue page subscribes: a Web session can start at any time.
     if (!events || stream || state.issue?.source !== "live") return;
+    const who = name?.();
     const socket = events(
-      `/api/issues/${state.issue.issue.summary.number}/events`,
+      `/api/issues/${state.issue.issue.summary.number}/events` +
+        (who ? "?name=" + encodeURIComponent(who) : ""),
     );
     stream = socket;
     state = { ...state, connection: "connecting" };
@@ -49,6 +62,19 @@ export function createPageController({ api, onState, visible, clock, events }) {
       } else {
         state = { ...state, connection: "reconnecting" };
         publish();
+      }
+    });
+    // Presence is not page state: it never renders the page again.
+    socket.addEventListener("presence", (event) => {
+      if (!current()) return;
+      try {
+        const update =
+          /** @type {import('../src/web/api-types.ts').PresenceUpdate} */ (
+            JSON.parse(event.data ?? "")
+          );
+        if (Array.isArray(update.people)) onPresence?.(update.people);
+      } catch {
+        /* A bad presence frame changes nothing. */
       }
     });
     for (const kind of [
@@ -188,6 +214,13 @@ export function createPageController({ api, onState, visible, clock, events }) {
       };
       publish();
       await load();
+    },
+    /** Reconnect the stream, so a newly saved name is listed. */
+    rename() {
+      if (!stream) return;
+      closeStream();
+      connect();
+      publish();
     },
     async retry() {
       await load();
