@@ -8,7 +8,7 @@ import {
   type CleanupCandidate,
   type CleanupServices,
 } from "./merged-cleanup.ts";
-import { planningBranchName } from "./names.ts";
+import { parsePlanningBranch } from "./names.ts";
 
 type DiscoveryInput = Pick<
   CleanupServices,
@@ -39,8 +39,7 @@ export async function discoverCleanupCandidates(
     if (
       !Number.isSafeInteger(issue) ||
       (slug !== undefined &&
-        slug !== "-spec" &&
-        slug !== "-plan" &&
+        parsePlanningBranch(issue, branch) === undefined &&
         (slug.length > 48 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)))
     )
       continue;
@@ -51,9 +50,7 @@ export async function discoverCleanupCandidates(
   const result: CleanupCandidate[] = [];
   for (const [issue, branches] of [...groups].sort(([a], [b]) => a - b)) {
     const implementation = [...branches].filter(
-      (branch) =>
-        branch !== planningBranchName(issue, "spec", "") &&
-        branch !== planningBranchName(issue, "plan", ""),
+      (branch) => parsePlanningBranch(issue, branch) === undefined,
     );
     if (implementation.length > 1) {
       input.report(

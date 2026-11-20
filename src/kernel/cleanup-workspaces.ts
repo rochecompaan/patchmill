@@ -9,7 +9,7 @@ import {
 } from "node:path";
 import type { PatchmillConfig } from "../config/config.ts";
 import { CommandFailedError, type CommandRunner } from "../process/command.ts";
-import { planningBranchName, worktreeDirName } from "./names.ts";
+import { parsePlanningBranch, worktreeDirName } from "./names.ts";
 
 export type CleanupGit = (args: string[], cwd?: string) => Promise<string>;
 export type CleanupWorkspace = {
@@ -101,11 +101,16 @@ export async function cleanupWorkspaces(input: {
     ),
   );
   const result: CleanupWorkspace[] = [];
-  for (const branch of [
-    input.branch,
-    planningBranchName(input.issue, "spec", ""),
-    planningBranchName(input.issue, "plan", ""),
-  ]) {
+  // Planning branches keep the slug they were created with, so find them.
+  const planning = [
+    ...new Set([
+      ...branches,
+      ...records.flatMap((record) => (record.branch ? [record.branch] : [])),
+    ]),
+  ]
+    .filter((branch) => parsePlanningBranch(input.issue, branch) !== undefined)
+    .sort();
+  for (const branch of [input.branch, ...planning]) {
     const worktree = resolve(
       input.repoRoot,
       input.config.paths.worktreeDir,
