@@ -162,7 +162,8 @@
   height: 24px;
   overflow: hidden;
 }
-.av.av-more {
+/* .presence raises these rules over .av.sm in thread.css. */
+.presence .av.av-more {
   --who: var(--faint);
   width: 30px;
   height: 24px;
@@ -292,8 +293,9 @@
   color: var(--dim);
 }
 /* The typing slot is always present and has a fixed height. */
+/* The slot keeps room for a short name; the status text wraps instead. */
 .typing {
-  flex: 1;
+  flex: 1 0 13em;
   min-width: 0;
   height: 19px;
   display: inline-flex;
@@ -310,22 +312,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.dots {
+/* .typing raises the dot rules over the thread .dots in thread.css. */
+.typing .dots {
   display: inline-flex;
   gap: 3px;
   flex: none;
 }
-.dots i {
+.typing .dots i {
+  margin: 0;
   width: 4px;
   height: 4px;
   border-radius: 50%;
   background: currentColor;
   animation: typing-pulse 1.2s ease-in-out infinite;
 }
-.dots i:nth-child(2) {
+.typing .dots i:nth-child(2) {
   animation-delay: 0.2s;
 }
-.dots i:nth-child(3) {
+.typing .dots i:nth-child(3) {
   animation-delay: 0.4s;
 }
 @keyframes typing-pulse {
@@ -338,7 +342,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dots i {
+  .typing .dots i {
     animation: none;
     opacity: 0.8;
   }

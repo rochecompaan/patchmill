@@ -29,7 +29,8 @@ const detail = {
   session: {
     id: "s1",
     startedAt: "2026-11-19T10:05:00.000Z",
-    state: "idle",
+    // Replying has the longest status text in the hint row.
+    state: "replying",
     status: null,
     question: null,
     ended: null,
@@ -155,7 +156,7 @@ try {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   /** Open the issue page as `name` in a new browser context. */
-  async function openAs(name) {
+  async function openAs(name, width = 1280) {
     const { browserContextId } = await command("Target.createBrowserContext");
     const { targetId } = await command("Target.createTarget", {
       url: "about:blank",
@@ -171,7 +172,7 @@ try {
     // A background tab would throttle timers.
     await send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await send("Emulation.setDeviceMetricsOverride", {
-      width: 1280,
+      width,
       height: 800,
       deviceScaleFactor: 1,
       mobile: false,
@@ -225,7 +226,8 @@ try {
   const text = (selector) =>
     `(document.querySelector(${JSON.stringify(selector)})?.textContent ?? "")`;
 
-  const ana = await openAs("Ana");
+  // Just above the narrow layout, the typing name must still fit.
+  const ana = await openAs("Ana", 800);
   await ana.evaluate(`window.scrollTo(0, 600)`);
   await ana.evaluate(`document.querySelector("#composer-input").focus()`);
   await ana.send("Input.insertText", { text: "draft" });
@@ -261,6 +263,12 @@ try {
   await ben.send("Input.insertText", { text: "hi" });
   await ana.until(`${text(".typing")} === "Ben is typing"`, 4000);
   await ana.screenshot("serve-issue-presence-typing");
+  check(
+    (await ana.evaluate(
+      `(() => { const t = document.querySelector(".typing-text"); return t.scrollWidth <= t.clientWidth; })()`,
+    )) === true,
+    "the typing name is not cut off at 800px while the agent replies",
+  );
   // Ana typed a draft before Ben joined, so Ben can still see her.
   const own = await ben.evaluate(text(".typing"));
   check(!own.includes("Ben"), `Ben does not see his own typing (${own})`);
