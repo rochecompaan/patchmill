@@ -58,7 +58,7 @@ Both values match the final hashes in the documents' Planning review records.
 | `diff -r` of `patchmill-planning` and `patchmill-plan` source and installed | No differences, also after the commit hook   |
 | `rg "plan-review\.md\|Fresh Plan review" skills .patchmill/skills site/src` | No matches                                   |
 | `npm run lint`                                                              | Passed                                       |
-| `npm test`                                                                  | 1341 passed, 0 failed (baseline 1332 passed) |
+| `npm test`                                                                  | 1342 passed, 0 failed (baseline 1332 passed) |
 | `git diff --stat 8f363d0 -- src package.json package-lock.json`             | No changes                                   |
 
 No npm dependency changed, so the Nix build did not need to run again.
