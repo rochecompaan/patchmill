@@ -11,6 +11,8 @@ import { createServeAuth } from "../src/web/auth.ts";
 import { createSampleRunDataSource } from "../src/web/sample-data.ts";
 import { createPresence } from "../src/web/presence.ts";
 
+const root = new URL("../", import.meta.url).pathname;
+
 const ISSUE = 298;
 const sample = await createSampleRunDataSource().snapshot();
 const base = sample.details[String(ISSUE)];
@@ -168,6 +170,18 @@ try {
     await send("Runtime.enable");
     // A background tab would throttle timers.
     await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await send("Emulation.setEmulatedMedia", {
+      features: [
+        { name: "prefers-color-scheme", value: "dark" },
+        { name: "prefers-reduced-motion", value: "reduce" },
+      ],
+    });
     const evaluate = async (expression) => {
       const result = await send("Runtime.evaluate", {
         expression,
@@ -197,7 +211,16 @@ try {
       url: `${server.origin}/?reload=1#/issue/${ISSUE}`,
     });
     await until(`document.querySelector("#composer-input:not([disabled])")`);
-    return { targetId, browserContextId, send, evaluate, until };
+    /** LAYOUT_SCREENSHOTS=1 refreshes the reference screenshots. */
+    const screenshot = async (file) => {
+      if (process.env.LAYOUT_SCREENSHOTS !== "1") return;
+      const { data } = await send("Page.captureScreenshot", { format: "png" });
+      await fs.writeFile(
+        `${root}docs/screenshots/${file}.png`,
+        Buffer.from(data, "base64"),
+      );
+    };
+    return { targetId, browserContextId, send, evaluate, until, screenshot };
   }
   const text = (selector) =>
     `(document.querySelector(${JSON.stringify(selector)})?.textContent ?? "")`;
@@ -219,6 +242,16 @@ try {
 
   await ana.until(`${text(".presence-text")}.includes("Ben")`, 3000);
   await ben.until(`${text(".presence-text")}.includes("Ana")`, 3000);
+  if (process.env.LAYOUT_SCREENSHOTS === "1") {
+    await ben.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await sleep(300);
+    await ben.screenshot("serve-issue-presence-mobile");
+  }
   check(
     (await ana.evaluate(text(".presence-text"))) === "Here now: you and Ben",
     "Ana's hidden presence text lists Ben",
@@ -227,6 +260,7 @@ try {
   await ben.evaluate(`document.querySelector("#composer-input").focus()`);
   await ben.send("Input.insertText", { text: "hi" });
   await ana.until(`${text(".typing")} === "Ben is typing"`, 4000);
+  await ana.screenshot("serve-issue-presence-typing");
   // Ana typed a draft before Ben joined, so Ben can still see her.
   const own = await ben.evaluate(text(".typing"));
   check(!own.includes("Ben"), `Ben does not see his own typing (${own})`);

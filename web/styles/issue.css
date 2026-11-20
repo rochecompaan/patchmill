@@ -397,6 +397,14 @@
   .kbd-hint {
     display: none;
   }
+  /* Narrow screens give typing its own reserved row, so a name fits. */
+  .composer-hint:has(.typing) {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .typing {
+    flex-basis: 100%;
+  }
 }
 
 /* Live replacement must not move readers through browser scroll anchoring. */
