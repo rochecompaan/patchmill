@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createApi, ApiRequestError } from "../../web/api.js";
+import { createApi, ApiRequestError, newRequestId } from "../../web/api.js";
 test("browser client uses only same-origin GET routes and handles 401 before JSON", async () => {
   const requests: { url: string; init: RequestInit | undefined }[] = [];
   const api = createApi(async (input, init) => {
@@ -30,4 +30,24 @@ test("browser client uses only same-origin GET routes and handles 401 before JSO
       (e) => e instanceof ApiRequestError && e.status === status,
     );
   await assert.rejects(api.issue(0));
+});
+
+test("request IDs work without randomUUID, as on a plain-HTTP host", () => {
+  // Browsers give randomUUID only to secure contexts (HTTPS or localhost).
+  const insecure = {
+    getRandomValues: (array: Uint8Array<ArrayBuffer>) =>
+      globalThis.crypto.getRandomValues(array),
+  };
+  const ids = new Set(Array.from({ length: 50 }, () => newRequestId(insecure)));
+  assert.equal(ids.size, 50);
+  for (const id of ids)
+    assert.match(
+      id,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  // A secure context keeps using randomUUID.
+  assert.equal(
+    newRequestId({ ...insecure, randomUUID: () => "from-random-uuid" }),
+    "from-random-uuid",
+  );
 });
