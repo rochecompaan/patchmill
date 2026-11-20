@@ -182,3 +182,26 @@ test("board JSON redacts private summaries and incomplete attempts explain their
     "Run ended before recording a result.",
   );
 });
+
+test("a paused run shows as paused in its phase's column, not as blocked", () => {
+  for (const [phase, column] of [
+    ["planning", "planning"],
+    ["implementation", "implementing"],
+  ] as const) {
+    const summary = projectBoardIssue(
+      input(
+        ["inProgress"],
+        boardObservation({
+          state: "ended",
+          phase,
+          paused: true,
+          outcomeRole: "inProgress",
+          summary: "Run paused.",
+        }),
+      ),
+    )!;
+    assert.equal(summary.column, column);
+    assert.equal(summary.status, "paused");
+    assert.equal(summary.blockedReason, null);
+  }
+});

@@ -254,7 +254,9 @@ question is open, its options appear in the thread for everyone.
 
 - **Pause** ends the session the same way quitting the console does. The
   controller aborts planning, stops the worker and closes the run. The run state
-  and console session file stay.
+  and console session file stay. A run whose planning or worker session is
+  aborted this way ends as **paused**: it keeps the in-progress label and posts
+  no comment. The terminal console's Ctrl-C works the same way.
 - **Resume** behaves like starting the console again on the same issue. The
   in-memory waits in `ConsoleController` (a pending gate or guidance answer) are
   gone. The new process starts the Issue run, and `runOneIssue` continues from

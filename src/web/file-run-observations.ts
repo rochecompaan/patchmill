@@ -28,6 +28,8 @@ export type RunObservation = {
   specPath: string | null;
   planPath: string | null;
   outcomeRole: WorkflowStatus | null;
+  /** The latest run ended with a console shutdown and can be resumed. */
+  paused?: boolean;
   summary: string | null;
   interactive: boolean | null;
   pullRequest: PullRequest | null;
@@ -121,6 +123,7 @@ export async function readIssueObservation(input: {
     pullRequest: p?.facts?.pullRequest ?? null,
     interactive: p?.interactive ?? null,
     outcomeRole: latest.outcome?.label ?? null,
+    paused: latest.outcome?.status === "paused",
     summary: latest.outcome?.summary ?? p?.summary ?? null,
   };
 }

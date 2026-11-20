@@ -83,7 +83,7 @@ for (const approve of [false, true]) {
       await controller.shutdown();
     }
     const outcome = await running;
-    assert.equal(outcome.status, approve ? "completed" : "stopped");
+    assert.equal(outcome.status, approve ? "completed" : "paused");
     const restarted = await collectFacts(
       { ...c.deps, config: c.config },
       await c.host.viewIssue(9),

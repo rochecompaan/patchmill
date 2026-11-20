@@ -211,6 +211,7 @@ export function sessionPresentation(detail, sessions) {
     return row("retry", "disabled", refused ?? statuses.blocked.hint);
   if (
     session?.ended?.reason === "paused" ||
+    detail.run?.outcome === "paused" ||
     (detail.run && !detail.run.finishedAt)
   )
     return row(

@@ -98,7 +98,12 @@ export interface IssueDetail {
     readonly startedAt: string;
     readonly activeSince: string | null;
     readonly finishedAt: string | null;
-    readonly outcome: "completed" | "stopped" | "incomplete" | "active";
+    readonly outcome:
+      | "completed"
+      | "stopped"
+      | "paused"
+      | "incomplete"
+      | "active";
   } | null;
   readonly summary: IssueSummary;
   readonly participants: readonly string[];

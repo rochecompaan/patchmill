@@ -163,10 +163,13 @@ worktrees and local branches of the issue. It keeps each worktree that has
 uncommitted changes and shows the reason in the chat. Non-interactive runs leave
 worktrees in place.
 
-When you quit the console, the worker stops. At startup, Patchmill stops stray
-workers before it starts a run. If it cannot stop them, it does not start the
-run. Do not start this command inside a pi-subagents child process.
-`PI_SUBAGENT_CHILD=1` disables pi-subagents.
+When you quit the console (for example with Ctrl-C) while the agent plans or a
+worker runs, the worker stops and the run is paused. A pause does not change the
+issue's labels and posts no comment. Start the console on the issue again to
+continue the run. At startup, Patchmill stops stray workers before it starts a
+run. If it cannot stop them, it does not start the run. Do not start this
+command inside a pi-subagents child process. `PI_SUBAGENT_CHILD=1` disables
+pi-subagents.
 
 ## Web board
 

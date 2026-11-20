@@ -327,6 +327,7 @@ export function renderIssue(
           active: "Run active",
           completed: "Finished",
           stopped: "Stopped",
+          paused: "Paused",
           incomplete: "Incomplete",
         }[detail.run.outcome];
     if (detail.run?.outcome === "active") p.dotClass = "dot dot-live";

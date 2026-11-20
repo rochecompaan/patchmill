@@ -154,7 +154,7 @@ test("conflicting local implementation branch returns chat feedback without over
     }
     return { ...(await launch(request, feedback)), planningApproval: "no-pr" };
   };
-  assert.equal((await c.run({ issue: 9 }, { human })).status, "stopped");
+  assert.equal((await c.run({ issue: 9 }, { human })).status, "paused");
   assert.ok(
     observation,
     "a branch conflict must return feedback before any stop is published",

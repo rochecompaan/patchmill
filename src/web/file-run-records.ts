@@ -11,7 +11,7 @@ export type IssueRunRecord = {
   startedAt: string;
   finishedAt: string | null;
   outcome: {
-    status: "completed" | "stopped";
+    status: "completed" | "stopped" | "paused";
     label: "done" | "inProgress" | "needsInfo";
     summary: string | null;
   } | null;
@@ -43,6 +43,7 @@ function result(
   const o = v.outcome;
   if (
     o.status !== "completed" &&
+    o.status !== "paused" &&
     !(
       o.status === "stopped" &&
       ["done", "inProgress", "needsInfo"].includes(String(o.label))
@@ -60,7 +61,9 @@ function result(
       label:
         o.status === "completed"
           ? "done"
-          : (o.label as "done" | "inProgress" | "needsInfo"),
+          : o.status === "paused"
+            ? "inProgress"
+            : (o.label as "done" | "inProgress" | "needsInfo"),
       summary: typeof o.summary === "string" ? o.summary : null,
     },
     sessions: v.sessions.map((s) => ({ phase: (s as { phase: Phase }).phase })),

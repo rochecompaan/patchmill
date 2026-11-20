@@ -297,6 +297,18 @@ test("sessionPresentation follows the issue-state table", async () => {
     ["resume", "disabled", false],
   );
   assert.deepEqual(pick({ ...base, run }), ["resume", "disabled", false]);
+  // A paused run offers Resume after its Web session is gone.
+  const paused = sessionPresentation(
+    {
+      ...base,
+      run: { ...run, outcome: "paused", finishedAt: "2026-11-19T11:00:00Z" },
+    },
+    true,
+  );
+  assert.deepEqual(
+    [paused?.header, paused?.composerHint],
+    ["resume", "This Issue run is paused. Click Resume to continue it."],
+  );
   assert.deepEqual(pick(base), ["start", "disabled", false]);
   const refused = sessionPresentation(
     {

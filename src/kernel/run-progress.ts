@@ -117,7 +117,7 @@ export function parseRunProgress(
   if (
     o !== null &&
     (!object(o) ||
-      !["completed", "stopped"].includes(String(o.status)) ||
+      !["completed", "stopped", "paused"].includes(String(o.status)) ||
       !["done", "inProgress", "needsInfo"].includes(String(o.label)))
   )
     return undefined;

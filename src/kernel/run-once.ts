@@ -78,7 +78,10 @@ export type RunOnceOutcome =
       label: OutcomeLabel;
       summary: string;
     } & Publication)
-  | ({ status: "completed"; issue: number } & Publication);
+  | ({ status: "completed"; issue: number } & Publication)
+  /** The console shut down (Pause, Ctrl-C or a server stop) during a
+   * session. Nothing is published; the next start continues the run. */
+  | { status: "paused"; issue: number; summary: string };
 
 // Label and comment failures never change the verified outcome.
 type Publication = { publicationErrors?: string[] };
@@ -194,6 +197,7 @@ export async function runOneIssue(
     warnings: [],
   };
   let displayFacts: Facts | undefined;
+  let paused = false;
   let totalOutputTokens = 0;
   let published = false;
   const publicationErrors: string[] = [];
@@ -342,6 +346,13 @@ export async function runOneIssue(
             : {}),
         });
         await snapshot.session();
+        // Only a console shutdown aborts an interactive session: a pause,
+        // not a failure. Publish nothing; the next start continues the run.
+        if (deps.human && session.aborted) {
+          paused = true;
+          stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
+          break;
+        }
         const after = await collect(await workflow.issue(issueNumber), facts);
         if (after.kind === "ambiguous-branches") {
           stop.summary = `Several issue branches exist: ${after.branches.join(", ")}`;
@@ -430,7 +441,7 @@ export async function runOneIssue(
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
-    if (!published) await publish();
+    if (!published && !paused) await publish();
     if (stop.label === "done" && displayFacts?.stage === "implementation") {
       await cleanupMergedIssue({
         ...deps,
@@ -444,8 +455,9 @@ export async function runOneIssue(
       });
     }
     const publication = publicationErrors.length ? { publicationErrors } : {};
-    const outcome: RunOnceOutcome =
-      stop.label === "done"
+    const outcome: RunOnceOutcome = paused
+      ? { status: "paused", issue: issueNumber, summary: stop.summary }
+      : stop.label === "done"
         ? { status: "completed", issue: issueNumber, ...publication }
         : {
             status: "stopped",
@@ -494,9 +506,11 @@ export async function runOneIssue(
             ? displayFacts?.pullRequest?.state === "merged"
               ? "Already merged"
               : "PR ready"
-            : stop.label === "inProgress"
-              ? "Planning PR merge required"
-              : "Stopped",
+            : paused
+              ? "Paused"
+              : stop.label === "inProgress"
+                ? "Planning PR merge required"
+                : "Stopped",
         severity:
           outcome.status === "completed" && !publicationErrors.length
             ? "success"
