@@ -15,9 +15,19 @@ pull request, or approves it without a PR in an Interactive Issue run, which
 puts the document on the pushed implementation branch. Review approval alone
 does not unlock it. _Avoid_: Approval label
 
-**Plan review**: A fresh reviewer's assessment of an implementation plan against
-its specification and the existing codebase. It supplies evidence, not human
-approval of a Spec gate or Plan gate. _Avoid_: Plan gate, Planner self-review
+**Planning review**: A fresh reviewer's adversarial assessment of the planning
+documents in its scope, against the issue, the existing codebase, and each
+other. Its scope is a specification, a plan, or both. It supplies evidence, not
+human approval of a Spec gate or Plan gate. _Avoid_: Builder check, Planner
+self-review
+
+**Plan review**: A Planning review whose scope includes an implementation plan.
+_Avoid_: Plan gate, Planner self-review
+
+**Review boundary**: A point where planning documents leave the planner: a Spec
+gate, a Plan gate, an interactive submission, or the start of implementation.
+Each document that crosses one needs a current Planning review. _Avoid_: Review
+gate
 
 **Sub-issue**: An issue whose host records a parent issue in the same
 repository: a native sub-issue on GitHub, or a leading `Part of #N` body line on
