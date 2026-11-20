@@ -124,8 +124,15 @@ export function createIssueFeed(input: {
         input.clock.now() - h.projectedAt >= 60000
       ) {
         h.reproject = false;
-        const projected = await input.project(issue);
+        const found = await input.project(issue);
         if (!h.subscribers.size) return;
+        // Merging the pull request closes the issue while its Web session
+        // still runs or is kept. Keep the last view, so browsers still get
+        // the session's last entries and its end, until the hub drops it.
+        const projected =
+          found === null && h.state && input.sessions?.current(issue)
+            ? h.state
+            : found;
         // Session changes that arrived during projection are already folded.
         const next =
           projected && h.state

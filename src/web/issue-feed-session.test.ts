@@ -66,6 +66,7 @@ async function fixture() {
   let thread = [entry("a")];
   let fingerprint = 0;
   let projects = 0;
+  let gone = false;
   const clock = feedClock();
   const feed = createIssueFeed({
     clock,
@@ -75,6 +76,7 @@ async function fixture() {
     fingerprint: async () => String(fingerprint),
     project: async () => {
       projects++;
+      if (gone) return null;
       const value: IssueResponse = {
         schemaVersion: 1,
         ...sample,
@@ -101,6 +103,11 @@ async function fixture() {
     projects: () => projects,
     setThread(next: ThreadEvent[]) {
       thread = next;
+      fingerprint++;
+    },
+    /** The issue closes (for example, its pull request merged). */
+    close() {
+      gone = true;
       fingerprint++;
     },
   };
@@ -304,4 +311,48 @@ test("a session that ends reprojects and shows the run files again", async () =>
     thread?.kind === "thread" && thread.entries.map((e) => e.id),
     ["r:history:4"],
   );
+});
+
+test("a closed issue stays available while it has a Web session", async () => {
+  const f = await fixture();
+  f.sessions.change({
+    kind: "session",
+    session: header({ state: "replying" }),
+  });
+  const a = f.subscribe();
+  await f.clock.advance(0);
+  f.close();
+  await f.clock.advance(1000);
+  assert.equal(
+    a.updates.some((u) => u.kind === "unavailable"),
+    false,
+    "a merge that closes the issue must not end the page's stream",
+  );
+  f.sessions.change({
+    kind: "session-entries",
+    entries: [entry("web:s1:9", "2026-11-19T10:06:00.000Z")],
+  });
+  f.sessions.change({
+    kind: "session",
+    session: header({
+      state: "ended",
+      ended: { reason: "finished", message: "The pull request is merged." },
+    }),
+  });
+  assert.deepEqual(
+    a.updates.slice(-2).map((u) => u.kind),
+    ["session-entries", "session"],
+  );
+  // A browser that connects now still gets the ended session.
+  const b = f.subscribe();
+  await f.clock.advance(0);
+  const reset = b.updates.find((u) => u.kind === "reset");
+  assert.equal(
+    reset?.kind === "reset" && reset.issue.issue.session?.state,
+    "ended",
+  );
+  // When the kept session goes away, the closed issue becomes unavailable.
+  f.sessions.change({ kind: "session", session: null });
+  await f.clock.advance(1000);
+  assert.equal(a.updates.at(-1)?.kind, "unavailable");
 });
