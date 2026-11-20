@@ -7,6 +7,7 @@ import type { RunDataSource } from "./run-data.ts";
 import type { ServeAuth } from "./auth.ts";
 import type { RequestPolicy } from "./request-policy.ts";
 import { serveSessionRoute, sessionRoute } from "./session/routes.ts";
+import { issueFilePath, serveIssueFile } from "./issue-file-route.ts";
 import type { SessionHub } from "./session/types.ts";
 
 type RequestContext = {
@@ -96,6 +97,15 @@ export function createRequestHandler({
           route: session,
           sessions,
         });
+      const file = issueFilePath(path);
+      if (file)
+        return serveIssueFile({
+          res,
+          method,
+          route: file,
+          source,
+          send: (status, body, type) => send(res, method, status, body, type),
+        });
       if (method !== "GET" && method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");
         return send(res, method, 405, "Method not allowed.");
@@ -111,7 +121,7 @@ export function createRequestHandler({
         );
       const asset = await readWebAsset(webRoot, path);
       if (!asset) return send(res, method, 404, "Not found.");
-      if (asset.preview) setResponseHeaders(res, true);
+      if (asset.preview) setResponseHeaders(res, "sample");
       send(res, method, 200, asset.body, asset.contentType);
     })().catch(() => {
       if (res.headersSent) return res.destroy();
