@@ -22,7 +22,8 @@ export function planningBody(text) {
   /** @type {number | undefined} */
   let record;
   for (let index = 0; index < lines.length; index++) {
-    const line = lines[index] ?? "";
+    // Match without a CRLF terminator. The returned body keeps the raw bytes.
+    const line = (lines[index] ?? "").replace(/\r$/, "");
     const match = FENCE.exec(line);
     if (fence) {
       const marker = match?.[1];

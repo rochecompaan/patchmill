@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-11-20T07:22:25.337Z",
+  "installedAt": "2026-11-20T07:31:34.749Z",
   "sources": {
     "patchmill": "1.0.0",
     "superpowers": "7.0.2",
@@ -157,7 +157,7 @@
     },
     {
       "path": "patchmill-planning/scripts/body-hash.mjs",
-      "sha256": "bb92b39b786f8e4835b4f724a916796c4498b18390ed0adfdf4c5c5e052c5915"
+      "sha256": "6ca2059ab5aac4fcf09ba8fcdb3bee0bf6b9fa93db58e5e0ae4236745a80e07c"
     },
     {
       "path": "patchmill-planning/SKILL.md",

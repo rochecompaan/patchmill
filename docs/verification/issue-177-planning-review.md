@@ -36,8 +36,8 @@ at SKILL 370–386.
 `scripts/planning-body-hash.test.mjs` covers receipt-only and body edits,
 backtick, longer-backtick, and tilde fences, fenced headings inside the record,
 a duplicated record, a section after the record, an inline backtick line that is
-not a fence, documents with no record, and the command's success and error
-exits.
+not a fence, CRLF and mixed line endings, documents with no record, and the
+command's success and error exits.
 
 The installed helper on this issue's planning documents:
 

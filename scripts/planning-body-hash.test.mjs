@@ -138,3 +138,33 @@ test("command prints the hash", async (t) => {
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /more than one Planning review section/);
 });
+
+test("handles CRLF and mixed line endings", () => {
+  const crlf = (...lines) => lines.join("\r\n");
+  const a = crlf("# Plan", "body", "## Planning review", "A", "");
+  const b = crlf("# Plan", "body", "## Planning review", "B", "");
+  assert.equal(planningBody(a), "# Plan\r\nbody\r\n");
+  assert.equal(bodyHash(a), bodyHash(b));
+  assert.throws(
+    () => planningBody(crlf("# P", "## Planning review", "## Planning review")),
+    /more than one Planning review section/,
+  );
+  assert.throws(
+    () => planningBody(crlf("# P", "## Planning review", "x", "## Later")),
+    /Planning review must be the last section/,
+  );
+  const fenced = (after) =>
+    crlf(
+      "# P",
+      "```md",
+      "## Planning review",
+      "```",
+      after,
+      "## Planning review",
+    );
+  assert.notEqual(bodyHash(fenced("Task A")), bodyHash(fenced("Task B")));
+  const mixed =
+    "# P\n## Planning review\r\n```text\r\n## Findings\n```\r\nok\n";
+  assert.doesNotThrow(() => planningBody(mixed));
+  assert.equal(planningBody(mixed), "# P\n");
+});
