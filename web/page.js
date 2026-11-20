@@ -40,6 +40,7 @@ export function renderPage(doc, state, name, drafts) {
       drafts.get(state.issue.issue.summary.number),
       state.issue.source,
       state.connection,
+      state.issue.sessions === true,
     );
   return renderStatus(doc, state);
 }

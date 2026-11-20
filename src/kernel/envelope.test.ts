@@ -121,6 +121,24 @@ test("interactive planning asks the maintainer and submits through the tool", ()
   );
 });
 
+test("interactive planning at the implementation stage commits but does not push", () => {
+  const text = renderRunEnvelope({
+    ...input,
+    facts: { ...facts, stage: "implementation" },
+    interactive: true,
+  });
+  assert.match(text, /do not push/);
+  assert.match(text, /committed but not pushed/);
+  // Unattended planning still pushes its own work.
+  assert.match(
+    renderRunEnvelope({
+      ...input,
+      facts: { ...facts, stage: "implementation" },
+    }),
+    /Commit and push your work before you finish\./,
+  );
+});
+
 test("interactive implementation keeps the JSON result contract", () => {
   assert.equal(
     renderRunEnvelope({ ...input, phase: "implementation", interactive: true }),

@@ -1,6 +1,6 @@
 import { el, icon, externalLink, person, elapsed } from "./dom.js";
 import { renderThread } from "./thread.js";
-import { presentationFor, PHASES } from "./state.js";
+import { presentationFor, sessionPresentation, PHASES } from "./state.js";
 import { liveElapsedSeconds } from "./live-issue.js";
 /** @typedef {import('../src/web/api-types.ts').IssueDetail} IssueDetail */
 /** @typedef {import('../src/web/api-types.ts').IssueSummary} IssueSummary */
@@ -187,9 +187,14 @@ function renderHeader(doc, detail, name, p) {
   );
   const control = el(doc, "div", "control");
   if (p.header === "terminal")
-    control.append(el(doc, "span", "note-pill", "Running in a terminal"));
-  else if (p.header && p.control)
-    control.append(button(doc, p.header, p.control.label, p.control.className));
+    control.append(
+      el(doc, "span", "note-pill", p.terminalNote ?? "Running in a terminal"),
+    );
+  else if (p.header && p.control) {
+    const b = button(doc, p.header, p.control.label, p.control.className);
+    if (p.header === "pause") b.setAttribute("aria-label", "Pause Web session");
+    control.append(b);
+  }
   top.append(title, control);
   inner.append(
     top,
@@ -215,8 +220,8 @@ function renderHeader(doc, detail, name, p) {
   return header;
 }
 
-/** @param {Document} doc @param {IssueSummary} issue @param {string} name @param {string} draft @param {Presentation} p @param {'sample'|'live'} source */
-function renderComposer(doc, issue, name, draft, p, source) {
+/** @param {Document} doc @param {IssueSummary} issue @param {string} name @param {string} draft @param {Presentation} p @param {'sample'|'live'} source @param {boolean} sessions */
+function renderComposer(doc, issue, name, draft, p, source, sessions) {
   const footer = el(doc, "footer", "composer");
   if (p.composer === "terminal" || p.composer === "finished") {
     footer.append(el(doc, "div", "note-bar", p.composerHint));
@@ -234,7 +239,7 @@ function renderComposer(doc, issue, name, draft, p, source) {
   input.dataset.issue = String(issue.number);
   input.rows = 1;
   input.placeholder =
-    source === "live"
+    source === "live" && disabled && !sessions
       ? "Live chat is not available yet."
       : "Message the agent as " + name;
   input.setAttribute("aria-label", "Message the agent");
@@ -257,7 +262,53 @@ function renderComposer(doc, issue, name, draft, p, source) {
   return footer;
 }
 
-/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft @param {'sample'|'live'} [source] @param {import('./controller.js').PageState['connection']} [connection] */
+/** @param {Document} doc @param {NonNullable<IssueDetail['session']>} session */
+function renderQuestion(doc, session) {
+  const question = session.question;
+  const card = el(doc, "div", "question-card");
+  if (!question) return card;
+  card.setAttribute("role", "group");
+  card.setAttribute("aria-label", "Question from the Issue run");
+  const text = el(doc, "div", "question-text");
+  text.append(el(doc, "strong", "", question.title));
+  if (question.message)
+    text.append(doc.createTextNode("\n" + question.message));
+  const choices = el(doc, "div", "question-choices");
+  for (const option of question.options) {
+    const b = el(doc, "button", "btn", option);
+    b.type = "button";
+    b.dataset.action = "answer";
+    b.dataset.question = question.id;
+    b.dataset.choice = option;
+    choices.append(b);
+  }
+  card.append(text, choices);
+  return card;
+}
+
+/** @param {Document} doc @param {IssueDetail} detail */
+function renderSession(doc, detail) {
+  const session = /** @type {NonNullable<IssueDetail['session']>} */ (
+    detail.session
+  );
+  const section = el(doc, "section", "web-session");
+  section.setAttribute("aria-label", "Web session");
+  section.append(el(doc, "h2", "web-session-heading", "Web session"));
+  const entries = renderThread(doc, {
+    ...detail,
+    thread: session.entries,
+    summary: {
+      ...detail.summary,
+      status: session.state === "replying" ? "working" : "idle",
+    },
+  });
+  entries.removeAttribute("aria-label");
+  section.append(...entries.childNodes);
+  if (session.question) section.append(renderQuestion(doc, session));
+  return section;
+}
+
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {string} draft @param {'sample'|'live'} [source] @param {import('./controller.js').PageState['connection']} [connection] @param {boolean} [sessions] */
 export function renderIssue(
   doc,
   detail,
@@ -265,8 +316,10 @@ export function renderIssue(
   draft,
   source = "sample",
   connection = null,
+  sessions = false,
 ) {
   const p = presentationFor(detail.summary);
+  const web = source === "live" ? sessionPresentation(detail, sessions) : null;
   if (source === "live") {
     p.statusLabel = !detail.run
       ? "No run yet"
@@ -274,13 +327,24 @@ export function renderIssue(
           active: "Run active",
           completed: "Finished",
           stopped: "Stopped",
+          paused: "Paused",
           incomplete: "Incomplete",
         }[detail.run.outcome];
     if (detail.run?.outcome === "active") p.dotClass = "dot dot-live";
   }
   const fragment = doc.createDocumentFragment();
   const active = source === "live" && detail.run?.outcome === "active";
-  const thread = renderThread(doc, detail);
+  const liveSession =
+    web && detail.session && detail.session.state !== "ended"
+      ? detail.session
+      : null;
+  // A live Web session shows its own working row.
+  const thread = renderThread(
+    doc,
+    liveSession
+      ? { ...detail, summary: { ...detail.summary, status: "idle" } }
+      : detail,
+  );
   thread.setAttribute("aria-label", "Issue thread");
   if (source === "live") {
     thread.classList.add("is-recorded");
@@ -309,9 +373,14 @@ export function renderIssue(
     );
     thread.append(empty);
   }
+  // An ended session is in the run files; only a live one renders here.
+  if (liveSession) thread.append(renderSession(doc, detail));
   /** @type {Presentation} */
-  const composer =
-    source === "live" && p.composer !== "terminal" && p.composer !== "finished"
+  const shown = web
+    ? { ...p, ...web }
+    : source === "live" &&
+        p.composer !== "terminal" &&
+        p.composer !== "finished"
       ? {
           ...p,
           composer: "disabled",
@@ -319,8 +388,8 @@ export function renderIssue(
           composerHint: "View only. Messages come with live chat.",
         }
       : p;
-  const header = renderHeader(doc, detail, name, p);
-  if (active && connection) {
+  const header = renderHeader(doc, detail, name, web ? shown : p);
+  if ((active || liveSession) && connection) {
     const status = el(
       doc,
       "span",
@@ -337,7 +406,7 @@ export function renderIssue(
   fragment.append(
     header,
     thread,
-    renderComposer(doc, detail.summary, name, draft, composer, source),
+    renderComposer(doc, detail.summary, name, draft, shown, source, sessions),
   );
   return fragment;
 }

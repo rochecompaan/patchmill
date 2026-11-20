@@ -80,6 +80,7 @@ export async function readIssueDetail(input: {
     run: null,
     participants: [],
     thread: [],
+    session: null,
     artifacts: [],
     finalUsage: null,
   };

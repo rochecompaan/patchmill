@@ -70,3 +70,16 @@ test("missing sample threads fail at the projection boundary with the issue numb
     Object.defineProperty(sampleThreads, "227", descriptor);
   }
 });
+
+test("sample issues are view only", async () => {
+  const source = createSampleRunDataSource();
+  const snapshot = await source.snapshot();
+  assert.equal(snapshot.sessions, false);
+  for (const detail of Object.values(snapshot.details))
+    assert.equal(detail.session, null);
+  let reset: unknown;
+  source.subscribe({ issue: 298, lastEventId: null }, (u) => {
+    if (u.kind === "reset") reset = u.issue;
+  });
+  assert.equal((reset as { sessions: boolean }).sessions, false);
+});

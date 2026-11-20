@@ -38,6 +38,7 @@ export async function startWebFixture(
         method?: string;
         headers?: OutgoingHttpHeaders;
         cookie?: string;
+        body?: string | Buffer;
       } = {},
     ) {
       return new Promise<{
@@ -73,7 +74,7 @@ export async function startWebFixture(
         );
         req.setTimeout(3000, () => req.destroy(new Error("HTTP timeout")));
         req.on("error", reject);
-        req.end();
+        req.end(options.body);
       });
     },
     rawRequest(text: string) {

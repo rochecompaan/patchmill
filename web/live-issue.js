@@ -6,7 +6,11 @@ export function applyIssueUpdate(response, update) {
     return {
       ...response,
       syncedAt: update.syncedAt,
-      issue: { ...update.header, thread: response.issue.thread },
+      issue: {
+        ...update.header,
+        thread: response.issue.thread,
+        session: response.issue.session ?? null,
+      },
     };
   if (update.kind === "thread") {
     const index =
@@ -22,6 +26,37 @@ export function applyIssueUpdate(response, update) {
           ...update.entries,
         ],
       },
+    };
+  }
+  if (update.kind === "session")
+    return {
+      ...response,
+      issue: {
+        ...response.issue,
+        session: update.session
+          ? {
+              ...update.session,
+              // A new session starts with an empty thread.
+              entries:
+                response.issue.session?.id === update.session.id
+                  ? response.issue.session.entries
+                  : [],
+            }
+          : null,
+      },
+    };
+  if (update.kind === "session-entries") {
+    const session = response.issue.session;
+    if (!session) return response;
+    const entries = [...session.entries];
+    for (const entry of update.entries) {
+      const index = entries.findIndex((e) => e.id === entry.id);
+      if (index >= 0) entries[index] = entry;
+      else entries.push(entry);
+    }
+    return {
+      ...response,
+      issue: { ...response.issue, session: { ...session, entries } },
     };
   }
   return response;

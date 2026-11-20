@@ -87,6 +87,8 @@ export interface IssueResponse {
   readonly source: "sample" | "live";
   readonly revision: string;
   readonly syncedAt: string | null;
+  /** The server has a Session hub. `--sample` is view only. */
+  readonly sessions: boolean;
   readonly issue: IssueDetail;
 }
 
@@ -96,11 +98,18 @@ export interface IssueDetail {
     readonly startedAt: string;
     readonly activeSince: string | null;
     readonly finishedAt: string | null;
-    readonly outcome: "completed" | "stopped" | "incomplete" | "active";
+    readonly outcome:
+      | "completed"
+      | "stopped"
+      | "paused"
+      | "incomplete"
+      | "active";
   } | null;
   readonly summary: IssueSummary;
   readonly participants: readonly string[];
   readonly thread: readonly ThreadEvent[];
+  /** The issue's live or recently ended Web session. */
+  readonly session: LiveSession | null;
   readonly artifacts: readonly Artifact[];
   readonly finalUsage: {
     readonly tokens: number | null;
@@ -205,12 +214,53 @@ export type Artifact = ArtifactLink & {
 
 export interface ApiError {
   readonly error: {
-    readonly code: "invalid_issue" | "not_found" | "internal_error";
+    readonly code:
+      | "invalid_issue"
+      | "not_found"
+      | "internal_error"
+      | "invalid_request"
+      | "invalid_author"
+      | "unsupported_media_type"
+      | "too_large"
+      | "method_not_allowed"
+      | import("./session/types.ts").HubErrorCode;
     readonly message: string;
   };
 }
 
-export type IssueHeader = Omit<IssueDetail, "thread">;
+export type LiveSessionState =
+  | "starting"
+  | "idle"
+  | "replying"
+  | "question"
+  | "pausing"
+  | "ended";
+export interface LiveQuestion {
+  readonly id: string;
+  readonly kind: "select" | "confirm";
+  readonly title: string;
+  readonly message: string | null;
+  /** A confirm question offers "Yes" and "No". */
+  readonly options: readonly string[];
+}
+export interface LiveSessionHeader {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly state: LiveSessionState;
+  /** The last `setStatus("patchmill")` text. */
+  readonly status: string | null;
+  readonly question: LiveQuestion | null;
+  readonly ended: {
+    readonly reason: "finished" | "paused" | "crashed" | "refused";
+    readonly message: string;
+  } | null;
+}
+export interface LiveSession extends LiveSessionHeader {
+  readonly entries: readonly ThreadEvent[];
+}
+
+/** Session data travels only in `session` updates and resets. */
+export type IssueHeader = Omit<IssueDetail, "thread" | "session">;
 export type IssueUpdate = { readonly id: string } & (
   | { readonly kind: "reset"; readonly issue: IssueResponse }
   | {
@@ -224,4 +274,9 @@ export type IssueUpdate = { readonly id: string } & (
       readonly entries: readonly ThreadEvent[];
     }
   | { readonly kind: "unavailable" }
+  | { readonly kind: "session"; readonly session: LiveSessionHeader | null }
+  | {
+      readonly kind: "session-entries";
+      readonly entries: readonly ThreadEvent[];
+    }
 );

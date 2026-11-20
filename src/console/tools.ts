@@ -50,11 +50,11 @@ export function registerConsoleTools(
         !dialog.options.includes(choice)
       )
         return text("Not submitted. Ask the maintainer what to change.");
-      const approval = gate?.required
-        ? choice === "Approve and open a planning PR"
+      // An ungated review is a chat approval too: Patchmill then pushes.
+      const approval =
+        gate?.required && choice === "Approve and open a planning PR"
           ? "pr"
-          : "no-pr"
-        : undefined;
+          : "no-pr";
       return text(await current.submitPlanning(params, approval));
     },
   });

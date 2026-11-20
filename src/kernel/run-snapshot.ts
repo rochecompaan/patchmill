@@ -12,7 +12,7 @@ export type RunState =
   | "blocked"
   | "ended";
 export type ObservedRunOutcome = {
-  status: "completed" | "stopped";
+  status: "completed" | "stopped" | "paused";
   label: "done" | "inProgress" | "needsInfo";
 };
 export type RunSnapshot = {

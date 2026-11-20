@@ -2,7 +2,7 @@
 /** @typedef {{view:'board'}|{view:'issue',number:number,artifactId:string|null}|{view:'not-found'}} Route */
 /** @typedef {'start'|'pause'|'resume'|'retry'} RunAction */
 /** @typedef {{className:string,label:string,dot:boolean}} Marker */
-/** @typedef {{header:RunAction|'terminal'|null,composer:'enabled'|'disabled'|'terminal'|'finished',stopReply:boolean,dotClass:string,cardClass:string,marker:Marker|null,statusLabel:string,composerHint:string,showStep:boolean,control:{label:string,className:string}|null}} Presentation */
+/** @typedef {{header:RunAction|'terminal'|null,composer:'enabled'|'disabled'|'terminal'|'finished',stopReply:boolean,dotClass:string,cardClass:string,marker:Marker|null,statusLabel:string,composerHint:string,showStep:boolean,control:{label:string,className:string}|null,terminalNote?:string}} Presentation */
 /** @typedef {{label:string,header:RunAction|null,hint:string,dotClass?:string,cardClass?:string,marker?:Marker,showStep?:boolean,disabled?:boolean}} StatusPresentation */
 
 /** @type {readonly {id:import('../src/web/api-types.ts').PhaseId,label:string,pr:boolean}[]} */
@@ -143,4 +143,87 @@ export function createDraftStore() {
       drafts.set(number, text);
     },
   };
+}
+
+/** @typedef {Pick<Presentation,'header'|'composer'|'stopReply'|'composerHint'|'control'|'terminalNote'>} SessionPresentation */
+export const OTHER_PROCESS_HINT =
+  "This run is live in a terminal or another process. You can watch it here.";
+/**
+ * The controls of a live issue page on a server with Web sessions. Rows are
+ * checked in order. Returns null for view-only servers, which keep
+ * `presentationFor`.
+ * @param {import('../src/web/api-types.ts').IssueDetail} detail @param {boolean} sessions @returns {SessionPresentation|null}
+ */
+export function sessionPresentation(detail, sessions) {
+  if (!sessions) return null;
+  const issue = detail.summary;
+  const session = detail.session;
+  const live = session && session.state !== "ended" ? session : null;
+  /** @param {RunAction|null} header @param {SessionPresentation['composer']} composer @param {string} hint @param {boolean} [stopReply] @returns {SessionPresentation} */
+  const row = (header, composer, hint, stopReply = false) => ({
+    header,
+    composer,
+    stopReply,
+    composerHint: hint,
+    control: header ? controls[header] : null,
+  });
+  const finished =
+    issue.status === "done" ||
+    issue.pullRequests.some(
+      (p) => p.kind === "implementation" && p.state === "open",
+    );
+  if (finished && !live) return row(null, "finished", statuses.done.hint);
+  if (live?.state === "starting")
+    return row("pause", "disabled", "The Web session is starting…");
+  if (live?.state === "idle")
+    return row(
+      "pause",
+      "enabled",
+      live.status ?? "The agent is idle. Your message starts a new turn.",
+    );
+  if (live?.state === "replying" || live?.state === "question")
+    return row(
+      "pause",
+      "enabled",
+      live.state === "question"
+        ? "The agent is waiting for an answer."
+        : "The agent is replying. Your message reaches it after its current tool call.",
+      true,
+    );
+  if (live?.state === "pausing")
+    return row(null, "disabled", "Pausing the Web session…");
+  if (issue.live)
+    return {
+      header: "terminal",
+      composer: "terminal",
+      stopReply: false,
+      composerHint: OTHER_PROCESS_HINT,
+      control: null,
+      terminalNote: "Running in another process",
+    };
+  // The crash message tells the user to press Resume.
+  if (session?.ended?.reason === "crashed")
+    return row("resume", "disabled", session.ended.message);
+  // A refused start says why under the control that follows.
+  const refused =
+    session?.ended?.reason === "refused" ? session.ended.message : null;
+  if (issue.status === "blocked")
+    return row("retry", "disabled", refused ?? statuses.blocked.hint);
+  if (
+    session?.ended?.reason === "paused" ||
+    detail.run?.outcome === "paused" ||
+    (detail.run && !detail.run.finishedAt)
+  )
+    return row(
+      "resume",
+      "disabled",
+      refused ?? "This Issue run is paused. Click Resume to continue it.",
+    );
+  if (!detail.run)
+    return row("start", "disabled", refused ?? statuses.none.hint);
+  return row(
+    "resume",
+    "disabled",
+    session?.ended?.message ?? "Click Resume to continue the Issue run.",
+  );
 }

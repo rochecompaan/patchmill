@@ -28,6 +28,8 @@ export function createSampleRunDataSource(): RunDataSource {
     source: "sample",
     revision: "sample-v1",
     syncedAt: null,
+    // View only: no Session hub.
+    sessions: false,
     issues,
     details: Object.fromEntries(
       issues.map((summary) => {
@@ -43,6 +45,7 @@ export function createSampleRunDataSource(): RunDataSource {
             body: null,
             run: null,
             ...thread,
+            session: null,
             artifacts: sampleArtifacts[String(summary.number)] ?? [],
           },
         ];

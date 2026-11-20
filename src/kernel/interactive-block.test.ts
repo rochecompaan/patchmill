@@ -122,7 +122,13 @@ for (const failure of ["aborted", "timedOut", "failed", "invalid"] as const) {
               },
             },
     });
-    assert.equal((await c.run({ issue: 9 }, { human })).status, "stopped");
+    const outcome = await c.run({ issue: 9 }, { human });
+    // The console aborts a worker only when it shuts down: that is a pause.
+    assert.equal(outcome.status, failure === "aborted" ? "paused" : "stopped");
+    assert.deepEqual(
+      c.host.state().issues[0]!.labels,
+      failure === "aborted" ? ["in-progress"] : ["needs-info"],
+    );
     assert.equal(human.calls.includes("guidance"), false);
   });
 }

@@ -131,3 +131,42 @@ test("Last-Event-ID reconnect receives only missed issue updates", async (t) => 
   assert.equal(update.entries[0]?.id, "a");
   reconnect.close();
 });
+
+test("the event stream writes session updates with their kind", async (t) => {
+  const sample = createSampleRunDataSource();
+  const f = await startWebFixture(t, {
+    source: {
+      snapshot: sample.snapshot,
+      subscribe: (selection, listener) => {
+        sample.subscribe(selection, listener);
+        listener({
+          id: "00000000-2",
+          kind: "session",
+          session: {
+            id: "s1",
+            startedAt: "2026-11-19T10:05:00.000Z",
+            state: "idle",
+            status: null,
+            question: null,
+            ended: null,
+          },
+        });
+        listener({
+          id: "00000000-3",
+          kind: "session-entries",
+          entries: [{ id: "web:s1:1", at: null, kind: "progress", text: "x" }],
+        });
+        return () => {};
+      },
+    },
+  });
+  const s = await stream(f.origin, f.cookie);
+  await s.next();
+  await s.next();
+  assert.match((await s.next())!, /^id: 00000000-2\nevent: session\ndata: /);
+  assert.match(
+    (await s.next())!,
+    /^id: 00000000-3\nevent: session-entries\ndata: .*web:s1:1/,
+  );
+  s.close();
+});

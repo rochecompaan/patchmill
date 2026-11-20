@@ -94,6 +94,8 @@ export function projectBoardIssue(input: {
     column = "planning";
   if (open.some((pr) => pr.kind !== "implementation")) column = "review";
   if (run.live && run.state === "implementation") column = "implementing";
+  const paused = !run.live && !!run.paused;
+  if (paused && run.phase === "implementation") column = "implementing";
   const done = roles.includes("done");
   if (done || open.some((pr) => pr.kind === "implementation")) column = "code";
   if (
@@ -128,7 +130,9 @@ export function projectBoardIssue(input: {
           ? ["planning", "implementation"].includes(run.state ?? "")
             ? "working"
             : "idle"
-          : "none";
+          : paused
+            ? "paused"
+            : "none";
   const names = input.labels ?? DEFAULT_CONFIG.labels;
   return {
     number: issue.number,

@@ -36,7 +36,8 @@ for (const row of [
     name: "ungated review",
     gate: { required: false, pullRequest: false },
     answer: "Reviewed, continue",
-    approval: undefined,
+    // The review is the approval: Patchmill pushes the documents after it.
+    approval: "no-pr",
     questions: 1,
   },
 ]) {

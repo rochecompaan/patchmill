@@ -7,6 +7,7 @@ import { resolveWebRoot } from "./assets.ts";
 import { createRequestHandler } from "./request.ts";
 import type { RunDataSource } from "./run-data.ts";
 import type { ServeAuth } from "./auth.ts";
+import type { SessionHub } from "./session/types.ts";
 export type ServeOptions = {
   host: string;
   port: number;
@@ -14,6 +15,8 @@ export type ServeOptions = {
   auth: ServeAuth;
   webRoot?: string;
   keepAliveMs?: number;
+  /** Live data only. `--sample` has no Session hub. */
+  sessions?: SessionHub;
 };
 export type Serving = {
   origin: string;
@@ -31,12 +34,22 @@ export async function startServeServer(
   let closing: Promise<void> | undefined;
   const streams = new Set<ServerResponse>();
   const close = () =>
-    (closing ??= new Promise<void>((resolve, reject) => {
-      if (!server.listening) return resolve();
-      for (const stream of streams) stream.end();
-      server.close((error) => (error ? reject(error) : resolve()));
-      server.closeIdleConnections();
-    }));
+    (closing ??= (async () => {
+      let failure: unknown;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          if (!server.listening) return resolve();
+          for (const stream of streams) stream.end();
+          server.close((error) => (error ? reject(error) : resolve()));
+          server.closeIdleConnections();
+        });
+      } catch (error) {
+        failure = error;
+      }
+      // Stop every Web session and its Pi process before the server is done.
+      await options.sessions?.close();
+      if (failure) throw failure;
+    })());
   try {
     server.listen(options.port, options.host);
     await once(server, "listening");
@@ -69,6 +82,7 @@ export async function startServeServer(
         streams,
         closing: () => closing !== undefined,
         keepAliveMs: options.keepAliveMs ?? 15000,
+        ...(options.sessions ? { sessions: options.sessions } : {}),
       }),
     );
     server.on("upgrade", (_req, socket) => socket.destroy());

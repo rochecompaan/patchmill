@@ -18,8 +18,10 @@ import type {
   DocumentLink,
   IssueDetail,
   IssueSummary,
+  LiveSession,
   Repository,
 } from "./api-types.ts";
+import type { SessionHub } from "./session/types.ts";
 import { readIssueDetail } from "./file-issue-detail.ts";
 import type { RunDataSource, RunDataSnapshot } from "./run-data.ts";
 import { createIssueFeed, type FeedClock } from "./issue-feed.ts";
@@ -52,6 +54,31 @@ const clock: FeedClock = {
   },
 };
 
+/**
+ * Add the Web session to an issue detail. While a session is live, the
+ * run-file copies of its span (console transcript, progress lines and the
+ * "pending" notice) are hidden, so nothing appears twice. An ended session
+ * hides nothing.
+ */
+export function withLiveSession(
+  detail: IssueDetail,
+  session: LiveSession | null,
+): IssueDetail {
+  if (!session) return { ...detail, session: null };
+  // After the session ends, the run files are the record, as after a
+  // terminal console run.
+  if (session.state === "ended") return { ...detail, session };
+  const since = Date.parse(session.startedAt);
+  const thread = detail.thread.filter((entry) => {
+    if (entry.id.endsWith(":interactive-pending")) return false;
+    const duplicate =
+      entry.id.includes(":console-planning.jsonl:") ||
+      entry.id.includes(":history:");
+    return !(duplicate && entry.at !== null && Date.parse(entry.at) >= since);
+  });
+  return { ...detail, thread, session };
+}
+
 export function createFileRunDataSource(input: {
   repoRoot: string;
   config: PatchmillConfig;
@@ -62,8 +89,10 @@ export function createFileRunDataSource(input: {
   warn: (message: string) => void;
   clock?: FeedClock;
   epoch?: () => string;
+  sessions?: Pick<SessionHub, "current" | "subscribe">;
 }): RunDataSource {
-  const { config, metadata, repoRoot, warn } = input;
+  const { config, metadata, repoRoot, warn, sessions } = input;
+  const live = (number: number) => sessions?.current(number) ?? null;
   const cache = createHostBoardCache(input);
   const store = new StateStore(stateDir(repoRoot), () =>
     warn("Could not read optional local workflow data."),
@@ -159,7 +188,11 @@ export function createFileRunDataSource(input: {
       );
       if (projected) {
         issues.push(projected.summary);
-        if (projected.detail) details[String(issue.number)] = projected.detail;
+        if (projected.detail)
+          details[String(issue.number)] = withLiveSession(
+            projected.detail,
+            live(issue.number),
+          );
       }
     }
     const repository = { ...metadata.repository };
@@ -169,6 +202,7 @@ export function createFileRunDataSource(input: {
       source: "live",
       revision: selection ? hash({ boardRevision, details }) : boardRevision,
       syncedAt: host.syncedAt,
+      sessions: !!sessions,
       issues,
       details,
     };
@@ -179,6 +213,7 @@ export function createFileRunDataSource(input: {
     clock: input.clock ?? clock,
     epoch: input.epoch ?? (() => randomBytes(4).toString("hex")),
     warn,
+    ...(sessions ? { sessions } : {}),
     fingerprint: (issue) => issueFingerprint({ ...input, issue }),
     async project(number) {
       await checkRepository();
@@ -192,13 +227,16 @@ export function createFileRunDataSource(input: {
         true,
       );
       if (!projected?.detail) return null;
+      // After the last await: the feed folds later session changes itself.
+      const detail = withLiveSession(projected.detail, live(number));
       const response = {
         schemaVersion: 1 as const,
         repository: { ...metadata.repository },
         source: "live" as const,
         revision: hash(projected.detail),
         syncedAt: host.syncedAt,
-        issue: projected.detail,
+        sessions: !!sessions,
+        issue: detail,
       };
       freeze(response);
       return response;

@@ -137,3 +137,25 @@ test("configured and local workflow roles replace literal legacy policy", async 
     ["done"],
   );
 });
+
+test("a paused result reads as a paused run that keeps its in-progress role", async (t) => {
+  const f = await fixture(t);
+  const id = "20261114-130000-abcd";
+  await fs.mkdir(join(f.dir, id), { recursive: true });
+  await fs.writeFile(
+    join(f.dir, id, "result.json"),
+    JSON.stringify({
+      issue: 9,
+      runId: id,
+      startedAt: "2026-11-14T13:00:00Z",
+      finishedAt: "2026-11-14T13:01:00Z",
+      outcome: { status: "paused", issue: 9, summary: "Run paused." },
+      sessions: [{ phase: "implementation" }],
+    }),
+  );
+  const latest = await f.read();
+  assert.equal(latest.state, "ended");
+  assert.equal(latest.paused, true);
+  assert.equal(latest.outcomeRole, "inProgress");
+  assert.equal(latest.summary, "Run paused.");
+});

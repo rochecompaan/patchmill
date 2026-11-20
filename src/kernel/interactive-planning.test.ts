@@ -72,16 +72,25 @@ test("confirmed planning submissions reset the budget without reusing session pa
     );
 });
 
-test("quitting while planning waits publishes the abort stop and releases the lock", async (t) => {
+test("quitting the console while planning pauses the run and releases the lock", async (t) => {
   const c = await setupRun(t, []);
   const human = fakeHuman(c, { quitPlanningAt: 1 });
   const outcome = await c.run({ issue: 9 }, { human });
-  assert.equal(outcome.status, "stopped");
-  assert.deepEqual(c.host.state().issues[0]!.labels, ["needs-info"]);
-  assert.match(
-    c.host.state().issues[0]!.comments[0]!.body,
-    /session was aborted/,
-  );
+  assert.deepEqual(outcome, {
+    status: "paused",
+    issue: 9,
+    summary: "Run paused.",
+  });
+  // A pause changes nothing on the issue: the label stays and no comment.
+  assert.deepEqual(c.host.state().issues[0]!.labels, ["in-progress"]);
+  assert.equal(kernelComments(c).length, 0);
+  const { result } = await c.records();
+  assert.deepEqual(result.outcome, outcome);
+  assert.equal(result.progress.state, "ended");
+  assert.deepEqual(result.progress.outcome, {
+    status: "paused",
+    label: "inProgress",
+  });
   await (await acquireLock(c.lockPath)).release();
 });
 

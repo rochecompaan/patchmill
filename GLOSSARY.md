@@ -96,6 +96,20 @@ one or more Interactive Issue runs. It never decides a phase.
 **Console agent**: The agent in the Console session. It plans with the
 maintainer and calls Patchmill tools, but never chooses a phase.
 
+**Web session**: One Pi RPC process, started by `patchmill serve`, that drives a
+Run attempt of an Interactive Issue run from the issue's web page. Every browser
+on that page shares it. Pausing the Web session stops the process. The run state
+and Console session remain, so a later Web session or terminal console can
+continue the Issue run. _Avoid_: Web chat, browser session
+
+**Console session lock**: A lock that the terminal console or a Web session
+holds for its whole life, so only one process writes an issue's Console session.
+_Avoid_: Issue lock
+
+**Session hub**: The part of `patchmill serve` that holds at most one Web
+session per issue, its input queue and its open question. _Avoid_: Session
+manager
+
 **Review wait**: The part of an Interactive Issue run after the implementation
 pull request is verified and labeled `agent-done`, and before it is merged.
 
@@ -128,9 +142,6 @@ paused, independent of its current activity. _Avoid_: Activity state
 **Coordinator activity**: The coordinator's observed current condition, such as
 idle, executing, waiting, or faulted, reported separately from desired mode.
 _Avoid_: Desired mode
-
-**Pause**: An operator control that lets the active issue run finish and keeps
-the coordinator alive without selecting more work. _Avoid_: Shutdown, drain
 
 **Drain**: An operator control that lets the active issue run finish, persists a
 paused desired mode, and then stops the coordinator cleanly. _Avoid_: Pause,

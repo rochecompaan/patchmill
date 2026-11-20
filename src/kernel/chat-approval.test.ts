@@ -156,3 +156,59 @@ test("pushed gated documents do not weaken the ambiguous implementation branch r
   });
   assert.equal(result.kind, "ambiguous-branches");
 });
+
+const unpushed = (files: Record<string, string>) => ({
+  ...planning(files),
+  push: false,
+});
+
+test("an ungated review pushes the committed documents, then implements", async (t) => {
+  const c = await setupRun(t, [
+    unpushed({ [spec]: "s", [plan]: "p" }),
+    implement,
+  ]);
+  const human = fakeHuman(c);
+  const launch = human.runPlanning.bind(human);
+  human.runPlanning = async (request, feedback) => {
+    const run = await launch(request, feedback);
+    // Nothing is pushed before the maintainer confirms the documents.
+    assert.equal(
+      await c.git(["ls-remote", "origin", `refs/heads/${branch}`]),
+      "",
+    );
+    return { ...run, planningApproval: "no-pr" };
+  };
+  assert.equal((await c.run({ issue: 9 }, { human })).status, "completed");
+  assert.deepEqual(human.calls.slice(0, 2), ["planning", "implementation"]);
+  assert.equal(await c.git(["show", `origin/${branch}:${plan}`]), "p");
+});
+
+test("a pause before the review keeps local documents in planning on Resume", async (t) => {
+  const c = await setupRun(t, [
+    unpushed({ [spec]: "s", [plan]: "p" }),
+    { result: done },
+    implement,
+  ]);
+  const human = fakeHuman(c);
+  const launch = human.runPlanning.bind(human);
+  let calls = 0;
+  human.runPlanning = async (request, feedback) => {
+    const run = await launch(request, feedback);
+    // The first session commits, then the console pauses at the dialog.
+    if (++calls === 1)
+      return {
+        session: { exitCode: null, timedOut: false, aborted: true },
+        result: { ok: false, reason: "Console shut down." },
+      };
+    return { ...run, planningApproval: "no-pr" };
+  };
+  assert.equal((await c.run({ issue: 9 }, { human })).status, "paused");
+  // The committed but unreviewed documents do not start implementation.
+  assert.equal((await c.run({ issue: 9 }, { human })).status, "completed");
+  assert.deepEqual(human.calls.slice(0, 3), [
+    "planning",
+    "planning",
+    "implementation",
+  ]);
+  assert.equal(await c.git(["show", `origin/${branch}:${spec}`]), "s");
+});

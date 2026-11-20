@@ -35,10 +35,10 @@ browser.
 4. **Finished threads (#303).** The issue page shows the thread of a run that
    has finished or stopped.
 5. **Live progress (#304).** The issue page updates while a run is active.
-6. **Live chat.** **Start planning**, chat, **Pause** and **Resume** reach
-   run-once through the server. This step needs #225, Pi's RPC mode in run-once
-   (#305), and a design for how runs and the server connect. The open questions
-   below come back at this step.
+6. **Live chat (#379).** **Start planning**, chat, **Pause** and **Resume**
+   reach the Issue run through the server. The server starts one Pi RPC process
+   for each Web session, with the Patchmill console extension. The design is in
+   `docs/specs/2026-11-19-issue-379-web-interactive-sessions-design.md`.
 
 Steps 2–5 are view only. They show the whole page, but nothing on it changes a
 run. Umbrella issue #300 tracks them, with one sub-issue per step. The
@@ -145,11 +145,17 @@ request.
   | Agent working, or waiting for a reply     | **Pause**                         |
   | Paused                                    | **Resume**                        |
   | Blocked by an error                       | **Retry**, after someone fixes it |
-  | Running in a terminal                     | None. A note says so.             |
+  | Live in a terminal or another process     | None. A note says so.             |
   | Implementation pull request open, or done | None                              |
 
-- **Pause** works like Ctrl-C in a terminal. Patchmill keeps the run state, the
-  worktree and the Pi session. **Resume** continues the same session.
+- **Pause** (accessible name "Pause Web session") ends the Web session, as
+  quitting the console does. Patchmill stops the worker and keeps the run state,
+  the worktree and the Console session. **Resume** continues the same Issue run
+  and conversation.
+- A run that is live in a terminal or in another process shows its run files as
+  they change. The page offers no controls for it, only a note.
+- A question from the run shows as a card in every browser. The first answer
+  wins, and the card closes in the other browsers.
 
 ### The board
 

@@ -10,13 +10,14 @@ import { createServeSource } from "./source.ts";
 test("explicit samples need no repository config, Git, or host access", async (t) => {
   const repoRoot = await fs.mkdtemp(join(tmpdir(), "patchmill-serve-source-"));
   t.after(() => fs.rm(repoRoot, { recursive: true, force: true }));
-  const source = await createServeSource({
+  const { source, sessions } = await createServeSource({
     sample: true,
     repoRoot,
     runner: async () => assert.fail("sample accessed a host or Git"),
     warn: assert.fail,
   });
   assert.equal((await source.snapshot()).source, "sample");
+  assert.equal(sessions, undefined);
   await assert.rejects(
     createServeSource({
       sample: false,
@@ -65,12 +66,14 @@ test("real source uses configured host metadata and current base selection", asy
       result: { stdout: "[[]]" },
     },
   ]);
-  const source = await createServeSource({
+  const { source, sessions } = await createServeSource({
     sample: false,
     repoRoot,
     runner,
     warn: assert.fail,
   });
+  assert.ok(sessions);
+  t.after(() => sessions.close());
   const data = await source.snapshot();
   assert.equal(data.source, "live");
   assert.deepEqual(data.repository, {

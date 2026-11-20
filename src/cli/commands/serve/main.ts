@@ -13,7 +13,7 @@ export type ServeMainOptions = {
   runner?: CommandRunner;
 };
 const HELP =
-  "Usage: patchmill serve [--sample] [--host HOST] [--port PORT]\nServe the view-only repository board. Use --sample for design fixtures without a repository. Defaults: 127.0.0.1:4280. Open the printed token link.";
+  "Usage: patchmill serve [--sample] [--host HOST] [--port PORT]\nServe the repository board and its Web sessions. Use --sample for view-only design fixtures without a repository. Defaults: 127.0.0.1:4280. Open the printed token link.";
 export async function main(
   args: string[] = process.argv.slice(2),
   options: ServeMainOptions = {},
@@ -23,7 +23,21 @@ export async function main(
     stderr: console.error,
   };
   let serving: Serving | undefined;
+  let hasSessions = false;
+  let stopping = false;
+  // Kept until the Web sessions have stopped, so a second Ctrl-C does not
+  // exit Node and leave workers running.
   const stop = () => {
+    if (stopping) {
+      if (hasSessions)
+        output.stderr(
+          "Still stopping the Web sessions. Patchmill exits when every Pi process has ended.",
+        );
+      return;
+    }
+    stopping = true;
+    if (hasSessions)
+      output.stderr("Stopping the Web sessions and their workers…");
     void serving?.close().catch(() => {});
   };
   try {
@@ -35,19 +49,22 @@ export async function main(
     const auth = createServeAuth(
       (options.env ?? process.env).PATCHMILL_SERVE_TOKEN,
     );
+    const data = await (options.createSource ?? createServeSource)({
+      sample: flags.sample,
+      repoRoot: options.repoRoot ?? process.cwd(),
+      runner: options.runner ?? runCommand,
+      warn: (message) => output.stderr(`Warning: ${message}`),
+    });
     serving = await (options.startServer ?? startServeServer)({
       host: flags.host,
       port: flags.port,
       auth,
-      source: await (options.createSource ?? createServeSource)({
-        sample: flags.sample,
-        repoRoot: options.repoRoot ?? process.cwd(),
-        runner: options.runner ?? runCommand,
-        warn: (message) => output.stderr(`Warning: ${message}`),
-      }),
+      source: data.source,
+      ...(data.sessions ? { sessions: data.sessions } : {}),
     });
-    process.once("SIGINT", stop);
-    process.once("SIGTERM", stop);
+    hasSessions = !!data.sessions;
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
     if (serving.networkExposed)
       output.stderr(
         "Warning: the server is available on the network. HTTP does not encrypt content. Use only a trusted network or VPN.",
@@ -63,8 +80,11 @@ export async function main(
     );
     return 1;
   } finally {
-    process.removeListener("SIGINT", stop);
-    process.removeListener("SIGTERM", stop);
-    await serving?.close();
+    try {
+      await serving?.close();
+    } finally {
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
+    }
   }
 }

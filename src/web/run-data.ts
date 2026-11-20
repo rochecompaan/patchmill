@@ -18,6 +18,8 @@ export interface RunDataSnapshot {
   readonly source: "sample" | "live";
   readonly revision: string;
   readonly syncedAt: string | null;
+  /** The server has a Session hub. */
+  readonly sessions: boolean;
   readonly issues: readonly IssueSummary[];
   readonly details: Readonly<Record<string, IssueDetail>>;
 }

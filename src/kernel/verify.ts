@@ -55,7 +55,11 @@ export function verifyOutcome(input: VerifyInput): Outcome {
     reason = `The agent reported ${result.result.status}.`;
   } else if (input.phase === "planning") {
     const missing: string[] = [];
-    if (!facts.remoteBranchExists)
+    // After a chat review at the implementation stage Patchmill pushes.
+    if (
+      !facts.remoteBranchExists &&
+      !(input.chatApproval && facts.stage === "implementation")
+    )
       missing.push("The remote branch does not exist.");
     if (!facts.specPath) missing.push("The spec path is missing.");
     if (facts.stage !== "spec" && !facts.planPath)

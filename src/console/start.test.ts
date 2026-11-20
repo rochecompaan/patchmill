@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import type { PatchmillConfig } from "../config/config.ts";
+import type { RunOnceDeps } from "../kernel/run-once.ts";
+import { acquireConsoleLock, CONSOLE_SESSION_BUSY } from "./console-lock.ts";
 import { setupRun } from "../../test-support/run-once-fixture.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import {
   collectConsoleDiagnostics,
   createStartRun,
   runConsoleRuntime,
+  startConsole,
 } from "./start.ts";
 
 for (const failure of ["service", "extension"] as const) {
@@ -148,4 +155,25 @@ test("startRun forwards the selected issue, dependencies, channel and observer a
   assert.equal(await startRun(42, human, observe), outcome);
   assert.equal(entered, true);
   assert.deepEqual(human.calls, ["notify:progress", "notify:warning"]);
+});
+
+test("startConsole refuses a Console session that another process holds", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-console-busy-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const lock = await acquireConsoleLock(root, ".patchmill/runs", 7);
+  assert.ok(lock);
+  t.after(() => lock.release());
+  const stderr: string[] = [];
+  const code = await startConsole({
+    config: { paths: { runsDir: ".patchmill/runs" } } as PatchmillConfig,
+    deps: {
+      repoRoot: root,
+      output: { stdout: () => {}, stderr: (line: string) => stderr.push(line) },
+    } as unknown as RunOnceDeps,
+    issue: 7,
+  });
+  assert.equal(code, 1);
+  assert.deepEqual(stderr, [CONSOLE_SESSION_BUSY(7)]);
+  const files = await readdir(join(root, ".patchmill/runs/issue-7/console"));
+  assert.deepEqual(files, ["lock"]);
 });
