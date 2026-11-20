@@ -244,16 +244,22 @@ try {
 
   await ana.until(`${text(".presence-text")}.includes("Ben")`, 3000);
   await ben.until(`${text(".presence-text")}.includes("Ana")`, 3000);
-  if (process.env.LAYOUT_SCREENSHOTS === "1") {
-    await ben.send("Emulation.setDeviceMetricsOverride", {
-      width: 390,
-      height: 844,
-      deviceScaleFactor: 1,
-      mobile: true,
-    });
-    await sleep(300);
-    await ben.screenshot("serve-issue-presence-mobile");
-  }
+  await ben.send("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await sleep(300);
+  await ben.screenshot("serve-issue-presence-mobile");
+  check(
+    (await ben.evaluate(`(() => {
+      const dot = document.querySelector(".composer-hint > i").getBoundingClientRect();
+      const text = document.querySelector(".composer-hint > i + span").getBoundingClientRect();
+      return dot.top >= text.top && dot.bottom <= text.bottom;
+    })()`)) === true,
+    "on a narrow screen the status dot stays beside its text",
+  );
   check(
     (await ana.evaluate(text(".presence-text"))) === "Here now: you and Ben",
     "Ana's hidden presence text lists Ben",

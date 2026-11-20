@@ -349,6 +349,7 @@
 }
 .kbd-hint {
   margin-left: auto;
+  white-space: nowrap;
   color: var(--faint);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -405,6 +406,10 @@
   .composer-hint:has(.typing) {
     flex-wrap: wrap;
     row-gap: 2px;
+  }
+  /* Only the typing slot wraps; the dot stays beside its status text. */
+  .composer-hint > i + span {
+    flex: 1 1 0;
   }
   .typing {
     flex-basis: 100%;
