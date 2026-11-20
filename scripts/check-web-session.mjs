@@ -453,6 +453,56 @@ try {
     (await evaluate(`document.activeElement?.tagName`)) === "BUTTON",
     "focus stays on the header control after the start",
   );
+  // A new entry on a long recorded thread keeps the reader's place: the
+  // page height must not collapse when the thread is rendered again.
+  detail = {
+    ...detail,
+    run: { ...detail.run, outcome: "active" },
+    thread: Array.from({ length: 80 }, (_, i) => ({
+      id: `r${i}`,
+      at: "2026-11-19T09:00:00Z",
+      kind: "progress",
+      text: `Progress ${i} `.repeat(60),
+    })),
+    session: { ...header({ state: "replying" }), entries: [] },
+  };
+  for (const listener of listeners)
+    listener({
+      id: `0000000a-${++sequence}`,
+      kind: "reset",
+      issue: response(),
+    });
+  await until(`document.querySelectorAll(".is-recorded > .ev").length >= 80`);
+  await sleep(200);
+  await evaluate(`window.scrollTo(0, 4000)`);
+  await sleep(200);
+  const before = await evaluate(`document.documentElement.scrollHeight`);
+  push({
+    kind: "session-entries",
+    entries: [
+      {
+        id: "web:s1:long",
+        at: "2026-11-19T10:07:00Z",
+        kind: "message",
+        role: "agent",
+        author: null,
+        note: null,
+        blocks: [
+          { kind: "paragraph", content: [{ kind: "text", text: "More." }] },
+        ],
+      },
+    ],
+  });
+  await until(`document.body.textContent.includes("More.")`);
+  await sleep(200);
+  check(
+    (await evaluate(`document.documentElement.scrollHeight`)) >= before,
+    "a new entry does not shrink a long thread",
+  );
+  check(
+    (await evaluate(`Math.round(window.scrollY)`)) === 4000,
+    "a new entry keeps the reader's place in a long thread",
+  );
   check(exceptions.length === 0, `no page exceptions (${exceptions.length})`);
 } finally {
   socket?.close();
@@ -462,5 +512,5 @@ try {
 }
 assert.deepEqual(failures, []);
 console.log(
-  "Web session browser regressions passed: controls, one message per send, cleared composer, question card, focus, ended and refused sessions.",
+  "Web session browser regressions passed: controls, one message per send, cleared composer, question card, focus, ended and refused sessions, stable scroll on long threads.",
 );

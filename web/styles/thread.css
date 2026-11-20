@@ -93,10 +93,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.is-recorded > .ev {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 40px;
-}
 
 .tool summary {
   list-style: none;
