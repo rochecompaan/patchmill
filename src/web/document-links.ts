@@ -1,19 +1,14 @@
-import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { PatchmillConfig } from "../config/config.ts";
-import type { HostProviderId } from "../host/types.ts";
 import { isArtifactFile } from "../kernel/names.ts";
 import { createKernelGit } from "../kernel/git.ts";
-import type { CommandRunner } from "../process/command.ts";
 import type { DocumentLink } from "./api-types.ts";
+import {
+  artifactDirectories,
+  hostFileUrl,
+  validBranchName,
+  type DocumentRepositoryInput,
+} from "./issue-documents.ts";
 
-type RepositoryInput = {
-  repoRoot: string;
-  config: PatchmillConfig;
-  baseBranch: string;
-  repositoryUrl: string;
-  provider: HostProviderId;
-  runner: CommandRunner;
-};
+type RepositoryInput = DocumentRepositoryInput;
 
 /** Cache repository-wide Git observations for one snapshot, not one host period. */
 export function createDocumentLinkReader(input: RepositoryInput) {
@@ -24,36 +19,12 @@ export function createDocumentLinkReader(input: RepositoryInput) {
     issue: number,
     branches: readonly string[],
   ): Promise<readonly DocumentLink[]> => {
-    const origin = new URL(input.repositoryUrl);
-    if (
-      !["https:", "http:"].includes(origin.protocol) ||
-      origin.username ||
-      origin.password
-    )
-      throw Error("Invalid repository URL.");
-    const directories = (["spec", "plan"] as const).map((kind) => {
-      const path = relative(
-        input.repoRoot,
-        resolve(
-          input.repoRoot,
-          kind === "spec"
-            ? input.config.paths.specsDir
-            : input.config.paths.plansDir,
-        ),
-      );
-      if (
-        !path ||
-        path === ".." ||
-        path.startsWith(`..${sep}`) ||
-        isAbsolute(path)
-      )
-        throw Error("Artifact directory is outside the repository.");
-      return { kind, path: path.split(sep).join("/") };
-    });
+    hostFileUrl({ ...input, commit: "0", path: "x" });
+    const directories = artifactDirectories(input.repoRoot, input.config);
     const refs = [...new Set([...branches, input.baseBranch])];
     const selected: string[] = [];
     for (const branch of refs) {
-      if (!branch || /[\s~^:?*[\\]|\.\./.test(branch)) continue;
+      if (!validBranchName(branch)) continue;
       if (!commits.has(branch))
         commits.set(
           branch,
@@ -90,13 +61,9 @@ export function createDocumentLinkReader(input: RepositoryInput) {
           .sort()
           .at(-1);
         if (!name) continue;
-        const encoded = `${path}/${name}`
-          .split("/")
-          .map(encodeURIComponent)
-          .join("/");
         links.push({
           kind,
-          url: `${origin.href.replace(/\/$/, "")}/${input.provider === "github-gh" ? "blob" : "src/commit"}/${commit}/${encoded}`,
+          url: hostFileUrl({ ...input, commit, path: `${path}/${name}` }),
         });
         break;
       }
