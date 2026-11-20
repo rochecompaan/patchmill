@@ -111,7 +111,13 @@ export async function issueThreadFixture(t: TestContext) {
         pullRequests: [],
         documentLinks: [],
       })!;
-      return readIssueDetail({ ...input, issue, summary, observation });
+      return readIssueDetail({
+        ...input,
+        issue,
+        summary,
+        observation,
+        artifacts: [],
+      });
     },
   };
 }

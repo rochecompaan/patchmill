@@ -51,6 +51,10 @@ documents and documents approved without a PR in an Interactive Issue run
 accompany its code. Required planning gates otherwise use separate branches.
 _Avoid_: One branch for every stage
 
+**Issue document**: A spec, plan, mockup, or Planning visualization of one
+issue, read from a committed Git ref of its Issue branch or of the base branch.
+The web API calls its entry an `Artifact`. _Avoid_: Issue file, attachment
+
 **Planning branch**: The branch that holds a required gate's planning documents
 and is the head of its Planning pull request when one opens. Its name carries
 the issue number, a title slug that is fixed when the issue's first Planning

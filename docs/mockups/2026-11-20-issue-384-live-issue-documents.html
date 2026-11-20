@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Patchmill — Issue documents on the live issue page (#384)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #08090b;
+        --panel: #121418;
+        --text: #e9e9ea;
+        --muted: #92969e;
+        --line: #30343b;
+        --brass: #c4a882;
+        --green: #39c96b;
+        --amber: #e0b04a;
+      }
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #fafafa;
+        --panel: #f0f1f3;
+        --text: #1d2026;
+        --muted: #5c626d;
+        --line: #cdd0d6;
+        --brass: #7c5932;
+        --green: #16723c;
+        --amber: #8a5d00;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          16px/1.6 "Atkinson Hyperlegible Next",
+          system-ui,
+          sans-serif;
+      }
+      a {
+        color: var(--brass);
+        text-underline-offset: 4px;
+      }
+      button {
+        font: inherit;
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 4px 12px;
+        cursor: pointer;
+      }
+      :focus-visible {
+        outline: 3px solid var(--brass);
+        outline-offset: 3px;
+      }
+      .top {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        padding: 14px 28px;
+      }
+      .brand {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .brand::before {
+        content: "✳";
+        color: var(--brass);
+        padding-right: 10px;
+      }
+      .repo {
+        color: var(--muted);
+        flex: 1;
+      }
+      main {
+        max-width: 1100px;
+        margin: auto;
+        padding: 24px 32px 48px;
+      }
+      h1 {
+        font-size: 28px;
+        line-height: 1.3;
+        margin: 14px 0 18px;
+      }
+      h1 a {
+        font-weight: 400;
+        margin-right: 10px;
+        text-decoration: none;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 22px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .meta b {
+        color: var(--text);
+      }
+      .artifacts {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 18px 0;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .art-label {
+        color: var(--muted);
+        font-size: 13px;
+        margin-right: 6px;
+      }
+      .art-chip {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 14px;
+        border-radius: 999px;
+        padding: 3px 12px;
+      }
+      .art-chip.is-draft {
+        border-style: dashed;
+      }
+      .art-draft {
+        font-size: 11px;
+        color: var(--amber);
+        border: 1px solid currentColor;
+        border-radius: 4px;
+        padding: 0 5px;
+      }
+      .thread p {
+        max-width: 72ch;
+        color: var(--muted);
+      }
+      .note {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 14px;
+      }
+      .states {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0 0 18px;
+      }
+      .states button[aria-pressed="true"] {
+        border-color: var(--brass);
+        color: var(--brass);
+      }
+      /* Viewer dialog, as web/artifacts.js renders it */
+      .viewer {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        box-shadow: 0 20px 60px #0008;
+        overflow: hidden;
+      }
+      .vw-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 4px 16px;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      .vw-kind {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .vw-head h2 {
+        margin: 0;
+        font-size: 20px;
+        grid-column: 1;
+      }
+      .vw-meta {
+        grid-column: 1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .vw-meta code {
+        font-family: "Atkinson Hyperlegible Mono", monospace;
+        color: var(--text);
+        overflow-wrap: anywhere;
+      }
+      .vw-actions {
+        grid-column: 1;
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .vw-actions a {
+        font-size: 13px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 2px 10px;
+        text-decoration: none;
+      }
+      .vw-close {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        align-self: start;
+      }
+      .vw-body {
+        padding: 18px 24px;
+        max-height: 520px;
+        overflow: auto;
+      }
+      .md-body h2 {
+        font-size: 18px;
+        margin: 18px 0 6px;
+      }
+      .md-body pre {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 10px 14px;
+        overflow: auto;
+        font-size: 13px;
+      }
+      .md-body table {
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      .md-body th,
+      .md-body td {
+        border: 1px solid var(--line);
+        padding: 4px 10px;
+        text-align: left;
+      }
+      .frame {
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        height: 300px;
+        background: #fff;
+        color: #222;
+        padding: 18px;
+        font-size: 14px;
+      }
+      .frame .fake-tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .frame .fake-tabs span {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 2px 10px;
+      }
+      .frame .fake-tabs span.on {
+        background: #222;
+        color: #fff;
+      }
+      .vw-note {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 10px 0 0;
+      }
+      .hidden {
+        display: none;
+      }
+      @media (max-width: 640px) {
+        .top {
+          padding: 12px 16px;
+        }
+        .repo {
+          display: none;
+        }
+        main {
+          padding: 16px;
+        }
+        h1 {
+          font-size: 22px;
+        }
+        .vw-body {
+          padding: 14px;
+        }
+        .frame {
+          height: 240px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <span class="brand">Patchmill</span>
+      <span class="repo">rochecompaan/patchmill · live</span>
+      <button type="button" id="theme">Light theme</button>
+    </header>
+    <main>
+      <p class="note">
+        Mockup for issue #384, spec
+        <code
+          >2026-11-20-issue-384-show-an-issue-s-spec-plan-and-mockups-on-the-liv-design.md</code
+        >. It shows the live issue page with its Issue documents, and the viewer
+        in two states. Use the buttons to switch states.
+      </p>
+      <div class="states" role="group" aria-label="Viewer state">
+        <button type="button" data-state="doc" aria-pressed="true">
+          Spec open
+        </button>
+        <button type="button" data-state="frame" aria-pressed="false">
+          Mockup open
+        </button>
+        <button type="button" data-state="none" aria-pressed="false">
+          Viewer closed
+        </button>
+      </div>
+
+      <a href="#" class="back">← Board</a>
+      <h1>
+        <a href="#">#384</a>Show an issue's spec, plan and mockups on the live
+        web issue page
+      </h1>
+      <div class="meta">
+        <span><b>Implementing</b></span>
+        <span>Interactive Issue run</span>
+        <span>started 09:12</span>
+      </div>
+
+      <div class="artifacts" role="group" aria-label="Planning artifacts">
+        <span class="art-label">Planning</span>
+        <button type="button" class="art-chip is-draft" data-open="doc">
+          Spec <span class="art-draft">draft</span>
+        </button>
+        <button type="button" class="art-chip is-draft" data-open="doc">
+          Plan <span class="art-draft">draft</span>
+        </button>
+        <button type="button" class="art-chip is-draft" data-open="frame">
+          Mockup <span class="art-draft">draft</span>
+        </button>
+        <button type="button" class="art-chip is-draft" data-open="frame">
+          Diagram <span class="art-draft">draft</span>
+        </button>
+      </div>
+
+      <section
+        class="viewer"
+        id="viewer-doc"
+        role="dialog"
+        aria-labelledby="t-doc"
+      >
+        <div class="vw-head">
+          <div class="vw-kind">Spec</div>
+          <h2 id="t-doc">
+            Show an issue's spec, plan and mockups on the live web issue page
+            <span class="art-draft">draft</span>
+          </h2>
+          <div class="vw-meta">
+            <code
+              >docs/specs/2026-11-20-issue-384-show-an-issue-s-spec-plan-and-mockups-on-the-liv-design.md</code
+            >
+            <span>at 4f1c2ab</span>
+            <span
+              >On local branch
+              agent/issue-384-show-an-issue-s-spec-plan-and-mockups-on-the-liv.
+              Not pushed yet.</span
+            >
+          </div>
+          <button type="button" class="vw-close" aria-label="Close">×</button>
+        </div>
+        <div class="vw-body">
+          <article class="md-body">
+            <h2>Intent</h2>
+            <p>
+              A maintainer opens the spec, plan, mockups and diagrams of a live
+              issue from its page.
+            </p>
+            <h2>Issue document sources</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Ref</th>
+                  <th>Location text (a remote ref with the same blob wins)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td>refs/heads/&lt;issue branch&gt;</td>
+                  <td>On local branch … Not pushed yet.</td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td>origin/&lt;issue branch&gt;</td>
+                  <td>On branch …</td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td>origin/&lt;base&gt;</td>
+                  <td>On main</td>
+                </tr>
+              </tbody>
+            </table>
+            <pre>
+flowchart LR
+  spec --&gt; mockup</pre
+            >
+          </article>
+        </div>
+      </section>
+
+      <section
+        class="viewer hidden"
+        id="viewer-frame"
+        role="dialog"
+        aria-labelledby="t-frame"
+      >
+        <div class="vw-head">
+          <div class="vw-kind">Mockup</div>
+          <h2 id="t-frame">
+            Full-page mockup <span class="art-draft">draft</span>
+          </h2>
+          <div class="vw-meta">
+            <code
+              >docs/mockups/2026-11-20-issue-384-live-issue-documents.html</code
+            >
+            <span>at 4f1c2ab</span>
+            <span
+              >On local branch
+              agent/issue-384-show-an-issue-s-spec-plan-and-mockups-on-the-liv.
+              Not pushed yet.</span
+            >
+          </div>
+          <div class="vw-actions">
+            <a href="#" aria-label="Open the mockup in a new tab"
+              >Open in new tab</a
+            >
+          </div>
+          <button type="button" class="vw-close" aria-label="Close">×</button>
+        </div>
+        <div class="vw-body">
+          <div class="frame" aria-label="Sandboxed mockup frame">
+            <div class="fake-tabs">
+              <span class="on">Desktop</span><span>Mobile</span>
+            </div>
+            The mockup's own scripts run here. The frame has an opaque origin:
+            it cannot read the page, the cookie or the API.
+          </div>
+          <p class="vw-note">
+            Repository file. Scripts run in an isolated frame. The file cannot
+            read this page or act as you.
+          </p>
+        </div>
+      </section>
+
+      <section class="thread" aria-label="Issue thread">
+        <p>Issue thread continues below the header, unchanged by this issue.</p>
+      </section>
+    </main>
+    <script>
+      const views = {
+        doc: document.getElementById("viewer-doc"),
+        frame: document.getElementById("viewer-frame"),
+      };
+      function show(state) {
+        for (const [key, node] of Object.entries(views))
+          node.classList.toggle("hidden", key !== state);
+        for (const b of document.querySelectorAll("[data-state]"))
+          b.setAttribute("aria-pressed", String(b.dataset.state === state));
+      }
+      for (const b of document.querySelectorAll("[data-state]"))
+        b.addEventListener("click", () => show(b.dataset.state));
+      for (const b of document.querySelectorAll("[data-open]"))
+        b.addEventListener("click", () => show(b.dataset.open));
+      for (const b of document.querySelectorAll(".vw-close"))
+        b.addEventListener("click", () => show("none"));
+      const theme = document.getElementById("theme");
+      theme.addEventListener("click", () => {
+        const root = document.documentElement;
+        const light = root.dataset.theme !== "light";
+        root.dataset.theme = light ? "light" : "dark";
+        theme.textContent = light ? "Dark theme" : "Light theme";
+      });
+    </script>
+  </body>
+</html>

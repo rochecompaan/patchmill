@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { safeExternalUrl, safePreviewUrl } from "../../web/links.js";
+import {
+  previewSandbox,
+  remainingDocumentLinks,
+  safeExternalUrl,
+  safePreviewUrl,
+} from "../../web/links.js";
 
 test("preview URLs cannot point at API, private files, or foreign origins", () => {
   assert.equal(safePreviewUrl("/samples/board.html"), "/samples/board.html");
@@ -39,4 +44,39 @@ test("display links never become executable or implicit foreign-resource URLs", 
     "not a url",
   ])
     assert.equal(safeExternalUrl(value), null);
+});
+
+test("preview URLs accept server-issued Issue document files only", () => {
+  for (const value of [
+    "/files/issues/384/mockup-0123456789ab",
+    "/files/issues/1/diagram-abcdefabcdef",
+  ])
+    assert.equal(safePreviewUrl(value), value);
+  for (const value of [
+    "/files/issues/0/mockup-0123456789ab",
+    "/files/issues/09/mockup-0123456789ab",
+    "/files/issues/9/spec",
+    "/files/issues/9/mockup-0123",
+    "/files/issues/9/mockup-0123456789ab/x",
+    "/files/issues/9/MOCKUP-0123456789ab",
+    "/files/issues/9/mockup-0123456789ab?x",
+    "/files/issues/9/..%2fpackage.json",
+    "/files/../index.html",
+  ])
+    assert.equal(safePreviewUrl(value), null, value);
+});
+test("Issue document frames get scripts without same-origin access", () => {
+  assert.equal(
+    previewSandbox("/files/issues/9/mockup-0123456789ab"),
+    "allow-scripts",
+  );
+  assert.equal(previewSandbox("/samples/board.html"), "allow-same-origin");
+});
+test("host document links are hidden when the viewer has the document", () => {
+  const spec = { kind: "spec" as const, url: "https://host/spec" };
+  const plan = { kind: "plan" as const, url: "https://host/plan" };
+  assert.deepEqual(remainingDocumentLinks([spec, plan], [{ kind: "spec" }]), [
+    plan,
+  ]);
+  assert.deepEqual(remainingDocumentLinks([spec, plan], []), [spec, plan]);
 });

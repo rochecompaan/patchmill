@@ -1,7 +1,12 @@
 import { join, resolve } from "node:path";
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Issue } from "../host/types.ts";
-import type { IssueDetail, IssueSummary, ThreadEvent } from "./api-types.ts";
+import type {
+  Artifact,
+  IssueDetail,
+  IssueSummary,
+  ThreadEvent,
+} from "./api-types.ts";
 import type { RunObservation } from "./file-run-observations.ts";
 import {
   readIssueRunRecords,
@@ -20,6 +25,8 @@ export async function readIssueDetail(input: {
   issue: Issue;
   summary: IssueSummary;
   observation: RunObservation;
+  /** The Issue documents, already read by the caller. */
+  artifacts: readonly Artifact[];
   warn: (message: string) => void;
 }): Promise<IssueDetail> {
   const root = resolve(input.repoRoot, input.config.paths.runsDir);
@@ -81,7 +88,7 @@ export async function readIssueDetail(input: {
     participants: [],
     thread: [],
     session: null,
-    artifacts: [],
+    artifacts: input.artifacts,
     finalUsage: null,
   };
   if (!latest && !input.observation.live)

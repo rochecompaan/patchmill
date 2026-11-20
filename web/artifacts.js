@@ -1,5 +1,5 @@
 import { el, icon, externalLink, renderBlocks } from "./dom.js";
-import { safePreviewUrl } from "./links.js";
+import { previewSandbox, safePreviewUrl } from "./links.js";
 /** @typedef {import('../src/web/api-types.ts').Artifact} Artifact */
 /** @param {HTMLDialogElement} dialog @returns {{open:(artifact:Artifact,origin:HTMLElement)=>void,close:()=>void}} */
 export function mountArtifactViewer(dialog) {
@@ -76,7 +76,8 @@ export function mountArtifactViewer(dialog) {
       body.classList.add("is-frame");
       const frame = el(doc, "iframe", "art-frame");
       frame.title = a.title;
-      frame.setAttribute("sandbox", "allow-same-origin");
+      const sandbox = previewSandbox(local);
+      frame.setAttribute("sandbox", sandbox);
       frame.src = local;
       body.append(
         frame,
@@ -84,7 +85,9 @@ export function mountArtifactViewer(dialog) {
           doc,
           "p",
           "vw-note",
-          "Sample preview. Scripts are off. The file cannot read this page or act as you.",
+          sandbox === "allow-scripts"
+            ? "Repository file. Scripts run in an isolated frame. The file cannot read this page or act as you."
+            : "Sample preview. Scripts are off. The file cannot read this page or act as you.",
         ),
       );
     } else if (a.preview.kind === "gallery") {
@@ -164,7 +167,15 @@ export function mountArtifactViewer(dialog) {
   dialog.addEventListener("close", () => {
     if (dialog.open) return;
     active = null;
-    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    // A live update can replace the chip while the viewer is open; return
+    // focus to the chip that now stands for the same artifact.
+    const id = trigger?.dataset.artifactId;
+    const target = trigger?.isConnected
+      ? trigger
+      : id
+        ? doc.querySelector(`button[data-artifact-id="${CSS.escape(id)}"]`)
+        : null;
+    if (target instanceof HTMLElement) target.focus({ preventScroll: true });
     trigger = null;
   });
   dialog.addEventListener("click", (event) => {

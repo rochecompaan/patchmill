@@ -184,6 +184,13 @@ The server caches host issues and pull requests for one minute across all
 browsers. The page refreshes every 15 seconds and shows the host sync age. Local
 run observations and held issue locks supply current progress and Live markers.
 
+The issue page lists the Issue documents: the spec, the plan, and the mockups
+and diagrams that they link. The server reads them from committed Git objects on
+the local Issue branch, the pushed branch, or the base branch. A spec or plan on
+a local branch that is not pushed yet also shows. Mockup scripts run in an
+isolated frame. They cannot read the page, read the token cookie, or call the
+API.
+
 ### Web sessions
 
 The issue page is also the web version of the interactive console. From the
