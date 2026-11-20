@@ -6,7 +6,8 @@ export type MarkdownLink = { readonly text: string; readonly target: string };
 type Token = Inline | { kind: "raw-link"; text: string; href: string };
 type Scanned = { block: TextBlock; level?: number };
 
-const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+// Any indentation, so a fence nested in a list item is still a code block.
+const fence = /^([ \t]*)(`{3,}|~{3,})(.*)$/;
 const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
 const thematic = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const item = /^([ \t]*)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
@@ -152,7 +153,8 @@ function scan(source: string, text: (raw: string) => void): Scanned[] {
     }
     const f = fence.exec(line);
     if (f) {
-      const marker = f[1]!;
+      const indent = f[1]!.length;
+      const marker = f[2]!;
       const body: string[] = [];
       i++;
       while (i < lines.length) {
@@ -162,7 +164,9 @@ function scan(source: string, text: (raw: string) => void): Scanned[] {
           /^(`+|~+)$/.test(close)
         )
           break;
-        body.push(lines[i]!);
+        const raw = lines[i]!;
+        const lead = /^[ \t]*/.exec(raw)![0].length;
+        body.push(raw.slice(Math.min(lead, indent)));
         i++;
       }
       i++;

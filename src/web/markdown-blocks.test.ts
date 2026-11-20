@@ -113,3 +113,21 @@ test("double backtick code spans hide their content", () => {
   ]);
   assert.deepEqual(markdownLinks("`` `[t](h.html)` ``"), []);
 });
+
+test("fences nested in list items stay code blocks", () => {
+  assert.deepEqual(
+    markdownBlocks(
+      "1. Run:\n\n    ```bash\n    npm test\n      --watch\n    ```\n\n2. Then\n   - nested\n\n     ~~~\n     a\n     ~~~\n",
+    ),
+    [
+      { kind: "list", ordered: true, items: [[text("Run:")]] },
+      { kind: "code", text: "npm test\n  --watch" },
+      {
+        kind: "list",
+        ordered: true,
+        items: [[text("Then")], [text("nested")]],
+      },
+      { kind: "code", text: "a" },
+    ],
+  );
+});

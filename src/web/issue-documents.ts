@@ -2,10 +2,16 @@ import { createHash } from "node:crypto";
 import { isAbsolute, posix, relative, resolve, sep } from "node:path";
 import type { PatchmillConfig } from "../config/config.ts";
 import type { HostProviderId } from "../host/types.ts";
-import { isArtifactFile, isIssueBranch } from "../kernel/names.ts";
+import { isIssueBranch } from "../kernel/names.ts";
+import { refArtifacts } from "../kernel/artifact-source.ts";
+import { createKernelGit } from "../kernel/git.ts";
 import type { CommandRunner } from "../process/command.ts";
-import type { Artifact, TextBlock } from "./api-types.ts";
-import { createDocumentCache, type DocumentCache } from "./document-cache.ts";
+import type { Artifact } from "./api-types.ts";
+import {
+  createDocumentCache,
+  type DocumentCache,
+  type ParsedMarkdown,
+} from "./document-cache.ts";
 import {
   markdownBlocks,
   markdownLinks,
@@ -92,11 +98,6 @@ type Ref = {
   commit: string;
 };
 type Entry = { blob: string; size: number };
-type Parsed = {
-  blocks: readonly TextBlock[];
-  title: string | null;
-  links: readonly MarkdownLink[];
-};
 
 /** A repository-relative HTML path for a document link, or null. */
 function linkedPath(document: string, target: string): string | null {
@@ -124,6 +125,7 @@ export function createIssueDocumentReader(
   },
 ): (issue: number, branches: readonly string[]) => Promise<IssueDocuments> {
   const cache = input.cache ?? createDocumentCache();
+  const kernelGit = createKernelGit(input.runner, input.repoRoot);
   const git = async (args: string[], allowed = [0]) => {
     const result = await input.runner("git", ["--literal-pathspecs", ...args], {
       cwd: input.repoRoot,
@@ -133,8 +135,8 @@ export function createIssueDocumentReader(
   };
   const blob = async (sha: string) =>
     (await git(["cat-file", "blob", sha])).stdout;
-  const parsed = async (sha: string): Promise<Parsed> => {
-    const cached = cache.get<Parsed>(`md:${sha}`);
+  const parsed = async (sha: string): Promise<ParsedMarkdown> => {
+    const cached = cache.markdown(sha);
     if (cached) return cached;
     const source = await blob(sha);
     const value = {
@@ -142,14 +144,14 @@ export function createIssueDocumentReader(
       title: markdownTitle(source),
       links: markdownLinks(source),
     };
-    cache.set(`md:${sha}`, value, source.length * 2);
+    cache.setMarkdown(sha, value, source.length * 2);
     return value;
   };
   const html = async (sha: string): Promise<Buffer> => {
-    const cached = cache.get<Buffer>(`html:${sha}`);
+    const cached = cache.html(sha);
     if (cached) return cached;
     const body = Buffer.from(await blob(sha), "utf8");
-    cache.set(`html:${sha}`, body, body.length);
+    cache.setHtml(sha, body);
     return body;
   };
   return async (issue, branches) => {
@@ -215,20 +217,6 @@ export function createIssueDocumentReader(
         );
       return entries.get(key)!;
     };
-    const trees = async (commit: string, directory: string) =>
-      (
-        await git([
-          "ls-tree",
-          "-z",
-          "--full-tree",
-          commit,
-          "--",
-          `${directory}/`,
-        ])
-      ).stdout
-        .split("\0")
-        .filter((e) => /^100(644|755) blob /.test(e))
-        .map((e) => e.slice(e.indexOf("\t") + 1 + directory.length + 1));
     /** The first remote ref that holds the same blob decides the location. */
     const place = async (found: Ref, path: string, sha: string) => {
       for (const ref of refs)
@@ -260,25 +248,29 @@ export function createIssueDocumentReader(
     }[] = [];
     for (const { kind, path: directory } of directories) {
       for (const ref of refs) {
-        const name = (await trees(ref.commit, directory))
-          .filter((n) => !n.includes("/") && isArtifactFile(kind, issue, n))
-          .sort()
-          .at(-1);
-        if (!name) continue;
-        const path = `${directory}/${name}`;
-        const found = await entry(ref.commit, path);
-        if (!found) break;
-        if (found.size > MARKDOWN_LIMIT) {
-          skip(found.blob, path);
+        // The same newest-file rule that run-once uses for a ref.
+        const found = await refArtifacts(
+          kernelGit,
+          input.repoRoot,
+          ref.commit,
+          issue,
+        ).find(directory, kind);
+        if (!found) continue;
+        const path = found.split(sep).join("/");
+        const name = posix.basename(path);
+        const stored = await entry(ref.commit, path);
+        if (!stored) break;
+        if (stored.size > MARKDOWN_LIMIT) {
+          skip(stored.blob, path);
           break;
         }
-        const doc = await parsed(found.blob);
+        const doc = await parsed(stored.blob);
         artifacts.push({
           id: kind,
           kind,
           title: doc.title ?? name,
           path,
-          ...(await place(ref, path, found.blob)),
+          ...(await place(ref, path, stored.blob)),
           preview: { kind: "document", blocks: doc.blocks },
         });
         sources.push({ ref, path, links: doc.links });

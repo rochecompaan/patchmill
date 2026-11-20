@@ -1,52 +1,81 @@
+import type { TextBlock } from "./api-types.ts";
+import type { MarkdownLink } from "./markdown-blocks.ts";
+
+/** A parsed spec or plan: everything the reader needs from its blob. */
+export type ParsedMarkdown = {
+  readonly blocks: readonly TextBlock[];
+  readonly title: string | null;
+  readonly links: readonly MarkdownLink[];
+};
+
+type Entry =
+  | { kind: "markdown"; value: ParsedMarkdown; size: number }
+  | { kind: "html"; value: Buffer; size: number };
+
 /**
- * A bounded, content-addressed cache. Keys are Git blob IDs, so an entry never
- * goes stale. Only `createDocumentCache()` makes one.
+ * A bounded cache keyed by Git blob ID, so an entry never goes stale. Oldest
+ * entries leave first. Only `createDocumentCache()` makes one.
  */
-class ContentCache {
-  readonly #entries = new Map<string, { value: unknown; size: number }>();
-  readonly #warned = new Set<string>();
-  #bytes = 0;
-  readonly maxEntries: number;
-  readonly maxBytes: number;
-  constructor(maxEntries: number, maxBytes: number) {
-    this.maxEntries = maxEntries;
-    this.maxBytes = maxBytes;
-  }
-  get<T>(key: string): T | undefined {
-    const entry = this.#entries.get(key);
-    if (!entry) return undefined;
-    this.#entries.delete(key);
-    this.#entries.set(key, entry);
-    return entry.value as T;
-  }
-  set(key: string, value: unknown, size: number): void {
-    const old = this.#entries.get(key);
-    if (old) {
-      this.#bytes -= old.size;
-      this.#entries.delete(key);
-    }
-    if (size > this.maxBytes) return;
-    this.#entries.set(key, { value, size });
-    this.#bytes += size;
-    for (const [oldest, entry] of this.#entries) {
-      if (this.#entries.size <= this.maxEntries && this.#bytes <= this.maxBytes)
-        break;
-      this.#entries.delete(oldest);
-      this.#bytes -= entry.size;
-    }
-  }
-  /** True the first time a key is seen, so callers warn once for each blob. */
-  firstWarning(key: string): boolean {
-    if (this.#warned.has(key)) return false;
-    if (this.#warned.size >= 1024) this.#warned.clear();
-    this.#warned.add(key);
-    return true;
-  }
-}
+export type DocumentCache = {
+  markdown(blob: string): ParsedMarkdown | undefined;
+  setMarkdown(blob: string, value: ParsedMarkdown, size: number): void;
+  html(blob: string): Buffer | undefined;
+  setHtml(blob: string, body: Buffer): void;
+  /** True the first time a blob is seen, so callers warn once for each blob. */
+  firstWarning(blob: string): boolean;
+};
 
-export type DocumentCache = ContentCache;
+const MAX_ENTRIES = 64;
+const MAX_BYTES = 32 * 1024 * 1024;
 
-/** One cache for a live source: 64 entries and 32 MiB, oldest out first. */
+/** One cache for a live source: 64 entries and 32 MiB. */
 export function createDocumentCache(): DocumentCache {
-  return new ContentCache(64, 32 * 1024 * 1024);
+  const entries = new Map<string, Entry>();
+  const warned = new Set<string>();
+  let bytes = 0;
+  function read(key: string): Entry | undefined {
+    const entry = entries.get(key);
+    if (entry) {
+      entries.delete(key);
+      entries.set(key, entry);
+    }
+    return entry;
+  }
+  function write(key: string, entry: Entry): void {
+    const old = entries.get(key);
+    if (old) {
+      bytes -= old.size;
+      entries.delete(key);
+    }
+    if (entry.size > MAX_BYTES) return;
+    entries.set(key, entry);
+    bytes += entry.size;
+    for (const [oldest, value] of entries) {
+      if (entries.size <= MAX_ENTRIES && bytes <= MAX_BYTES) break;
+      entries.delete(oldest);
+      bytes -= value.size;
+    }
+  }
+  return {
+    markdown(blob) {
+      const entry = read(`md:${blob}`);
+      return entry?.kind === "markdown" ? entry.value : undefined;
+    },
+    setMarkdown(blob, value, size) {
+      write(`md:${blob}`, { kind: "markdown", value, size });
+    },
+    html(blob) {
+      const entry = read(`html:${blob}`);
+      return entry?.kind === "html" ? entry.value : undefined;
+    },
+    setHtml(blob, body) {
+      write(`html:${blob}`, { kind: "html", value: body, size: body.length });
+    },
+    firstWarning(blob) {
+      if (warned.has(blob)) return false;
+      if (warned.size >= 1024) warned.clear();
+      warned.add(blob);
+      return true;
+    },
+  };
 }
