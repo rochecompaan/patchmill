@@ -14,7 +14,13 @@ import {
   projectBoardIssue,
 } from "./board-projection.ts";
 import { createDocumentLinkReader } from "./document-links.ts";
+import {
+  createDocumentCache,
+  createIssueDocumentReader,
+  issueRefsFingerprint,
+} from "./issue-documents.ts";
 import type {
+  Artifact,
   DocumentLink,
   IssueDetail,
   IssueSummary,
@@ -107,20 +113,22 @@ export function createFileRunDataSource(input: {
     )
       throw Error("Local workflow data belongs to a different repository.");
   }
+  const repository = {
+    ...input,
+    baseBranch: metadata.baseBranch,
+    repositoryUrl: metadata.pushRepository.url,
+    provider: config.host.provider,
+  };
   function documents() {
-    return createDocumentLinkReader({
-      ...input,
-      baseBranch: metadata.baseBranch,
-      repositoryUrl: metadata.pushRepository.url,
-      provider: config.host.provider,
-    });
+    return createDocumentLinkReader(repository);
   }
-  async function projectIssue(
-    issue: Issue,
-    pulls: readonly PullRequest[],
-    links: ReturnType<typeof documents>,
-    withDetail: boolean,
-  ) {
+  // Blob IDs never change, so parsed documents outlive a snapshot.
+  const contentCache = createDocumentCache();
+  function issueDocuments() {
+    return createIssueDocumentReader({ ...repository, cache: contentCache });
+  }
+  /** Roles, run and branches of an issue the page shows, or null. */
+  async function observeIssue(issue: Issue, pulls: readonly PullRequest[]) {
     let roles: readonly WorkflowStatus[] = [];
     try {
       roles = await readWorkflowRoles(issue, { config, store });
@@ -137,12 +145,24 @@ export function createFileRunDataSource(input: {
       pushRepository: metadata.pushRepository.slug,
       baseBranch: metadata.baseBranch,
     });
+    const branches = [
+      ...(run.branch ? [run.branch] : []),
+      ...associated.branches,
+    ];
+    return { roles, run, associated, branches };
+  }
+  async function projectIssue(
+    issue: Issue,
+    pulls: readonly PullRequest[],
+    links: ReturnType<typeof documents>,
+    withDetail: boolean,
+  ) {
+    const observed = await observeIssue(issue, pulls);
+    if (!observed) return null;
+    const { roles, run, associated, branches } = observed;
     let documentLinks: readonly DocumentLink[] = [];
     try {
-      documentLinks = await links(issue.number, [
-        ...(run.branch ? [run.branch] : []),
-        ...associated.branches,
-      ]);
+      documentLinks = await links(issue.number, branches);
     } catch {
       warn(`Could not read document links for issue #${issue.number}.`);
     }
@@ -155,11 +175,22 @@ export function createFileRunDataSource(input: {
       labels: config.labels,
     });
     if (!summary) return null;
+    if (!withDetail) return { summary, detail: null };
+    let artifacts: readonly Artifact[] = [];
+    try {
+      artifacts = (await issueDocuments()(issue.number, branches)).artifacts;
+    } catch {
+      warn(`Could not read documents for issue #${issue.number}.`);
+    }
     return {
       summary,
-      detail: withDetail
-        ? await readIssueDetail({ ...input, issue, summary, observation: run })
-        : null,
+      detail: await readIssueDetail({
+        ...input,
+        issue,
+        summary,
+        observation: run,
+        artifacts,
+      }),
     };
   }
   const eligible = (issue: Issue) =>
@@ -214,7 +245,14 @@ export function createFileRunDataSource(input: {
     epoch: input.epoch ?? (() => randomBytes(4).toString("hex")),
     warn,
     ...(sessions ? { sessions } : {}),
-    fingerprint: (issue) => issueFingerprint({ ...input, issue }),
+    fingerprint: async (issue) =>
+      (await issueFingerprint({ ...input, issue })) +
+      "\n" +
+      (await issueRefsFingerprint({
+        ...input,
+        issue,
+        baseBranch: metadata.baseBranch,
+      })),
     async project(number) {
       await checkRepository();
       const host = await cache.read();
@@ -255,5 +293,20 @@ export function createFileRunDataSource(input: {
       return work;
     },
     subscribe: feed.subscribe,
+    async documentFile(number, id) {
+      await checkRepository();
+      const host = await cache.read();
+      const issue = host.issues.find((i) => i.number === number && eligible(i));
+      const observed = issue && (await observeIssue(issue, host.pullRequests));
+      if (!observed) return null;
+      try {
+        return await (
+          await issueDocuments()(number, observed.branches)
+        ).file(id);
+      } catch {
+        warn(`Could not read documents for issue #${number}.`);
+        return null;
+      }
+    },
   };
 }

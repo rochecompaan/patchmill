@@ -189,7 +189,7 @@ export function createIssueDocumentReader(
     for (const ref of wanted) {
       const result = await git(
         ["rev-parse", "--verify", "--quiet", `${ref.name}^{commit}`],
-        [0, 1, 128],
+        [0, 1],
       );
       const sha = result.stdout.trim();
       if (result.code === 0 && /^[a-f0-9]{40,64}$/.test(sha))
