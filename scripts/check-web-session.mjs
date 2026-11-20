@@ -503,6 +503,34 @@ try {
     (await evaluate(`Math.round(window.scrollY)`)) === 4000,
     "a new entry keeps the reader's place in a long thread",
   );
+  // A live update keeps the scroll inside an open tool result.
+  push({
+    kind: "session-entries",
+    entries: [
+      {
+        id: "web:s1:tool-long",
+        at: "2026-11-19T10:08:00Z",
+        kind: "tool",
+        name: "bash",
+        state: "completed",
+        arguments: { command: "seq 200" },
+        result: Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n"),
+      },
+    ],
+  });
+  await until(`document.querySelector('[data-key="web:s1:tool-long"]')`);
+  await evaluate(
+    `(() => { const d = document.querySelector('[data-key="web:s1:tool-long"]'); d.open = true; d.querySelectorAll("pre")[1].scrollTop = 300; })()`,
+  );
+  await sleep(200);
+  push({ kind: "session", session: header({ state: "idle" }) });
+  await sleep(400);
+  check(
+    (await evaluate(
+      `Math.round(document.querySelector('[data-key="web:s1:tool-long"]').querySelectorAll("pre")[1].scrollTop)`,
+    )) === 300,
+    "a live update keeps the scroll inside an open tool result",
+  );
   check(exceptions.length === 0, `no page exceptions (${exceptions.length})`);
 } finally {
   socket?.close();
@@ -512,5 +540,5 @@ try {
 }
 assert.deepEqual(failures, []);
 console.log(
-  "Web session browser regressions passed: controls, one message per send, cleared composer, question card, focus, ended and refused sessions, stable scroll on long threads.",
+  "Web session browser regressions passed: controls, one message per send, cleared composer, question card, focus, ended and refused sessions, stable scroll on long threads and inside tool results.",
 );
