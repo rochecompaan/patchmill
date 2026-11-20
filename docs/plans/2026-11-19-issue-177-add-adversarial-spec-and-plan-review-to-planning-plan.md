@@ -110,8 +110,10 @@ inspection, the real updater, scenario walkthroughs, `npm run lint`, and
 Parsing rules:
 
 - A fence opens at a line that matches ``/^ {0,3}(`{3,}|~{3,})/``, outside a
-  fence. It closes at a line of the same character, at least as long, that
-  contains only whitespace after the fence characters.
+  fence. A backtick opening fence whose information string contains a backtick
+  is not a fence, as in CommonMark. A fence closes at a line of the same
+  character, at least as long, that contains only whitespace after the fence
+  characters.
 - Outside fences, the record heading matches `/^## Planning review[ \t]*$/`.
 - Outside fences, a later line matching `/^ {0,3}#{1,2}(?:[ \t]|$)/` after the
   record heading means the record is not last.
@@ -138,13 +140,16 @@ string arrays joined with `"\n"`. Tests:
   `/more than one Planning review section/`.
 - `rejects a section after the record`: a real `## Later` after the record.
   Assert a throw matching `/Planning review must be the last section/`. Assert
-  that `### Entry 2` inside the record does not throw.
+  that `### Entry 2` inside the record does not throw. Add a case where the
+  record has the line ` ```inline code``` ` before a real `## Later`. Assert the
+  same throw, because that line is not a fence.
 - `hashes the whole text when no record exists`: assert
   `planningBody(text) === text`.
 - `command prints the hash`: write a temporary file. Run
   `spawnSync(process.execPath, [script, file])`. Assert exit 0 and that stdout
   equals `bodyHash(text) + "\n"`. Run with no argument and assert exit 1 and
-  non-empty stderr.
+  non-empty stderr. Run with a missing file, and with a document that has two
+  records. Assert exit 1 and non-empty stderr for each.
 
 - [ ] **Step 2: Run the tests and observe the failure.**
 
@@ -154,9 +159,10 @@ the module does not exist.
 - [ ] **Step 3: Implement the helper.**
 
 Implement `planningBody`, `bodyHash`, and the command in `body-hash.mjs` with
-`node:crypto` and `node:fs`. Do not use other imports. Scan lines once and track
-the open fence character and length. Run the command only when `import.meta.url`
-equals `pathToFileURL(process.argv[1]).href`. Use JSDoc types. Make the file
+`node:crypto`, `node:fs`, and `pathToFileURL` from `node:url`. Do not use other
+imports. Scan lines once and track the open fence character and length. Run the
+command only when `import.meta.url` equals
+`pathToFileURL(process.argv[1]).href`. Use JSDoc types. Make the file
 executable, as `patchmill-visual-evidence/scripts/` is.
 
 - [ ] **Step 4: Run the tests and observe the pass.**
