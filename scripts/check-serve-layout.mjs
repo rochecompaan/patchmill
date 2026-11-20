@@ -465,6 +465,18 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
+  // On a tall window the board's scrollbar sits at the bottom of the window,
+  // not under the columns, and nothing adds a vertical scroll.
+  await evaluate("location.hash='#/board'");
+  await until('document.querySelectorAll(".col").length===7');
+  const fill = await evaluate(
+    `({bottom:Math.round(document.querySelector(".board").getBoundingClientRect().bottom),height:innerHeight,page:document.documentElement.scrollHeight})`,
+  );
+  evidence.push({ fill });
+  check(
+    fill.bottom === fill.height && fill.page === fill.height,
+    "The board must fill a tall window without a vertical scroll",
+  );
   await evaluate("location.hash='#/issue/173'");
   await until("document.querySelector('.ihead')?.dataset.issue==='173'");
   await send("Network.setCacheDisabled", { cacheDisabled: true });

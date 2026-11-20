@@ -34,6 +34,9 @@
   overflow-x: auto;
   padding: 24px 24px 28px;
   align-items: start;
+  /* Fill the window below the top bar, so the horizontal scrollbar sits at
+     the bottom of the window, not under the shortest columns. */
+  min-height: calc(100dvh - var(--topbar-h));
 }
 .col {
   /* See-through, so the watermark shows behind the columns. Cards stay solid. */
