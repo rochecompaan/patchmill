@@ -1,5 +1,5 @@
 import { el, icon, externalLink, renderBlocks } from "./dom.js";
-import { safePreviewUrl } from "./links.js";
+import { previewSandbox, safePreviewUrl } from "./links.js";
 /** @typedef {import('../src/web/api-types.ts').Artifact} Artifact */
 /** @param {HTMLDialogElement} dialog @returns {{open:(artifact:Artifact,origin:HTMLElement)=>void,close:()=>void}} */
 export function mountArtifactViewer(dialog) {
@@ -76,7 +76,8 @@ export function mountArtifactViewer(dialog) {
       body.classList.add("is-frame");
       const frame = el(doc, "iframe", "art-frame");
       frame.title = a.title;
-      frame.setAttribute("sandbox", "allow-same-origin");
+      const sandbox = previewSandbox(local);
+      frame.setAttribute("sandbox", sandbox);
       frame.src = local;
       body.append(
         frame,
@@ -84,7 +85,9 @@ export function mountArtifactViewer(dialog) {
           doc,
           "p",
           "vw-note",
-          "Sample preview. Scripts are off. The file cannot read this page or act as you.",
+          sandbox === "allow-scripts"
+            ? "Repository file. Scripts run in an isolated frame. The file cannot read this page or act as you."
+            : "Sample preview. Scripts are off. The file cannot read this page or act as you.",
         ),
       );
     } else if (a.preview.kind === "gallery") {

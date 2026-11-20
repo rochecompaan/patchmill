@@ -2,6 +2,7 @@ import { el, icon, externalLink, person, elapsed } from "./dom.js";
 import { renderThread } from "./thread.js";
 import { presentationFor, sessionPresentation, PHASES } from "./state.js";
 import { liveElapsedSeconds } from "./live-issue.js";
+import { remainingDocumentLinks } from "./links.js";
 /** @typedef {import('../src/web/api-types.ts').IssueDetail} IssueDetail */
 /** @typedef {import('../src/web/api-types.ts').IssueSummary} IssueSummary */
 /** @typedef {import('./state.js').Presentation} Presentation */
@@ -202,10 +203,14 @@ function renderHeader(doc, detail, name, p) {
     renderMeta(doc, detail, name, p),
     renderArtifactChips(doc, detail.artifacts),
   );
-  if (issue.documentLinks.length) {
+  const hostLinks = remainingDocumentLinks(
+    issue.documentLinks,
+    detail.artifacts,
+  );
+  if (hostLinks.length) {
     const links = el(doc, "div", "artifacts");
     links.setAttribute("aria-label", "Planning documents");
-    for (const link of issue.documentLinks)
+    for (const link of hostLinks)
       links.append(
         externalLink(
           doc,
