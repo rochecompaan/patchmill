@@ -19,6 +19,8 @@ const publicFiles = new Set([
   "thread.js",
   "artifacts.js",
   "preferences.js",
+  "typing.js",
+  "presence-view.js",
   "theme-init.js",
   "links.js",
   "styles/base.css",

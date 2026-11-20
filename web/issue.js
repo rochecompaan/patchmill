@@ -42,8 +42,8 @@ function renderRail(doc, issue) {
   return rail;
 }
 
-/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {Presentation} p */
-function renderMeta(doc, detail, name, p) {
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {Presentation} p @param {boolean} live */
+function renderMeta(doc, detail, name, p, live) {
   const issue = detail.summary;
   const meta = el(doc, "div", "meta"),
     status = el(doc, "span", "meta-item");
@@ -120,11 +120,28 @@ function renderMeta(doc, detail, name, p) {
       ),
     );
   }
-  const here = el(doc, "span", "meta-item", "here now "),
+  const here = el(doc, "span", "meta-item"),
     presence = el(doc, "span", "presence");
-  for (const who of new Set([name, ...detail.participants]))
-    presence.append(person(doc, who, true));
-  here.append(presence);
+  if (live) {
+    // Live presence is painted in place from the event stream
+    // (presence-view.js); a screen reader hears only the hidden text.
+    const label = el(doc, "span", "", "here now");
+    label.setAttribute("aria-hidden", "true");
+    presence.dataset.live = "";
+    presence.setAttribute("aria-hidden", "true");
+    const own = person(doc, name, true);
+    own.setAttribute("aria-hidden", "true");
+    presence.append(own);
+    here.append(
+      label,
+      presence,
+      el(doc, "span", "visually-hidden presence-text", "Here now: you"),
+    );
+  } else {
+    for (const who of new Set([name, ...detail.participants]))
+      presence.append(person(doc, who, true));
+    here.append("here now ", presence);
+  }
   meta.append(here);
   return meta;
 }
@@ -170,8 +187,8 @@ function renderArtifactChips(doc, entries) {
   return artifacts;
 }
 
-/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {Presentation} p */
-function renderHeader(doc, detail, name, p) {
+/** @param {Document} doc @param {IssueDetail} detail @param {string} name @param {Presentation} p @param {boolean} [live] */
+function renderHeader(doc, detail, name, p, live = false) {
   const issue = detail.summary;
   const header = el(doc, "header", "ihead"),
     inner = el(doc, "div", "ihead-inner");
@@ -199,7 +216,7 @@ function renderHeader(doc, detail, name, p) {
   inner.append(
     top,
     renderRail(doc, issue),
-    renderMeta(doc, detail, name, p),
+    renderMeta(doc, detail, name, p, live),
     renderArtifactChips(doc, detail.artifacts),
   );
   if (issue.documentLinks.length) {
@@ -253,9 +270,14 @@ function renderComposer(doc, issue, name, draft, p, source, sessions) {
   send.disabled = disabled;
   form.append(send);
   const hint = el(doc, "p", "composer-hint");
+  hint.append(el(doc, "i", p.dotClass), el(doc, "span", "", p.composerHint));
+  if (source === "live") {
+    // Filled in place from presence; screen readers do not hear typing.
+    const typing = el(doc, "span", "typing");
+    typing.setAttribute("aria-hidden", "true");
+    hint.append(typing);
+  }
   hint.append(
-    el(doc, "i", p.dotClass),
-    el(doc, "span", "", p.composerHint),
     el(doc, "span", "kbd-hint", "Enter to send · Shift+Enter for a new line"),
   );
   footer.append(form, hint);
@@ -388,7 +410,13 @@ export function renderIssue(
           composerHint: "View only. Messages come with live chat.",
         }
       : p;
-  const header = renderHeader(doc, detail, name, web ? shown : p);
+  const header = renderHeader(
+    doc,
+    detail,
+    name,
+    web ? shown : p,
+    source === "live",
+  );
   if ((active || liveSession) && connection) {
     const status = el(
       doc,

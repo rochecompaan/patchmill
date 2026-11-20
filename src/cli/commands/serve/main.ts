@@ -61,6 +61,7 @@ export async function main(
       auth,
       source: data.source,
       ...(data.sessions ? { sessions: data.sessions } : {}),
+      ...(data.presence ? { presence: data.presence } : {}),
     });
     hasSessions = !!data.sessions;
     process.on("SIGINT", stop);

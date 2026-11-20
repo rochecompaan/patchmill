@@ -280,3 +280,14 @@ export type IssueUpdate = { readonly id: string } & (
       readonly entries: readonly ThreadEvent[];
     }
 );
+
+/** One person who has an issue page open. A name is a label. */
+export type PresencePerson = {
+  readonly name: string;
+  readonly typing: boolean;
+};
+/** The full presence list. It has no ID and is never replayed. */
+export type PresenceUpdate = {
+  readonly kind: "presence";
+  readonly people: readonly PresencePerson[];
+};

@@ -155,6 +155,24 @@
 .presence .av:first-child {
   margin-left: 0;
 }
+/* Live presence has a fixed slot: 5 avatars and the +N chip, so a join or
+   a leave never moves the header or the thread. */
+.presence[data-live] {
+  width: calc(24px + 5 * 18px + 30px);
+  height: 24px;
+  overflow: hidden;
+}
+/* .presence raises these rules over .av.sm in thread.css. */
+.presence .av.av-more {
+  --who: var(--faint);
+  width: 30px;
+  height: 24px;
+  border: 1.5px solid var(--faint);
+  border-radius: 12px;
+  background: var(--bg-raise);
+  color: var(--dim);
+  font: 700 10px var(--font-mono);
+}
 
 .btn {
   display: inline-flex;
@@ -274,8 +292,64 @@
   font-size: 12.5px;
   color: var(--dim);
 }
+/* The typing slot is always present and has a fixed height. */
+/* The slot keeps room for a short name; the status text wraps instead. */
+.typing {
+  flex: 1 0 13em;
+  min-width: 0;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brass);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.typing:empty {
+  visibility: hidden;
+}
+.typing-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* .typing raises the dot rules over the thread .dots in thread.css. */
+.typing .dots {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+.typing .dots i {
+  margin: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: typing-pulse 1.2s ease-in-out infinite;
+}
+.typing .dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing .dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes typing-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing .dots i {
+    animation: none;
+    opacity: 0.8;
+  }
+}
 .kbd-hint {
   margin-left: auto;
+  white-space: nowrap;
   color: var(--faint);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -327,6 +401,18 @@
   }
   .kbd-hint {
     display: none;
+  }
+  /* Narrow screens give typing its own reserved row, so a name fits. */
+  .composer-hint:has(.typing) {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  /* Only the typing slot wraps; the dot stays beside its status text. */
+  .composer-hint > i + span {
+    flex: 1 1 0;
+  }
+  .typing {
+    flex-basis: 100%;
   }
 }
 

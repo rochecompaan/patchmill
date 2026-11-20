@@ -211,6 +211,9 @@ need a terminal. Several people can share one Web session.
   session starts.
 - While a Web session is live, the page shows its messages as they arrive. After
   it ends, the page shows the run files, as after a terminal console run.
+- Every live issue page shows who has it open and who types in the composer, by
+  the entered name. The same name in two tabs counts once. The server keeps this
+  in memory only. It is lost on restart.
 
 Use `patchmill serve --sample` for deterministic design fixtures and sample
 issue pages. Sample mode needs no repository, config, or provider account. All
@@ -236,8 +239,8 @@ CHROMIUM=/path/to/chromium npm run test:web
 
 CI runs this command and fails if no browser is available. It checks mobile
 layout, message controls, keyboard access, delayed gallery images, and the Web
-session controls on the issue page. The command does not change reference
-screenshots by default.
+session controls on the issue page. It also checks presence and typing in two
+browsers. The command does not change reference screenshots by default.
 
 To refresh its reference screenshots, set `LAYOUT_SCREENSHOTS=1`. To save its
 measurements, set `LAYOUT_EVIDENCE` to a local JSON path.

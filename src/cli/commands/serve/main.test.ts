@@ -142,3 +142,28 @@ test("help and invalid args are effect free and bind failure prints no link", as
   assert.deepEqual(out, []);
   assert.match(err.join("\n"), /address in use/);
 });
+
+test("live data passes presence to the server", async () => {
+  const presence = { join: () => () => {}, typing: () => false };
+  let received: unknown;
+  const code = await main([], {
+    env: {},
+    output: { stdout: () => {}, stderr: assert.fail },
+    createSource: async () => ({
+      source: createSampleRunDataSource(),
+      presence,
+    }),
+    startServer: async (options) => {
+      received = options.presence;
+      return {
+        origin: "http://127.0.0.1:4280",
+        url: "http://127.0.0.1:4280/?token=test",
+        networkExposed: false,
+        closed: Promise.resolve(),
+        close: async () => {},
+      };
+    },
+  });
+  assert.equal(code, 0);
+  assert.equal(received, presence);
+});

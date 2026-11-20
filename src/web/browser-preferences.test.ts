@@ -31,3 +31,17 @@ test("preferences tolerate unavailable storage and validate browser-local names"
   assert.equal(saveName(blocked, "roche"), "roche");
   assert.equal(preferredTheme(blocked, true), "light");
 });
+test("browser names follow the server rule", () => {
+  const map = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => map.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      map.set(key, value);
+    },
+  };
+  for (const name of ["/dev", " /dev", "a\tb", "a\u0007", "a\ud800b"])
+    assert.throws(() => saveName(storage, name));
+  assert.equal(saveName(storage, "A\u030a"), "\u00c5");
+  map.set("patchmill-name", "/dev");
+  assert.equal(readName(storage), null);
+});

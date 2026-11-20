@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>
+      Mockup for issue #386: presence and typing (spec
+      2026-11-20-issue-386-show-who-is-on-a-web-issue-page-and-who-is-typin-design.md)
+    </title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #08090b;
+        --bg-raise: #0d0f12;
+        --panel: #121418;
+        --panel-2: #181b20;
+        --line: #262a31;
+        --line-soft: #1a1d22;
+        --text: #e4e4e4;
+        --dim: #a39e98;
+        --faint: #6f6a65;
+        --brass: #c4a882;
+        --live: #39c96b;
+        --who-1: #c4a882;
+        --who-2: #8fb8a4;
+        --who-3: #b7a0cf;
+        --who-4: #d29b8a;
+        --who-5: #93aed1;
+        --font-ui:
+          "Atkinson Hyperlegible Next", "Noto Sans", system-ui, sans-serif;
+        --font-mono:
+          "Atkinson Hyperlegible Mono", "DejaVu Sans Mono", ui-monospace,
+          monospace;
+        --r-m: 8px;
+        --r-l: 12px;
+        --topbar-h: 56px;
+        --thread-w: 880px;
+      }
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f3f0ea;
+        --bg-raise: #f9f7f3;
+        --panel: #fffefb;
+        --panel-2: #ece7df;
+        --line: #dcd5ca;
+        --line-soft: #e7e1d7;
+        --text: #1c1a17;
+        --dim: #5c564f;
+        --faint: #847c73;
+        --brass: #7f6038;
+        --live: #187a41;
+        --who-1: #7f6038;
+        --who-2: #2f6f55;
+        --who-3: #6b4f93;
+        --who-4: #a14d36;
+        --who-5: #345f95;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 var(--font-ui);
+      }
+      :focus-visible {
+        outline: 2px solid var(--brass);
+        outline-offset: 2px;
+      }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 6;
+        height: var(--topbar-h);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 24px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .brand {
+        font-weight: 700;
+      }
+      .tb-repo {
+        color: var(--dim);
+        font: 13px var(--font-mono);
+      }
+      .me {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--dim);
+        font-size: 13px;
+      }
+      .ihead {
+        position: sticky;
+        top: var(--topbar-h);
+        z-index: 5;
+        background: color-mix(in srgb, var(--bg) 93%, transparent);
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .ihead-inner {
+        max-width: calc(var(--thread-w) + 220px);
+        margin: 0 auto;
+        padding: 12px 24px 14px;
+      }
+      .back {
+        font-size: 13px;
+        color: var(--dim);
+        text-decoration: none;
+      }
+      .ititle {
+        margin: 6px 0 0;
+        font-size: 22px;
+        line-height: 1.3;
+      }
+      .inum {
+        font-family: var(--font-mono);
+        color: var(--dim);
+        margin-right: 10px;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 22px;
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .meta b {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .meta-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--live);
+      }
+      .mono {
+        font-family: var(--font-mono);
+      }
+      /* Changed: a fixed slot of 5 overlapped avatars plus the +N chip. */
+      .presence {
+        display: inline-flex;
+        align-items: center;
+        width: calc(24px + 5 * 18px + 30px);
+        height: 24px;
+      }
+      .av {
+        display: inline-grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        flex: none;
+        border: 1.5px solid var(--who, var(--brass));
+        color: var(--who, var(--brass));
+        background: var(--bg-raise);
+        font: 700 10px var(--font-mono);
+        text-transform: lowercase;
+        margin-left: -6px;
+        box-shadow: 0 0 0 2px var(--bg);
+      }
+      .presence .av:first-child {
+        margin-left: 0;
+      }
+      .av.more {
+        --who: var(--faint);
+        width: 30px;
+        border-radius: 12px;
+        color: var(--dim);
+      }
+      .who-1 {
+        --who: var(--who-1);
+      }
+      .who-2 {
+        --who: var(--who-2);
+      }
+      .who-3 {
+        --who: var(--who-3);
+      }
+      .who-4 {
+        --who: var(--who-4);
+      }
+      .who-5 {
+        --who: var(--who-5);
+      }
+      main {
+        max-width: var(--thread-w);
+        margin: 0 auto;
+        padding: 24px 24px 160px;
+      }
+      .ev {
+        display: grid;
+        grid-template-columns: 32px 1fr;
+        gap: 12px;
+        margin: 0 0 22px;
+      }
+      .ev .av {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+        margin: 0;
+        box-shadow: none;
+      }
+      .av-agent {
+        --who: var(--line);
+        color: var(--text);
+        background: var(--panel-2);
+      }
+      .msg-name {
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .msg-name span {
+        color: var(--faint);
+        font-weight: 400;
+        font-size: 12px;
+        margin-left: 6px;
+      }
+      .ev p {
+        margin: 2px 0 0;
+      }
+      .composer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 18px 24px 14px;
+        background: linear-gradient(to bottom, transparent, var(--bg) 26px);
+      }
+      .composer-box {
+        max-width: calc(var(--thread-w) - 48px);
+        margin: 0 auto;
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        padding: 8px 8px 8px 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-l);
+      }
+      .composer-box:focus-within {
+        border-color: color-mix(in srgb, var(--brass) 70%, transparent);
+      }
+      textarea {
+        flex: 1;
+        min-height: 26px;
+        padding: 6px 0;
+        resize: none;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+      }
+      .btn {
+        padding: 6px 14px;
+        border-radius: var(--r-m);
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .btn-primary {
+        background: var(--brass);
+        color: #15110b;
+        border-color: var(--brass);
+      }
+      .composer-hint {
+        max-width: calc(var(--thread-w) - 48px);
+        margin: 7px auto 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--dim);
+        min-height: 19px;
+      }
+      /* Changed: the typing slot is always present and has a fixed height. */
+      .typing {
+        flex: 1;
+        min-width: 0;
+        height: 19px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--brass);
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .typing-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .typing:empty {
+        visibility: hidden;
+      }
+      .dots {
+        display: inline-flex;
+        gap: 3px;
+        flex: none;
+      }
+      .dots i {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+      .dots i:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .dots i:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.3;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dots i {
+          animation: none;
+          opacity: 0.8;
+        }
+      }
+      .kbd-hint {
+        margin-left: auto;
+        color: var(--faint);
+        font-family: var(--font-mono);
+        font-size: 11px;
+      }
+      .demo {
+        position: fixed;
+        right: 16px;
+        top: calc(var(--topbar-h) + 150px);
+        width: 220px;
+        padding: 12px;
+        background: var(--panel);
+        border: 1px dashed var(--line);
+        border-radius: var(--r-m);
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .demo h2 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .demo .btn {
+        display: block;
+        width: 100%;
+        margin-top: 6px;
+        font-size: 13px;
+        text-align: left;
+      }
+      .demo p {
+        margin: 8px 0 0;
+      }
+      @media (max-width: 1240px) {
+        .demo {
+          position: static;
+          width: auto;
+          max-width: var(--thread-w);
+          margin: 16px auto 0;
+        }
+      }
+      @media (max-width: 760px) {
+        .tb-repo {
+          display: none;
+        }
+        .ihead-inner,
+        main,
+        .composer {
+          padding-left: 14px;
+          padding-right: 14px;
+        }
+        .ititle {
+          font-size: 19px;
+        }
+        .kbd-hint {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">Patchmill</span>
+      <span class="tb-repo">rochecompaan/patchmill</span>
+      <span class="me"
+        ><span class="av who-2" aria-hidden="true">an</span>Ana</span
+      >
+    </header>
+    <header class="ihead">
+      <div class="ihead-inner">
+        <a class="back" href="#">← Board</a>
+        <h1 class="ititle">
+          <span class="inum">#386</span>Show who is on a web issue page and who
+          is typing
+        </h1>
+        <div class="meta">
+          <span class="meta-item"><i class="dot"></i><b>Planning</b></span>
+          <span class="meta-item mono">step planning</span>
+          <span class="meta-item mono">elapsed 12m 04s</span>
+          <span class="meta-item"
+            >here now
+            <span class="presence" id="presence"></span>
+            <span class="visually-hidden" id="presence-text"></span>
+          </span>
+        </div>
+      </div>
+    </header>
+    <p class="visually-hidden" role="status" id="announce"></p>
+    <main id="thread" aria-label="Issue thread">
+      <section class="demo" aria-labelledby="demo-title">
+        <h2 id="demo-title">Mockup controls</h2>
+        <button class="btn" type="button" data-demo="join">
+          Sipho opens the page
+        </button>
+        <button class="btn" type="button" data-demo="tab">
+          Ben opens a second tab
+        </button>
+        <button class="btn" type="button" data-demo="crowd">
+          Five more people join
+        </button>
+        <button class="btn" type="button" data-demo="type">Ben types</button>
+        <button class="btn" type="button" data-demo="send">
+          Ben sends the message
+        </button>
+        <button class="btn" type="button" data-demo="leave">
+          Ben closes a tab
+        </button>
+        <p>Last announcement: <span id="echo">none</span></p>
+        <p>Thread top: <span id="offset"></span> px. It does not change.</p>
+      </section>
+      <article class="ev">
+        <span class="av av-agent" aria-hidden="true">pm</span>
+        <div>
+          <div class="msg-name">Planning agent<span>10:04</span></div>
+          <p>
+            I read the issue and the event stream code. Presence can come from
+            the open streams. Do you want the name on the stream URL?
+          </p>
+        </div>
+      </article>
+      <article class="ev">
+        <span class="av who-2" aria-hidden="true">an</span>
+        <div>
+          <div class="msg-name">Ana<span>10:05</span></div>
+          <p>Yes. Keep it out of the replay log.</p>
+        </div>
+      </article>
+      <article class="ev">
+        <span class="av av-agent" aria-hidden="true">pm</span>
+        <div>
+          <div class="msg-name">Planning agent<span>10:05</span></div>
+          <p>
+            Then presence goes out as its own event without an ID. I will write
+            the spec next.
+          </p>
+        </div>
+      </article>
+    </main>
+    <footer class="composer">
+      <form class="composer-box" onsubmit="return false;">
+        <textarea
+          rows="1"
+          aria-label="Message the agent"
+          placeholder="Message the agent as Ana"
+        ></textarea>
+        <button class="btn btn-primary" type="submit">Send</button>
+      </form>
+      <p class="composer-hint">
+        <i class="dot"></i><span>The agent is waiting for you.</span>
+        <span class="typing" id="typing" aria-hidden="true"></span>
+        <span class="kbd-hint">Enter to send · Shift+Enter for a new line</span>
+      </p>
+    </footer>
+    <script>
+      const me = "Ana";
+      const palette = (n) => {
+        let h = 0;
+        for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+        return "who-" + (1 + (h % 5));
+      };
+      let streams = [{ name: "Ana" }, { name: "Ben" }, { name: "Naledi" }];
+      const typing = new Set(["Ben"]);
+      let previous = null;
+      function people() {
+        const seen = [];
+        for (const s of streams) if (!seen.includes(s.name)) seen.push(s.name);
+        return seen;
+      }
+      function list(names) {
+        const others = names.filter((n) => n !== me);
+        const all = ["you", ...others];
+        if (all.length === 1) return "you";
+        return all.slice(0, -1).join(", ") + " and " + all.at(-1);
+      }
+      function typingText() {
+        const t = people().filter((n) => n !== me && typing.has(n));
+        if (!t.length) return "";
+        if (t.length === 1) return t[0] + " is typing";
+        if (t.length === 2) return t[0] + " and " + t[1] + " are typing";
+        return t.length + " people are typing";
+      }
+      function update() {
+        const names = [me, ...people().filter((n) => n !== me)];
+        const box = document.getElementById("presence");
+        box.replaceChildren();
+        for (const n of names.slice(0, 5)) {
+          const a = document.createElement("span");
+          a.className = "av " + palette(n);
+          a.textContent = n.slice(0, 2);
+          a.title = n;
+          a.setAttribute("aria-hidden", "true");
+          box.append(a);
+        }
+        if (names.length > 5) {
+          const more = document.createElement("span");
+          more.className = "av more";
+          more.textContent = "+" + (names.length - 5);
+          more.title = names.slice(5).join(", ");
+          more.setAttribute("aria-hidden", "true");
+          box.append(more);
+        }
+        document.getElementById("presence-text").textContent =
+          "Here now: " + list(names);
+        const text = typingText();
+        const slot = document.getElementById("typing");
+        slot.replaceChildren();
+        if (text) {
+          const dots = document.createElement("span");
+          dots.className = "dots";
+          dots.innerHTML = "<i></i><i></i><i></i>";
+          const label = document.createElement("span");
+          label.className = "typing-text";
+          label.textContent = text;
+          slot.append(dots, label);
+        }
+        const current = people().filter((n) => n !== me);
+        if (previous) {
+          const lines = [
+            ...current
+              .filter((n) => !previous.includes(n))
+              .map((n) => n + " joined the page."),
+            ...previous
+              .filter((n) => !current.includes(n))
+              .map((n) => n + " left the page."),
+          ];
+          if (lines.length) {
+            document.getElementById("announce").textContent = lines.join(" ");
+            document.getElementById("echo").textContent = lines.join(" ");
+          }
+        }
+        previous = current;
+        document.getElementById("offset").textContent = Math.round(
+          document.getElementById("thread").getBoundingClientRect().top +
+            window.scrollY,
+        );
+      }
+      let timer;
+      document.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-demo]");
+        if (!b) return;
+        const act = b.dataset.demo;
+        if (act === "join") streams.push({ name: "Sipho" });
+        if (act === "tab") streams.push({ name: "Ben" });
+        if (act === "crowd")
+          for (const n of ["Lerato", "Thabo", "Zanele", "Pieter", "Amahle"])
+            if (!people().includes(n)) streams.push({ name: n });
+        if (act === "type" && people().includes("Ben")) {
+          typing.add("Ben");
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            typing.delete("Ben");
+            update();
+          }, 6000);
+        }
+        if (act === "send") typing.delete("Ben");
+        if (act === "leave") {
+          const i = streams.findIndex((s) => s.name === "Ben");
+          if (i >= 0) streams.splice(i, 1);
+          if (!people().includes("Ben")) typing.delete("Ben");
+        }
+        update();
+      });
+      update();
+    </script>
+  </body>
+</html>
