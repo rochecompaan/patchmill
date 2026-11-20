@@ -1,6 +1,6 @@
 import type { Issue, PullRequest as HostPullRequest } from "../host/types.ts";
 import { DEFAULT_CONFIG, type LabelsConfig } from "../config/config.ts";
-import { isIssueBranch, planningBranchName } from "../kernel/names.ts";
+import { isIssueBranch, parsePlanningBranch } from "../kernel/names.ts";
 import type { WorkflowStatus } from "../kernel/workflow-state.ts";
 import type { RunObservation } from "./file-run-observations.ts";
 import type {
@@ -58,11 +58,8 @@ export function associatePullRequests(input: {
     branches: [...new Set(prs.map((p) => p.headBranch))],
     pullRequests: prs.map((pr) => {
       const kind =
-        pr.headBranch === planningBranchName(input.issue, "spec")
-          ? "spec"
-          : pr.headBranch === planningBranchName(input.issue, "plan")
-            ? "plan"
-            : "implementation";
+        parsePlanningBranch(input.issue, pr.headBranch)?.stage ??
+        "implementation";
       return {
         number: pr.number,
         url: pr.url,

@@ -38,7 +38,7 @@ test("no-PR spec approval pushes the planning head and continues without a gate 
     if (++calls === 2) {
       assert.equal(
         await c.git(["rev-parse", `origin/${branch}`]),
-        await c.git(["rev-parse", "origin/agent/issue-9--spec"]),
+        await c.git(["rev-parse", "origin/agent/issue-9-add-login--spec"]),
       );
       assert.equal(kernelComments(c).length, 0);
       assert.equal(request.worktree, c.worktree);
@@ -71,7 +71,7 @@ test("approval plus PR still asks for a missing gate PR and waits for its merge"
   const human = fakeHuman(c, {
     onWait: async (wait) => {
       if (wait.kind === "gate") {
-        await merge(c, "agent/issue-9--spec");
+        await merge(c, "agent/issue-9-add-login--spec");
         return "continue";
       }
       return "quit";
@@ -153,6 +153,7 @@ test("pushed gated documents do not weaken the ambiguous implementation branch r
     issue: await c.host.viewIssue(9),
     branches: [branch, "agent/issue-9-other"],
     baseBranch: "main",
+    baseSlugs: [],
   });
   assert.equal(result.kind, "ambiguous-branches");
 });

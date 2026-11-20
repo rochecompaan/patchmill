@@ -14,8 +14,9 @@ import {
 import { parseConfig } from "../config/config.ts";
 import { acquireLock } from "./lock.ts";
 
-const specBranch = "agent/issue-9--spec";
-const planBranch = "agent/issue-9--plan";
+const specBranch = "agent/issue-9-add-login--spec";
+const planBranch = "agent/issue-9-add-login--plan";
+const legacySpecBranch = "agent/issue-9--spec";
 const planning = (files: Record<string, string>, pr = true) => ({
   writeFiles: files,
   commit: "Planning",
@@ -290,6 +291,73 @@ for (const head of [specBranch, planBranch]) {
     assert.equal(await count(c), 0);
   });
 }
+
+test("a title edit after a merged spec keeps the gate and the spec slug", async (t) => {
+  const c = await setupRun(t, [
+    planning({ [spec]: "spec" }),
+    planning({ [plan]: "plan" }),
+  ]);
+  gates(c, true, true);
+  assert.equal((await c.run()).status, "stopped");
+  assert.equal(c.host.state().pullRequests.at(-1)!.headBranch, specBranch);
+  await merge(c, specBranch);
+  await c.git(["push", "origin", "--delete", specBranch]);
+  await c.mutate((s) => {
+    s.issues[0]!.title = "Sign in with passkeys";
+  });
+  assert.equal((await c.run()).status, "stopped");
+  const heads = c.host.state().pullRequests.map((p) => p.headBranch);
+  assert.deepEqual(heads, [specBranch, planBranch]);
+  assert.equal(await count(c), 2);
+});
+
+test("an in-flight legacy spec branch stays at its gate and passes after merge", async (t) => {
+  const c = await setupRun(t, [planning({ [plan]: "plan" })]);
+  gates(c, true, true);
+  await c.seed({ [spec]: "spec" }, legacySpecBranch);
+  await c.mutate((s) => {
+    s.pullRequests.push({
+      number: 1,
+      url: "https://example.invalid/1",
+      state: "open",
+      draft: false,
+      body: "Refs #9",
+      headRepository: "fixture/repo",
+      headBranch: legacySpecBranch,
+      baseBranch: "main",
+    });
+  });
+  assert.equal((await c.run()).status, "stopped");
+  assert.equal(await count(c), 0);
+  assert.equal(await c.git(["ls-remote", "--heads", "origin", specBranch]), "");
+  await merge(c, legacySpecBranch);
+  assert.equal((await c.run()).status, "stopped");
+  assert.equal(await count(c), 1);
+  assert.equal(c.host.state().pullRequests.at(-1)!.headBranch, planBranch);
+  await c.git(["push", "origin", "--delete", legacySpecBranch]);
+  assert.equal((await c.run()).status, "stopped");
+  assert.equal(await count(c), 1);
+  assert.deepEqual(
+    c.host.state().pullRequests.map((p) => p.headBranch),
+    [legacySpecBranch, planBranch],
+  );
+});
+
+test("two spec branches for one issue stop as ambiguous", async (t) => {
+  const c = await setupRun(t);
+  gates(c, true, false);
+  await c.seed({ [spec]: "legacy" }, legacySpecBranch);
+  await c.seed({ [spec]: "slugged" }, specBranch);
+  const r = await c.run();
+  assert.equal(r.status, "stopped");
+  assert.equal(await count(c), 0);
+  assert.match(
+    r.status === "stopped" ? r.summary : "",
+    new RegExp(
+      `${legacySpecBranch}.*${specBranch}|${specBranch}.*${legacySpecBranch}`,
+    ),
+  );
+});
 
 test("a new commit on an open spec branch keeps its PR at the gate", async (t) => {
   const c = await setupRun(t, [planning({ [spec]: "spec" })]);

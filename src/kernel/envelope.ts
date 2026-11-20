@@ -4,7 +4,7 @@ import { findPackageRoot } from "../package-root.ts";
 import type { LabelsConfig } from "../config/config.ts";
 import type { Issue, IssueDependency, Repository } from "../host/types.ts";
 import type { Facts } from "./facts.ts";
-import { planningBranchName } from "./names.ts";
+import { parsePlanningBranch } from "./names.ts";
 import type { Phase } from "./phase.ts";
 
 export type RunEnvelopeInput = {
@@ -70,7 +70,8 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
   const laterGate =
     interactivePlanning &&
     facts.stage !== "implementation" &&
-    facts.branch !== planningBranchName(input.issue.number, facts.stage);
+    parsePlanningBranch(input.issue.number, facts.branch)?.stage !==
+      facts.stage;
   // Pushed documents count as reviewed. Patchmill pushes them after the
   // maintainer confirms, so a pause before then cannot skip the review.
   const reviewed = interactivePlanning && facts.stage === "implementation";
@@ -114,7 +115,8 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
       facts.stage === "implementation"
         ? "not required; keep planning artifacts in the implementation PR"
         : interactivePlanning
-          ? facts.branch === planningBranchName(input.issue.number, facts.stage)
+          ? parsePlanningBranch(input.issue.number, facts.branch)?.stage ===
+            facts.stage
             ? "required; submit for approval and the PR choice"
             : "required; submit for approval only, no PR option: a planning PR would carry the earlier unmerged document. Write later documents on this implementation branch"
           : `required; publish the ${facts.stage} PR and stop until it is merged`,

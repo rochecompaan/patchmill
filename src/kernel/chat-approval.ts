@@ -4,7 +4,7 @@ import { refArtifacts } from "./artifact-source.ts";
 import type { Facts } from "./facts.ts";
 import type { KernelGit } from "./git.ts";
 import type { PhaseRun } from "./launch.ts";
-import { branchName, planningBranchName } from "./names.ts";
+import { branchName, parsePlanningBranch } from "./names.ts";
 import { verifyOutcome, type VerifyInput } from "./verify.ts";
 
 /** Approval is a live, confirmed action. Only pushed git facts survive it. */
@@ -33,7 +33,7 @@ export async function verifyPlanningApproval(
   const implementation = stage === "implementation";
   const laterGate =
     stage !== "implementation" &&
-    input.facts.branch !== planningBranchName(issue.number, stage);
+    parsePlanningBranch(issue.number, input.facts.branch)?.stage !== stage;
   const held = laterGate || implementation;
   if (input.uncommitted || (!held && input.unpushed !== 0))
     return {

@@ -51,6 +51,11 @@ documents and documents approved without a PR in an Interactive Issue run
 accompany its code. Required planning gates otherwise use separate branches.
 _Avoid_: One branch for every stage
 
+**Planning branch**: The branch that holds a required gate's planning documents
+and is the head of its Planning pull request when one opens. Its name carries
+the issue number, a title slug that is fixed when the issue's first Planning
+branch is created, and its stage. _Avoid_: Spec worktree, gate branch
+
 **Run-once workflow**: The atomic processing of one selected issue from claim
 through its terminal or resumable outcome. _Avoid_: Run loop, coordinator
 

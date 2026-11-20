@@ -21,15 +21,21 @@ directories, and worktree and run directories. Inspect the issue, its comments,
 its pull request, Git branches, and worktrees.
 
 Inspect required gates and their pull requests before selecting a workspace. The
-kernel uses `agent/issue-N--spec` and `agent/issue-N--plan` for required gates,
-and `agent/issue-N-<title-slug>` for implementation. Worktree names replace
-slashes with hyphens. Reuse the workspace for the earliest unmerged required
-gate. Otherwise, reuse the implementation workspace. Planning branches for other
-stages are not competing implementation branches. If several branches match the
-same stage or ownership is uncertain, stop and ask. If a new workspace is
-needed, read sibling `using-git-worktrees` and use the matching stage name. Do
-not delete or replace the permanent issue lock or its parent directory. An empty
-lock file or diagnostic PID does not establish that the issue is inactive.
+kernel uses `agent/issue-N-<title-slug>--spec` and
+`agent/issue-N-<title-slug>--plan` for required gates, and
+`agent/issue-N-<title-slug>` for implementation. The planning slug is fixed when
+the first planning branch is created. Legacy `agent/issue-N--spec` and
+`agent/issue-N--plan` names stay valid. For a new planning workspace, use the
+first non-empty slug of: the other stage's planning branch, then the issue's
+spec or plan file name on the base branch, then the current title. Worktree
+names replace slashes with hyphens. Reuse the workspace for the earliest
+unmerged required gate. Otherwise, reuse the implementation workspace. Planning
+branches for other stages are not competing implementation branches. If several
+branches match the same stage or ownership is uncertain, stop and ask. If a new
+workspace is needed, read sibling `using-git-worktrees` and use the matching
+stage name. Do not delete or replace the permanent issue lock or its parent
+directory. An empty lock file or diagnostic PID does not establish that the
+issue is inactive.
 
 ## Write local artifacts
 

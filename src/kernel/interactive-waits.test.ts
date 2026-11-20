@@ -15,7 +15,7 @@ import {
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
 
-const specBranch = "agent/issue-9--spec";
+const specBranch = "agent/issue-9-add-login--spec";
 const planning = (files: Record<string, string>, pr = false) => ({
   writeFiles: files,
   commit: "Planning",
