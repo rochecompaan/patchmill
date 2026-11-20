@@ -33,7 +33,7 @@ import {
   formatPhaseComplete,
 } from "./console.ts";
 import type { OutcomeLabel } from "./verify.ts";
-import { verifyPlanningApproval } from "./chat-approval.ts";
+import { reviewedDocuments, verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { projectRunProgress, writeRunProgress } from "./run-progress.ts";
@@ -260,7 +260,15 @@ export async function runOneIssue(
         const facts = before.facts;
         displayFacts = facts;
         await snapshot.facts(facts);
-        const decision = phaseDecision(facts, feedback, !!resume);
+        let decision = phaseDecision(facts, feedback, !!resume);
+        if (
+          deps.human &&
+          !resume &&
+          decision.kind === "phase" &&
+          decision.phase === "implementation" &&
+          !(await reviewedDocuments(git, config, facts, issueNumber))
+        )
+          decision = { kind: "phase", phase: "planning" };
         if (decision.kind === "stop") {
           stop = {
             ...stop,

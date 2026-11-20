@@ -148,11 +148,13 @@ For a required gate, the dialog offers three choices:
 A later required gate offers only "Approve (continue now)" and "Request
 changes". The dialog explains which earlier document prevents a planning pull
 request. Without gates, the dialog asks if you reviewed the spec, the plan, or
-both. It offers "Reviewed, continue" and "Request changes".
+both. It offers "Reviewed, continue" and "Request changes". After "Reviewed,
+continue", Patchmill pushes the spec and plan and starts the implementation.
 
 If you request changes or press Escape, Patchmill pushes nothing. After a
 restart, Patchmill reads approvals from the pushed documents, not from saved
-state.
+state. If you quit or pause before you answer the dialog, the documents stay
+local, and the next run goes back to planning to ask you again.
 
 To start another issue after the current run ends, type `/patchmill-issue <N>`.
 Each issue has its own conversation under `<runsDir>/issue-<N>/console/`. When

@@ -257,6 +257,11 @@ question is open, its options appear in the thread for everyone.
   and console session file stay. A run whose planning or worker session is
   aborted this way ends as **paused**: it keeps the in-progress label and posts
   no comment. The terminal console's Ctrl-C works the same way.
+- A pause must not skip the planning review. In an interactive run, the planning
+  agent commits the spec and plan but doesn't push them. Patchmill pushes them
+  after the maintainer confirms the dialog. A run starts the implementation only
+  when the spec and plan are pushed, so after a pause, local documents go back
+  to planning.
 - **Resume** behaves like starting the console again on the same issue. The
   in-memory waits in `ConsoleController` (a pending gate or guidance answer) are
   gone. The new process starts the Issue run, and `runOneIssue` continues from
