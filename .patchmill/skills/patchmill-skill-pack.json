@@ -1,5 +1,5 @@
 {
-  "installedAt": "2026-11-15T14:45:17.685Z",
+  "installedAt": "2026-11-20T07:31:34.749Z",
   "sources": {
     "patchmill": "1.0.0",
     "superpowers": "7.0.2",
@@ -149,15 +149,19 @@
     },
     {
       "path": "patchmill-plan/SKILL.md",
-      "sha256": "fd7f3d353fe9e3715ab9c51fb7425b5c298314316ea5f06f16b9f60f26309604"
+      "sha256": "8edb1ab064b02d1381dd33e50c91ff8c1f34ae8c982b379a3b731fd1a84c1041"
     },
     {
-      "path": "patchmill-planning/plan-review.md",
-      "sha256": "144de0704c7f12494cd47708cd1f0ce9d9f6a1a01b762c2d1206233f850cc7a1"
+      "path": "patchmill-planning/planning-review.md",
+      "sha256": "2588299b6219ba7581cbb6a05a1a9da8c20c8fe629cb3704e1ed5c54a0b0606c"
+    },
+    {
+      "path": "patchmill-planning/scripts/body-hash.mjs",
+      "sha256": "6ca2059ab5aac4fcf09ba8fcdb3bee0bf6b9fa93db58e5e0ae4236745a80e07c"
     },
     {
       "path": "patchmill-planning/SKILL.md",
-      "sha256": "af5a2b8c3377fd9880b15c4b90e85cdaff8c4a4b99baece86871ab5279e92ad0"
+      "sha256": "1d22373fcdf184f56a975cfd54657ab6dc6750827fbe7432490f287fbc1f44a8"
     },
     {
       "path": "patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",

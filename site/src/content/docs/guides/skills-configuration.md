@@ -89,17 +89,34 @@ their knowledge. Relevant domain companions can accompany a specification.
 Narrower envelopes instead record the resolution and deferred destination. ADRs
 require a real architectural trade-off, not ceremony.
 
-Every new or revised plan gets fresh, read-only review by the canonical
-`reviewer`, after planner self-review. The reviewer independently inspects
-relevant domain documents, ADRs, source, callers, dependencies, and tests. The
-local `patchmill-planning/plan-review.md` brief checks depth, interface size,
-seam placement, adapter justification, locality, leverage, and test surfaces. It
-explicitly applies the deletion test, the interface as the test surface, and the
-principle that two real adapters establish variation. Blocking findings require
-concrete codebase evidence and impact. The plan records findings, dispositions,
-inspection limits, and reviewed content identity. Accepted blockers need
-correction and one fresh scoped confirmation. Material later edits require
-renewed review.
+Every new or revised spec and plan gets a fresh, read-only, adversarial Planning
+review by the canonical `reviewer`, after planner self-review. One review can
+examine the spec, the plan, or both. The maintainer can request one at any time
+in an interactive session. Patchmill also checks each review boundary: a Spec
+gate, a Plan gate, an interactive submission, or the start of implementation.
+The gates that apply to the issue select the boundaries. With no gate, one
+combined review examines the spec and plan before implementation. Planning
+review replaces the upstream brainstorming builder check.
+
+The local `patchmill-planning/planning-review.md` brief tells the reviewer to
+inspect domain documents, ADRs, source, callers, and tests independently. Spec
+checks cover requirement coverage, contradictions, claims about current
+behavior, risky choices, and places where a builder must guess. Plan checks
+verify every path, symbol, command, and code block against the inspected base. A
+combined review also checks that the plan agrees with the spec. The architecture
+rubric checks depth, interface size, seams, adapters, locality, leverage, and
+test surfaces. Blocking findings require concrete codebase evidence and impact.
+
+The planner accepts, rejects with evidence, records as an open assumption, or
+escalates each finding. In unattended runs, a question that only a human can
+answer becomes a conservative open assumption, and the run continues. One scoped
+confirmation follows accepted blockers. Each reviewed document ends with a
+`## Planning review` record with a body hash from
+`patchmill-planning/scripts/body-hash.mjs` and an outcome: `ready`, `blocked`,
+or `escalated`. A plan record also stores the spec hash it was reviewed against.
+A material edit makes the record stale and requires a new review. A document
+crosses a boundary only with a current, `ready` record. Unattended runs return
+`needs-input` for `blocked` or `escalated` outcomes.
 
 Missing required skills, resources, or reviewer capability prevent success.
 Unattended planning returns `needs-input`. Interactive planning asks the
@@ -160,7 +177,7 @@ sufficient. Hosting and image previews are not required.
 If HTML generation or validation fails, use a meaningful inline diagram or text
 sketch. Record the reason and remove absent-file links. Missing show-me or its
 license still requires guidance. Prose-only output does not satisfy the visual
-requirement. Fresh Plan review includes the inline explanation and linked HTML.
+requirement. Planning review includes the inline explanation and linked HTML.
 
 Keep existing gates and publication rules. Do not backfill unchanged approved
 documents or edit an approved spec merely to link a plan visual. Refresh
