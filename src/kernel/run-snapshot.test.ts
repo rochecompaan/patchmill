@@ -270,7 +270,7 @@ test("observe reports the gate wait before continuing to the next session", asyn
     onWait: async (wait) => {
       if (wait.kind !== "gate") return "quit";
       assert.equal(states.at(-1), "gate-wait");
-      await merge(c, "agent/issue-9--spec");
+      await merge(c, "agent/issue-9-add-login--spec");
       return "continue";
     },
   });
