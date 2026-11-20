@@ -10,10 +10,25 @@ export class ApiRequestError extends Error {
     this.status = status;
   }
 }
+/**
+ * A random v4 UUID. Browsers give `randomUUID` only to secure contexts (HTTPS
+ * or localhost); `getRandomValues` also works on a plain-HTTP host.
+ * @param {{randomUUID?: () => string, getRandomValues(array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer>}} [source]
+ */
+export function newRequestId(source = globalThis.crypto) {
+  if (typeof source.randomUUID === "function") return source.randomUUID();
+  const bytes = source.getRandomValues(new Uint8Array(16));
+  bytes[6] = (Number(bytes[6]) & 0x0f) | 0x40;
+  bytes[8] = (Number(bytes[8]) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+    "",
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 /** @param {typeof fetch} fetcher @param {() => string} [requestId] @returns {ApiClient} */
 export function createApi(
   fetcher = globalThis.fetch,
-  requestId = () => globalThis.crypto.randomUUID(),
+  requestId = () => newRequestId(),
 ) {
   /** @param {string} path @param {AbortSignal|undefined} signal */
   async function get(path, signal) {
