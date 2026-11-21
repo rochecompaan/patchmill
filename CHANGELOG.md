@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/rochecompaan/patchmill/compare/v1.1.0...v1.2.0) (2026-11-21)
+
+
+### Features
+
+* **kernel:** prepare the kernel for control-plane mode ([#400](https://github.com/rochecompaan/patchmill/issues/400)) ([f7de8e6](https://github.com/rochecompaan/patchmill/commit/f7de8e60f13fa9906dab708862299d5b57145ccd))
+
 ## [1.1.0](https://github.com/rochecompaan/patchmill/compare/v1.0.0...v1.1.0) (2026-11-20)
 
 
