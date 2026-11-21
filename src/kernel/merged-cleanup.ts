@@ -28,6 +28,10 @@ export type CleanupServices = {
   signal?: AbortSignal;
   runLogPath?: string;
 };
+/**
+ * `skipped`: aborted, or the merge is not confirmed. `cleaned`: the merge is
+ * confirmed and no worktree or branch is left. `kept`: something stays.
+ */
 export type CleanupResult = {
   status: "cleaned" | "kept" | "skipped";
   warnings: string[];
@@ -127,7 +131,8 @@ export async function cleanupMergedIssue(input: Input): Promise<CleanupResult> {
         (workspace) => workspace.registered || workspace.branchExists,
       )
     )
-      return result("skipped");
+      // The merge is confirmed and nothing is left: the issue is clean.
+      return result("cleaned");
     await log(`Cleanup started: ${JSON.stringify(identity)}`);
     const receipt = await readCleanupReceipt(issueDir);
     if (

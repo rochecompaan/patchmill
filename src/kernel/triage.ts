@@ -46,7 +46,21 @@ export type TriageOptions = {
   dryRun?: boolean;
   signal?: AbortSignal;
   onProgress?: (event: TriageProgressEvent) => void;
+  /**
+   * Called before each write: a dependency link, or a status record (which
+   * also posts any question). A throw stops triage before that write, and
+   * `runTriage` rejects with the same error.
+   */
+  beforeWrite?: () => Promise<void>;
 };
+
+/** Carries a pre-write check failure past the per-issue error handler. */
+class TriageStopped extends Error {
+  constructor(cause: unknown) {
+    super("Triage stopped by its pre-write check.", { cause });
+    this.name = "TriageStopped";
+  }
+}
 
 export function hasReply(issue: TrackedIssue, trusted: string[]): boolean {
   const latest = issue.comments.reduce<
@@ -127,6 +141,13 @@ export async function runTriage(
   const trusted = trustedAuthors(config, (await host.checkCli()).login);
   const warn = (issue: number, message: string) =>
     output.stderr(`Warning: Issue #${issue}: ${message}`);
+  const guard = async () => {
+    try {
+      await options.beforeWrite?.();
+    } catch (error) {
+      throw new TriageStopped(error);
+    }
+  };
   const candidates: number[] = [];
   if (options.issue !== undefined) candidates.push(options.issue);
   else {
@@ -236,6 +257,7 @@ export async function runTriage(
       const asked = status === "needsInfo" && comment !== "";
       if (!options.dryRun) {
         for (const [index, blocker] of blockedBy.entries()) {
+          await guard();
           try {
             await host.addIssueDependency(number, blocker);
           } catch (error) {
@@ -250,6 +272,7 @@ export async function runTriage(
             );
           }
         }
+        await guard();
         const warnings = await workflow.setStatus(number, {
           status,
           ...(comment ? { summary: comment } : {}),
@@ -276,6 +299,7 @@ export async function runTriage(
         total: candidates.length,
       });
     } catch (error) {
+      if (error instanceof TriageStopped) throw error.cause;
       warn(number, error instanceof Error ? error.message : String(error));
     }
   }

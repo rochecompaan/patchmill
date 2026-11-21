@@ -79,7 +79,10 @@ export async function discoverCleanupCandidates(
   return result;
 }
 
-export async function sweepMergedIssues(input: CleanupServices): Promise<void> {
+/** `skipIssue` names an issue whose lock the caller holds; it is passed over. */
+export async function sweepMergedIssues(
+  input: CleanupServices & { skipIssue?: number },
+): Promise<void> {
   if (input.signal?.aborted) return;
   let candidates: CleanupCandidate[];
   try {
@@ -92,6 +95,7 @@ export async function sweepMergedIssues(input: CleanupServices): Promise<void> {
   }
   for (const candidate of candidates) {
     if (input.signal?.aborted) return;
+    if (candidate.issue === input.skipIssue) continue;
     let lock: IssueLock | undefined;
     try {
       lock = await acquireLock(

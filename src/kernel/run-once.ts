@@ -7,11 +7,9 @@ import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { KernelGit } from "./git.ts";
 import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
-import { acquireLock, LockHeldError } from "./lock.ts";
-import {
-  WORKFLOW_STATUS_TITLES,
-  type WorkflowState,
-} from "./workflow-state.ts";
+import { acquireLock, LockHeldError, type IssueLock } from "./lock.ts";
+import type { WorkflowState } from "./workflow-state.ts";
+import { stateTrackingMode } from "./state-tracking-mode.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
   preparePhasePrompt,
@@ -49,6 +47,11 @@ export type RunOnceOptions = {
   dryRun?: boolean;
   planOnly?: boolean;
   signal?: AbortSignal;
+  /**
+   * The per-issue lock of `issue`, which the caller already holds. The run
+   * uses it instead of taking its own, and never releases it.
+   */
+  heldLock?: IssueLock;
 };
 export type RunOnceDeps = {
   human?: HumanChannel;
@@ -93,12 +96,26 @@ export async function runOneIssue(
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
   const workflow = deps.workflow;
+  const { heldLock } = options;
+  if (heldLock) {
+    if (options.issue === undefined)
+      throw new Error("A held lock requires an issue number.");
+    const expected = join(
+      resolve(repoRoot, config.paths.runsDir, `issue-${options.issue}`),
+      "lock",
+    );
+    if (resolve(heldLock.path) !== expected)
+      throw new Error(
+        `The held lock does not own issue #${options.issue}'s lock path.`,
+      );
+  }
   if (!options.dryRun) {
     await sweepMergedIssues({
       ...deps,
       config,
       report: output.stderr,
       ...(options.signal ? { signal: options.signal } : {}),
+      ...(heldLock ? { skipIssue: options.issue } : {}),
     });
   }
   await workflow.sync(options.issue);
@@ -147,9 +164,9 @@ export async function runOneIssue(
     config.paths.runsDir,
     `issue-${issueNumber}`,
   );
-  let lock;
+  let lock: IssueLock;
   try {
-    lock = await acquireLock(join(issueDir, "lock"), { now });
+    lock = heldLock ?? (await acquireLock(join(issueDir, "lock"), { now }));
   } catch (error) {
     if (error instanceof LockHeldError)
       return {
@@ -528,9 +545,7 @@ export async function runOneIssue(
         summary: stop.summary,
         warnings: [...stop.warnings, ...publicationErrors],
         outcomeLabel:
-          config.workflow.stateTracking === "local"
-            ? WORKFLOW_STATUS_TITLES[stop.label]
-            : config.labels[stop.label],
+          stateTrackingMode(config).statusTitles(config)[stop.label],
         logPath: join(runDir, "pi.log"),
         sessionPath: join(runDir, "sessions"),
         cost,
@@ -544,6 +559,6 @@ export async function runOneIssue(
     });
     return outcome;
   } finally {
-    await lock.release();
+    if (lock !== heldLock) await lock.release();
   }
 }
