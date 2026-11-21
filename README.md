@@ -58,16 +58,39 @@ change the skills, as [Skills](#skills) describes. The
 
 - A git repository with an `origin` remote on GitHub, Forgejo, or Gitea.
 - The `gh` or `tea` CLI, logged in to that host.
-- Node.js 22.19.0 or later.
+- Node.js 22.19.0 or later (included in the Nix package).
 - An account with a model provider that Pi supports, by subscription or API key.
 
-## Quickstart
+## Installation
 
-Run these commands in your repository. For Forgejo or Gitea, use
-`--provider forgejo-tea`.
+Choose one installation method before following the quickstart.
+
+### Nix / NixOS
+
+Use the Nix package instead of a global npm installation. With Nix flakes
+enabled, install from GitHub:
+
+```sh
+nix profile install github:rochecompaan/patchmill
+```
+
+The Nix package includes Node.js, but you must provide Git and the authenticated
+`gh` or `tea` CLI separately.
+
+### npm
+
+With Node.js 22.19.0 or later installed:
 
 ```sh
 npm install -g patchmill
+```
+
+## Quickstart
+
+After installation, run these commands in the repository you want Patchmill to
+manage. For Forgejo or Gitea, use `--provider forgejo-tea`.
+
+```sh
 patchmill init --provider github-gh   # write configuration, install skills
 patchmill auth                        # choose a model provider and a model
 patchmill labels setup                # create the workflow labels
