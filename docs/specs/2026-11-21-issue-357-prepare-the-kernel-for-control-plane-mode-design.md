@@ -246,3 +246,60 @@ cleanupMergedIssue
 ## Companion artifacts
 
 None. This slice changes no glossary, ADR, or mockup.
+
+## Planning review
+
+### Pass 1: combined review of spec and plan
+
+- Scope: this document, reviewed together with the other planning document of
+  issue #357 (the spec
+  `docs/specs/2026-11-21-issue-357-prepare-the-kernel-for-control-plane-mode-design.md`
+  and the plan
+  `docs/plans/2026-11-21-issue-357-prepare-the-kernel-for-control-plane-mode-plan.md`).
+  Input: the parent spec of #356 on `origin/main`.
+- Reviewer: `reviewer` agent, model `claude-bridge/claude-opus-5-5`, thinking
+  `high`, base revision `b9421ec` (`origin/main`).
+- Reviewed body SHA-256: spec
+  `aa2043352791e36205cd59e4106ab7b86185321589f249a6bb8c932e276046c8`, plan
+  `82868fcf4d0e18fa59309396228723ce54c5ebbd3d4fc8de01ffb222a6e753ea`.
+- Survey: the reviewer found the six `stateTracking === "local"` checks and the
+  three `!== "local"` checks that stay, the three `createWorkflowState` callers,
+  the three `skipped` returns in `cleanupMergedIssue`, the lock flow in
+  `runOneIssue` and the sweep, the triage write points, and the Node 24 state of
+  CI, devenv, and Nix. No glossary or ADR conflict.
+- Findings and dispositions:
+  - B1 (blocker), `npm-shrinkwrap.json` was not in the Node 24 change. Accepted.
+    The spec names both lock files. Task 5 edits both by hand and checks them
+    with `cmp` and `jq`.
+  - B2 (blocker), the `rg '22\.19'` check could never be empty. Accepted. The
+    lock files are excluded, and `jq` checks their root entries.
+  - B3 (blocker), the held-lock throw test did not throw. Accepted. It now uses
+    the `result.json` EISDIR pattern from `run-once-failures.test.ts`.
+  - S1, exhaustive doctor switch and a narrower locality claim. Accepted.
+  - S2, run `local-mode.test.ts` in Task 1. Accepted.
+  - S3, line reference in Task 2. Accepted.
+  - S4, failure reasons, guard tests, unused `t`. Accepted.
+  - S5, compute the held-lock path only when it is set. Accepted.
+  - S6, spec Cleanup text and `skipIssue`. Accepted.
+  - S7, a direct sweep test for `skipIssue`. Accepted.
+  - S8, pass-through `createWorkflowState`. Rejected: the spec keeps it so that
+    caller tests stay unchanged, as the issue requires.
+- Limits: the reviewer ran no tests, build, or Nix build.
+- Confirmation: a fresh scoped pass confirmed B1 to B3 and S1 to S7 against the
+  source and found no new blocker. It gave four suggestions:
+  - R1, name the `never` variable with a `_` prefix for lint. Rejected: lint in
+    Task 5 catches it, and the builder can choose the form.
+  - R2, add `nix/package.nix` to the Task 5 commit if its hash changes.
+    Rejected: Task 5 already tells the builder to change that file in that case,
+    and a root `engines` edit does not change the dependency hash.
+  - R3, discovery reports can still name the held issue. Rejected: the spec text
+    is about the lock-held report, and discovery reports are unchanged
+    behaviour.
+  - R4, `git diff --stat` and `jq` output shape. Rejected: cosmetic, and the
+    `cmp` and `jq` values are exact.
+- Final body SHA-256: spec
+  `bf7042e3871a2fa06024db9155ca3db976bafd2b5f75886bb2464792302efbb1`, plan
+  `1c9663a60b6c093a42f600741764daa95f1293c2a4c9ffe14fbfe6e04ddb18f4`.
+- Specification body SHA-256 compared with the plan:
+  `bf7042e3871a2fa06024db9155ca3db976bafd2b5f75886bb2464792302efbb1`.
+- Outcome: `ready`.
