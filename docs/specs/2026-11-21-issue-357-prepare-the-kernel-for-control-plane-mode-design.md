@@ -90,8 +90,11 @@ callers (`triage`, `release`, and `run-once` deps) do not change.
 ### Why this shape
 
 - **Locality.** A new mode adds one object, and the type checker finds each
-  answer that the object must give. This is the purpose that the parent spec
-  gives for item 7.
+  answer that the object must give. Doctor selects its check with an exhaustive
+  `switch` on `doctorWorkflowCheck`, so a new tag also fails type checking
+  there. This is the purpose that the parent spec gives for item 7. The type
+  checker does not find the comparisons in decision 2. The slice that adds
+  control-plane mode must review them.
 - **Depth.** Callers learn one function and a few named answers. They do not
   learn which backend class each mode uses or where local state lives.
 - **Seam.** The seam is the mode object. Two real adapters exist today, and a
@@ -133,7 +136,8 @@ The rules are:
   cleanup log, as today. The cleanup hook does not run, as today.
 
 `sweepMergedIssues` and the call after a `done` stop in `runOneIssue` ignore the
-result. They do not change.
+result. Their handling of the result does not change. The sweep gets one new
+input for the caller-held lock, as the next section describes.
 
 ## Caller-held lock in `runOneIssue`
 
@@ -151,7 +155,9 @@ set:
 - The merged-issue sweep at the start does not try to lock the held issue and
   does not report it. Today the sweep would find the lock held and report
   "cleanup skipped (active issue lock)" for the issue that the caller is about
-  to run. The caller owns decisions about that issue.
+  to run. The caller owns decisions about that issue. `sweepMergedIssues` gets
+  an optional input `skipIssue` for this. The sweep still cleans the other
+  merged issues.
 
 When `heldLock` is not set, `runOneIssue` takes and releases its own lock, as
 today.
@@ -174,7 +180,9 @@ today.
 ## Node 24
 
 - `package.json` sets `engines.node` to `>=24`. The root package entry in
-  `package-lock.json` changes to match.
+  `package-lock.json` and in `npm-shrinkwrap.json` changes to match. The two
+  lock files stay identical, and the published package ships
+  `npm-shrinkwrap.json`.
 - `README.md` changes "Node.js 22.19.0 or later" to "Node.js 24 or later".
 - CI workflows, `devenv.nix`, and `nix/package.nix` already use Node 24, so they
   do not change.

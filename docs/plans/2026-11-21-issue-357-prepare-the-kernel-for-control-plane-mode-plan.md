@@ -97,6 +97,7 @@ export function stateTrackingMode(config: PatchmillConfig): StateTrackingMode;
 
 ```ts
 test("labels mode answers from configured labels", async (t) => {
+  // `t` is used by the input() helper below to remove its temp directory.
   const config = parseConfig({ labels: { ready: "queue" } });
   const mode = stateTrackingMode(config);
   assert.equal(mode.name, "labels");
@@ -128,7 +129,9 @@ test("local state mode answers from local state", async (t) => {
 ```
 
 `input(config)` is a local helper that returns a `WorkflowStateInput` with a
-temp `repoRoot`. Also assert that creating the local backend writes nothing:
+temp `repoRoot`. Pass `t` to it so that it can register cleanup with `t.after`;
+an unused `t` parameter fails lint. Also assert that creating the local backend
+writes nothing:
 `await assert.rejects(fs.readdir(join(repoRoot, ".patchmill/state")), { code: "ENOENT" })`.
 
 - [ ] **Step 2: Run the tests to make sure that they fail**
@@ -148,10 +151,12 @@ object with an exhaustive `switch` on `config.workflow.stateTracking`.
 
 - `createWorkflowState` in `src/kernel/workflow-factory.ts` keeps its signature
   and returns `stateTrackingMode(input.config).createWorkflowState(input)`.
-- Doctor: `const mode = stateTrackingMode(config)`. Run the `state` check when
-  `mode.doctorWorkflowCheck === "state"`, else the `labels` check. Spread
-  `mode.ignoredStatePaths` into the excludes paths in place of the `STATE_DIR`
-  expression. Remove the `STATE_DIR` import if it has no other use.
+- Doctor: `const mode = stateTrackingMode(config)`. Select the check with an
+  exhaustive `switch (mode.doctorWorkflowCheck)`: `"state"` runs the state check
+  and `"labels"` runs the labels check. A default branch assigns the value to
+  `never`, so a new tag fails type checking. Spread `mode.ignoredStatePaths`
+  into the excludes paths in place of the `STATE_DIR` expression. Remove the
+  `STATE_DIR` import if it has no other use.
 - Release:
   `const { ready, inProgress } = stateTrackingMode(config).statusTitles(config);`
   Remove the `WORKFLOW_STATUS_TITLES` import.
@@ -164,7 +169,7 @@ object with an exhaustive `switch` on `config.workflow.stateTracking`.
 - [ ] **Step 5: Run the tests and make sure that they pass**
 
 Run:
-`devenv shell -- node --test src/kernel/state-tracking-mode.test.ts src/cli/commands/doctor/checks.test.ts src/cli/commands/release/main.test.ts src/cli/commands/labels/main.test.ts src/kernel/run-once.test.ts`
+`devenv shell -- node --test src/kernel/state-tracking-mode.test.ts src/cli/commands/doctor/checks.test.ts src/cli/commands/release/main.test.ts src/cli/commands/labels/main.test.ts src/kernel/run-once.test.ts src/kernel/local-mode.test.ts`
 Expected: PASS, with no change to the existing test files.
 
 Run: `rg -n 'stateTracking === "local"' src` Expected: one match only, in
@@ -183,7 +188,7 @@ git commit -m "refactor(kernel): answer mode questions from one object per state
 
 **Files:**
 
-- Modify: `src/kernel/merged-cleanup.ts:120-125`
+- Modify: `src/kernel/merged-cleanup.ts:124-130`
 - Modify: `src/kernel/merged-cleanup-hook.test.ts:86`
 - Test: `src/kernel/merged-cleanup-safety.test.ts`
 
@@ -231,7 +236,9 @@ test("an aborted cleanup with nothing left is skipped", async (t) => {
 
 Run:
 `devenv shell -- node --test src/kernel/merged-cleanup-safety.test.ts src/kernel/merged-cleanup-hook.test.ts`
-Expected: FAIL. The first test and the changed hook assertion get `skipped`.
+Expected: FAIL. The first test and the changed hook assertion get `skipped`. The
+unconfirmed and aborted tests are guard tests. They pass before the change and
+must still pass after it.
 
 - [ ] **Step 3: Change the "no registered worktree and no branch" return in
       `cleanupMergedIssue` from `result("skipped")` to `result("cleaned")`**
@@ -260,6 +267,7 @@ git commit -m "feat(kernel): report cleaned when a merged issue has nothing left
   block at about line 147, and the `finally` at the end)
 - Modify: `src/kernel/merged-cleanup-sweep.ts` (`sweepMergedIssues`)
 - Create: `src/kernel/run-once-held-lock.test.ts`
+- Test: `src/kernel/merged-cleanup-sweep.test.ts`
 
 **Interfaces:**
 
@@ -294,12 +302,19 @@ test("a caller-held lock runs the issue and is still held after the outcome", as
 
 test("a caller-held lock is still held when the run throws", async (t) => {
   const c = await setupRun(t);
-  c.host.viewIssue = async () => {
-    throw new Error("host down");
+  // The same failure as in run-once-failures.test.ts: it throws after the lock
+  // block, inside the try that the finally closes.
+  c.deps.git.fetch = async () => {
+    const root = dirname(c.lockPath);
+    const runId = (await fs.readdir(root)).find((name) => name !== "lock")!;
+    await fs.mkdir(join(root, runId, "result.json"));
+    throw new Error("fetch failed");
   };
   const lock = await acquireLock(c.lockPath);
   try {
-    await assert.rejects(c.run({ issue: 9, heldLock: lock }), /host down/);
+    await assert.rejects(c.run({ issue: 9, heldLock: lock }), {
+      code: "EISDIR",
+    });
     await assert.rejects(acquireLock(c.lockPath), LockHeldError);
   } finally {
     await lock.release();
@@ -336,11 +351,20 @@ entry, and that `c.worktree` does not exist:
 If the fixture's `c.output` is not a mutable array, collect the output length
 before the second run and slice it afterwards.
 
+Add one test to `src/kernel/merged-cleanup-sweep.test.ts`, with the existing
+`setupCleanup` and `anotherIssue` helpers in that file:
+
+- "the sweep passes over skipIssue and still cleans other merged issues": call
+  `sweepMergedIssues({ ...c.services, skipIssue: 9 })`. Assert that `c.worktree`
+  still exists, that the issue-10 worktree that `anotherIssue` returns is
+  removed, and that `c.output` has no line that names `Issue #9`.
+
 - [ ] **Step 2: Run the tests to make sure that they fail**
 
 Run: `devenv shell -- node --test src/kernel/run-once-held-lock.test.ts`
-Expected: FAIL. Type checking rejects `heldLock`, or at run time the run refuses
-with "another Run attempt is active".
+Expected: FAIL at run time. `node --test` does not type-check. The run refuses
+with "another Run attempt is active", and the refusal tests resolve instead of
+rejecting. `npm test` also fails `check:types` on the unknown `heldLock` field.
 
 - [ ] **Step 3: Implement the option**
 
@@ -348,10 +372,11 @@ In `runOneIssue`, before the sweep:
 
 - If `options.heldLock` is set and `options.issue` is undefined, throw
   `new Error("A held lock requires an issue number.")`.
-- If `resolve(options.heldLock.path)` is not the issue lock path, throw an
+- If `resolve(options.heldLock.path)` is not
+  `join(resolve(repoRoot, config.paths.runsDir, "issue-<N>"), "lock")`, throw an
   `Error` with the message `The held lock does not own issue #<N>'s lock path.`
-  The issue lock path is the `lock` file in the issue directory that
-  `runOneIssue` already computes as `issueDir`. Compute it before the sweep.
+  Compute this expected path only when `heldLock` is set. Leave the existing
+  `issueDir` where it is.
 
 Pass `skipIssue: options.issue` to `sweepMergedIssues` when `heldLock` is set.
 In the lock block, use `options.heldLock` when it is set, and call `acquireLock`
@@ -362,13 +387,13 @@ when `candidate.issue === input.skipIssue`.
 - [ ] **Step 4: Run the tests and make sure that they pass**
 
 Run:
-`devenv shell -- node --test src/kernel/run-once-held-lock.test.ts src/kernel/run-once*.test.ts src/kernel/interactive-*.test.ts src/kernel/merged-cleanup-sweep.test.ts`
+`devenv shell -- node --test src/kernel/run-once*.test.ts src/kernel/interactive-*.test.ts src/kernel/merged-cleanup-sweep.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/kernel/run-once.ts src/kernel/merged-cleanup-sweep.ts src/kernel/run-once-held-lock.test.ts
+git add src/kernel/run-once.ts src/kernel/merged-cleanup-sweep.ts src/kernel/run-once-held-lock.test.ts src/kernel/merged-cleanup-sweep.test.ts
 git commit -m "feat(kernel): let runOneIssue use a per-issue lock its caller holds"
 ```
 
@@ -411,8 +436,9 @@ git commit -m "feat(kernel): let runOneIssue use a per-issue lock its caller hol
 
 - [ ] **Step 2: Run the tests to make sure that they fail**
 
-Run: `devenv shell -- node --test src/kernel/triage.test.ts` Expected: FAIL.
-Type checking rejects `beforeWrite`, or the check is never called.
+Run: `devenv shell -- node --test src/kernel/triage.test.ts` Expected: FAIL at
+run time, because `runTriage` never calls the check. The dry-run test is a guard
+test. It passes before the change and must still pass after it.
 
 - [ ] **Step 3: Implement the check**
 
@@ -443,6 +469,7 @@ git commit -m "feat(kernel): let runTriage stop before a write when a pre-write 
 
 - Modify: `package.json:77-79`
 - Modify: `package-lock.json` (root package `engines` only)
+- Modify: `npm-shrinkwrap.json` (root package `engines` only)
 - Modify: `README.md:61`
 
 No automated test. The Testing Value Gate excludes tests that only assert a
@@ -451,19 +478,28 @@ below.
 
 - [ ] **Step 1: Raise the floor**
 
-Set `"node": ">=24"` in `package.json` `engines`. Run
-`devenv shell -- npm install --package-lock-only --ignore-scripts`. Change the
-README line to `- Node.js 24 or later.`
+Set `"node": ">=24"` in `package.json` `engines`. Make the same edit by hand in
+the root package entry (`packages[""].engines.node`, about line 37) of both
+`package-lock.json` and `npm-shrinkwrap.json`. Do not run `npm install`: when
+both files exist, npm writes only the shrinkwrap. Change the README line to
+`- Node.js 24 or later.`
 
 - [ ] **Step 2: Inspect the change**
 
-Run: `git diff package.json package-lock.json README.md` Expected: only the two
-`engines.node` lines and the README line change. If the lock file shows other
-changes, revert it and edit the root `engines` line by hand.
+Run:
+`git diff --stat package.json package-lock.json npm-shrinkwrap.json README.md`
+Expected: one changed line in each of the four files.
+
+Run: `cmp package-lock.json npm-shrinkwrap.json` Expected: no output, exit
+code 0.
+
+Run: `jq '.packages[""].engines' package-lock.json npm-shrinkwrap.json`
+Expected: `{ "node": ">=24" }` twice.
 
 Run:
-`rg -n '22\.19' --glob '!site/**' --glob '!docs/specs/**' --glob '!docs/plans/**' --glob '!node_modules/**' .`
-Expected: no match.
+`rg -n '22\.19' --glob '!site/**' --glob '!docs/specs/**' --glob '!docs/plans/**' --glob '!node_modules/**' --glob '!package-lock.json' --glob '!npm-shrinkwrap.json' .`
+Expected: no match. The lock files keep `engines` entries of dependencies, which
+this change does not touch.
 
 - [ ] **Step 3: Run the full verification**
 
@@ -481,7 +517,7 @@ it again.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add package.json package-lock.json README.md
+git add package.json package-lock.json npm-shrinkwrap.json README.md
 git commit -m "chore: require Node 24 or later"
 ```
 
