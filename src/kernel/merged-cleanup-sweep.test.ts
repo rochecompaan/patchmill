@@ -241,3 +241,15 @@ test("already-aborted sweep does not discover or acquire locks", async (t) => {
   await fs.access(c.worktree);
   await assert.rejects(fs.access(c.counter));
 });
+
+test("the sweep passes over skipIssue and still cleans other merged issues", async (t) => {
+  const c = await setupCleanup(t);
+  const other = await anotherIssue(c);
+  await sweepMergedIssues({ ...c.services, skipIssue: 9 });
+  await fs.access(c.worktree);
+  await assert.rejects(fs.access(other));
+  assert.equal(
+    c.output.some((line) => line.includes("Issue #9")),
+    false,
+  );
+});
