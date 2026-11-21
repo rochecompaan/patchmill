@@ -225,6 +225,8 @@ flowchart TD
   `fs-ext` fails to load there (`ERR_DLOPEN_FAILED`). The final 120-second npm
   dry run was not run.
 - **Final body SHA-256:** spec
-  `3780ff4f6be2865accec90f444be6d6b3b4524a4c5bdd5607bc87fb05d88ca51`, plan
-  `8ddeef53ede11b999ba451f74a720cec645d5b183e0835c773ec476e11bc36c3`.
+  `85dfdae1c3ecf3e0e18bba723a24ba74d263bd4f9baa2105eacfe89c40c8ca62`, plan
+  `36dddfd5d64d519ae1f64266f5a5d857419254b1cdbbbe78e24cd9f6e1d4a562`. These
+  hashes differ from the confirmed hashes only by the blank line before this
+  record. Without that line, the bodies hash to the confirmed values.
 - **Outcome:** `ready`.
