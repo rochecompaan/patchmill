@@ -58,7 +58,7 @@ change the skills, as [Skills](#skills) describes. The
 
 - A git repository with an `origin` remote on GitHub, Forgejo, or Gitea.
 - The `gh` or `tea` CLI, logged in to that host.
-- Node.js 22.19.0 or later.
+- Node.js 24 or later.
 - An account with a model provider that Pi supports, by subscription or API key.
 
 ## Quickstart
