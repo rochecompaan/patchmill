@@ -590,8 +590,8 @@ None.
   - R4, `git diff --stat` and `jq` output shape. Rejected: cosmetic, and the
     `cmp` and `jq` values are exact.
 - Final body SHA-256: spec
-  `bf7042e3871a2fa06024db9155ca3db976bafd2b5f75886bb2464792302efbb1`, plan
-  `1c9663a60b6c093a42f600741764daa95f1293c2a4c9ffe14fbfe6e04ddb18f4`.
+  `4b6d83ad8928a87a644885b0194ce0cd6a3998736364952f950b6294d1f8e566`, plan
+  `3230aff96aeb9f384ff746d15d14f1e02fb0f635bc466e1982622255899e0343`.
 - Specification body SHA-256 compared with the plan:
-  `bf7042e3871a2fa06024db9155ca3db976bafd2b5f75886bb2464792302efbb1`.
+  `4b6d83ad8928a87a644885b0194ce0cd6a3998736364952f950b6294d1f8e566`.
 - Outcome: `ready`.
