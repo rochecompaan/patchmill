@@ -185,3 +185,30 @@ test("base branch resolution honors an explicit non-default base", async (t) => 
   });
   assert.equal((await c.cleanup()).status, "cleaned");
 });
+
+test("a confirmed merge with nothing left is cleaned without a hook or log entry", async (t) => {
+  const c = await setupCleanup(t);
+  assert.equal((await c.cleanup()).status, "cleaned");
+  const log = await fs.readFile(join(c.issueDir, "cleanup.log"), "utf8");
+  assert.deepEqual(await c.cleanup(), { status: "cleaned", warnings: [] });
+  assert.equal(await fs.readFile(join(c.issueDir, "cleanup.log"), "utf8"), log);
+  assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\n");
+});
+
+test("an unconfirmed merge with nothing left is skipped", async (t) => {
+  const c = await setupCleanup(t);
+  assert.equal((await c.cleanup()).status, "cleaned");
+  await c.mutate((state) => {
+    state.pullRequests[0]!.state = "open";
+  });
+  assert.equal((await c.cleanup()).status, "skipped");
+});
+
+test("an aborted cleanup with nothing left is skipped", async (t) => {
+  const c = await setupCleanup(t);
+  assert.equal((await c.cleanup()).status, "cleaned");
+  assert.equal(
+    (await c.cleanup({ signal: AbortSignal.abort() })).status,
+    "skipped",
+  );
+});
