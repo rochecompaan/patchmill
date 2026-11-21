@@ -6,7 +6,8 @@ import type { Host } from "../../../host/types.ts";
 import { supervisePi } from "../../../kernel/pi-supervisor.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { commandOutput, type CommandRunner } from "../../../process/command.ts";
-import { STATE_DIR, stateDir, StateStore } from "../../../state/store.ts";
+import { stateDir, StateStore } from "../../../state/store.ts";
+import { stateTrackingMode } from "../../../kernel/state-tracking-mode.ts";
 import type { PiCommandSpec } from "../../pi-cli.ts";
 
 type ProbeResult =
@@ -73,27 +74,35 @@ export async function runDoctorChecks(deps: {
       ? { ok: true }
       : { ok: false, message: result.message || "Host CLI check failed" };
   });
-  if (config.workflow.stateTracking === "local") {
-    await check("state", "fail", async () => {
-      await checkStateWritable(repoRoot);
-      const cursor = await new StateStore(stateDir(repoRoot)).readCursor();
-      return {
-        ok: true,
-        message: cursor
-          ? `Synced up to ${cursor.syncedUpTo}`
-          : "Writable, not synced yet",
-      };
-    });
-  } else {
-    await check("labels", "fail", async () => {
-      const labels = await host.listLabels();
-      const missing = Object.values(config.labels).filter(
-        (name) => !labels.includes(name),
-      );
-      return missing.length
-        ? { ok: false, message: `Missing labels: ${missing.join(", ")}` }
-        : { ok: true };
-    });
+  const mode = stateTrackingMode(config);
+  switch (mode.doctorWorkflowCheck) {
+    case "state":
+      await check("state", "fail", async () => {
+        await checkStateWritable(repoRoot);
+        const cursor = await new StateStore(stateDir(repoRoot)).readCursor();
+        return {
+          ok: true,
+          message: cursor
+            ? `Synced up to ${cursor.syncedUpTo}`
+            : "Writable, not synced yet",
+        };
+      });
+      break;
+    case "labels":
+      await check("labels", "fail", async () => {
+        const labels = await host.listLabels();
+        const missing = Object.values(config.labels).filter(
+          (name) => !labels.includes(name),
+        );
+        return missing.length
+          ? { ok: false, message: `Missing labels: ${missing.join(", ")}` }
+          : { ok: true };
+      });
+      break;
+    default: {
+      const unknown: never = mode.doctorWorkflowCheck;
+      throw new Error(`Unknown doctor workflow check: ${String(unknown)}`);
+    }
   }
   await check("excludes", "warn", async () => {
     const warnings: string[] = [];
@@ -101,7 +110,7 @@ export async function runDoctorChecks(deps: {
       config.paths.worktreeDir,
       config.paths.runsDir,
       config.pi.agentDir,
-      ...(config.workflow.stateTracking === "local" ? [`${STATE_DIR}/`] : []),
+      ...mode.ignoredStatePaths,
     ]) {
       try {
         const result = await runner("git", ["check-ignore", "-q", path], {

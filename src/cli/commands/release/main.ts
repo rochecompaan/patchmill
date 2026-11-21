@@ -1,4 +1,4 @@
-import { WORKFLOW_STATUS_TITLES } from "../../../kernel/workflow-state.ts";
+import { stateTrackingMode } from "../../../kernel/state-tracking-mode.ts";
 import { resolve } from "node:path";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
@@ -56,9 +56,7 @@ export async function main(
       });
       const issue = await workflow.issue(issueNumber);
       const { ready, inProgress } =
-        config.workflow.stateTracking === "local"
-          ? WORKFLOW_STATUS_TITLES
-          : config.labels;
+        stateTrackingMode(config).statusTitles(config);
       if (issue.status !== "inProgress") {
         output.stdout(`Issue #${issueNumber}: nothing to release.`);
       } else {

@@ -8,10 +8,8 @@ import type { KernelGit } from "./git.ts";
 import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
-import {
-  WORKFLOW_STATUS_TITLES,
-  type WorkflowState,
-} from "./workflow-state.ts";
+import type { WorkflowState } from "./workflow-state.ts";
+import { stateTrackingMode } from "./state-tracking-mode.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
   preparePhasePrompt,
@@ -528,9 +526,7 @@ export async function runOneIssue(
         summary: stop.summary,
         warnings: [...stop.warnings, ...publicationErrors],
         outcomeLabel:
-          config.workflow.stateTracking === "local"
-            ? WORKFLOW_STATUS_TITLES[stop.label]
-            : config.labels[stop.label],
+          stateTrackingMode(config).statusTitles(config)[stop.label],
         logPath: join(runDir, "pi.log"),
         sessionPath: join(runDir, "sessions"),
         cost,
