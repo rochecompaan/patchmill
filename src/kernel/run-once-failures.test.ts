@@ -7,6 +7,7 @@ import {
   spec,
   plan,
   done,
+  implement,
 } from "../../test-support/run-once-fixture.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import type {
@@ -189,12 +190,57 @@ test("claimed errors become needs-info and cleanup host errors cannot leak owner
   await lock.release();
 });
 
-test("aborted signal stops the claimed attempt without starting Pi", async (t) => {
+test("an aborted signal before the claim returns no-work without a claim", async (t) => {
   const c = await setupRun(t);
-  const signal = AbortSignal.abort();
-  await c.run({ signal });
-  assert.match(c.host.state().issues[0]!.comments[0]!.body, /aborted/);
+  const outcome = await c.run({ signal: AbortSignal.abort() });
+  assert.deepEqual(outcome, { status: "no-work" });
+  const state = c.host.state();
+  assert.deepEqual(state.issues[0]!.comments, []);
+  assert.equal(
+    state.calls.some((call) => call.startsWith("setLabels")),
+    false,
+  );
   await assert.rejects(fs.stat(`${c.script}.counter`), { code: "ENOENT" });
+});
+
+test("an abort that makes the run throw pauses without publishing", async (t) => {
+  const c = await setupRun(t);
+  const controller = new AbortController();
+  let callsAtAbort = 0;
+  c.deps.git.fetch = async () => {
+    controller.abort();
+    callsAtAbort = c.host.state().calls.length;
+    throw new Error("fetch failed");
+  };
+  const outcome = await c.run({ signal: controller.signal });
+  assert.deepEqual(outcome, {
+    status: "paused",
+    issue: 9,
+    summary: "Run paused.",
+  });
+  const later = c.host.state().calls.slice(callsAtAbort);
+  assert.equal(
+    later.some((call) => /^(setLabels|commentIssue)/.test(call)),
+    false,
+    later.join(", "),
+  );
+  const state = c.host.state();
+  assert.deepEqual(state.issues[0]!.labels, ["in-progress"]);
+  assert.deepEqual(state.issues[0]!.comments, []);
+});
+
+test("a done stop still publishes after a late abort", async (t) => {
+  const c = await setupRun(t, [implement]);
+  await c.seed({ [spec]: "spec", [plan]: "plan" });
+  const controller = new AbortController();
+  const unpushed = c.deps.git.unpushedCommits.bind(c.deps.git);
+  c.deps.git.unpushedCommits = async (...args) => {
+    controller.abort();
+    return unpushed(...args);
+  };
+  const outcome = await c.run({ signal: controller.signal });
+  assert.equal(outcome.status, "completed");
+  assert.ok(c.host.state().issues[0]!.labels.includes("agent-done"));
 });
 
 test("revision result still requires a verified done result", async (t) => {
@@ -406,6 +452,16 @@ for (const mode of [
       controller.abort();
     }
     const outcome = await running;
+    if (mode === "abort") {
+      // An aborted unattended run pauses: it publishes nothing after the claim.
+      assert.equal(outcome.status, "paused");
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0]!.status, "inProgress");
+      const { result } = await c.records();
+      assert.equal(result.outcome.status, "paused");
+      assert.equal(result.progress.outcome.label, "inProgress");
+      return;
+    }
     assert.equal(outcome.status, "stopped");
     if (outcome.status === "stopped") assert.equal(outcome.label, "needsInfo");
     assert.equal(updates.length, 2);

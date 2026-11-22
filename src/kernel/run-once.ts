@@ -164,6 +164,8 @@ export async function runOneIssue(
     config.paths.runsDir,
     `issue-${issueNumber}`,
   );
+  // A stop request that arrived before the claim leaves the issue untouched.
+  if (options.signal?.aborted) return { status: "no-work" };
   let lock: IssueLock;
   try {
     lock = heldLock ?? (await acquireLock(join(issueDir, "lock"), { now }));
@@ -371,9 +373,9 @@ export async function runOneIssue(
             : {}),
         });
         await snapshot.session();
-        // Only a console shutdown aborts an interactive session: a pause,
+        // A console shutdown or a stop request aborts a session: a pause,
         // not a failure. Publish nothing; the next start continues the run.
-        if (deps.human && session.aborted) {
+        if ((deps.human || options.signal?.aborted) && session.aborted) {
           paused = true;
           stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
           break;
@@ -466,6 +468,12 @@ export async function runOneIssue(
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
+    // A stop request pauses an unfinished unattended attempt too, also when
+    // the abort made it throw. Verified completed work still publishes.
+    if (options.signal?.aborted && !published && stop.label !== "done") {
+      paused = true;
+      stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
+    }
     if (!published && !paused) await publish();
     if (stop.label === "done" && displayFacts?.stage === "implementation") {
       await cleanupMergedIssue({
