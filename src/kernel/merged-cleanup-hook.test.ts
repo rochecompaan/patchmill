@@ -83,7 +83,7 @@ for (const mode of ["dirty", "remove failure", "branch failure"] as const) {
     assert.equal((await c.cleanup()).status, "cleaned");
     assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\n");
     assert.equal(await c.localBranch(), false);
-    assert.equal((await c.cleanup()).status, "skipped");
+    assert.equal((await c.cleanup()).status, "cleaned");
   });
 }
 

@@ -7,11 +7,9 @@ import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { KernelGit } from "./git.ts";
 import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
-import { acquireLock, LockHeldError } from "./lock.ts";
-import {
-  WORKFLOW_STATUS_TITLES,
-  type WorkflowState,
-} from "./workflow-state.ts";
+import { acquireLock, LockHeldError, type IssueLock } from "./lock.ts";
+import type { WorkflowState } from "./workflow-state.ts";
+import { stateTrackingMode } from "./state-tracking-mode.ts";
 import type { HumanChannel } from "./human-channel.ts";
 import {
   preparePhasePrompt,
@@ -38,6 +36,7 @@ import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { projectRunProgress, writeRunProgress } from "./run-progress.ts";
 import { createRunHistory } from "./run-history.ts";
+import { gateWaitPublished } from "./gate-wait.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue } from "./merged-cleanup.ts";
@@ -49,6 +48,11 @@ export type RunOnceOptions = {
   dryRun?: boolean;
   planOnly?: boolean;
   signal?: AbortSignal;
+  /**
+   * The per-issue lock of `issue`, which the caller already holds. The run
+   * uses it instead of taking its own, and never releases it.
+   */
+  heldLock?: IssueLock;
 };
 export type RunOnceDeps = {
   human?: HumanChannel;
@@ -93,12 +97,26 @@ export async function runOneIssue(
 ): Promise<RunOnceOutcome> {
   const { host, git, repoRoot, now, output } = deps;
   const workflow = deps.workflow;
+  const { heldLock } = options;
+  if (heldLock) {
+    if (options.issue === undefined)
+      throw new Error("A held lock requires an issue number.");
+    const expected = join(
+      resolve(repoRoot, config.paths.runsDir, `issue-${options.issue}`),
+      "lock",
+    );
+    if (resolve(heldLock.path) !== expected)
+      throw new Error(
+        `The held lock does not own issue #${options.issue}'s lock path.`,
+      );
+  }
   if (!options.dryRun) {
     await sweepMergedIssues({
       ...deps,
       config,
       report: output.stderr,
       ...(options.signal ? { signal: options.signal } : {}),
+      ...(heldLock ? { skipIssue: options.issue } : {}),
     });
   }
   await workflow.sync(options.issue);
@@ -147,9 +165,11 @@ export async function runOneIssue(
     config.paths.runsDir,
     `issue-${issueNumber}`,
   );
-  let lock;
+  // A stop request that arrived before the claim leaves the issue untouched.
+  if (options.signal?.aborted) return { status: "no-work" };
+  let lock: IssueLock;
   try {
-    lock = await acquireLock(join(issueDir, "lock"), { now });
+    lock = heldLock ?? (await acquireLock(join(issueDir, "lock"), { now }));
   } catch (error) {
     if (error instanceof LockHeldError)
       return {
@@ -200,6 +220,8 @@ export async function runOneIssue(
   let paused = false;
   let totalOutputTokens = 0;
   let published = false;
+  // An unattended gate stop derived before any session in this attempt.
+  let derivedGateStop = false;
   const publicationErrors: string[] = [];
   const publish = async () => {
     publicationErrors.push(
@@ -288,6 +310,8 @@ export async function runOneIssue(
             sinceHuman = 0;
             continue;
           }
+          derivedGateStop =
+            stop.label === "inProgress" && !deps.human && !sessions.length;
           break;
         }
         if (
@@ -354,9 +378,9 @@ export async function runOneIssue(
             : {}),
         });
         await snapshot.session();
-        // Only a console shutdown aborts an interactive session: a pause,
+        // A console shutdown or a stop request aborts a session: a pause,
         // not a failure. Publish nothing; the next start continues the run.
-        if (deps.human && session.aborted) {
+        if ((deps.human || options.signal?.aborted) && session.aborted) {
           paused = true;
           stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
           break;
@@ -449,7 +473,21 @@ export async function runOneIssue(
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
-    if (!published && !paused) await publish();
+    // A stop request pauses an unfinished unattended attempt too, also when
+    // the abort made it throw. Verified completed work still publishes.
+    if (options.signal?.aborted && !published && stop.label !== "done") {
+      paused = true;
+      stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
+    }
+    const unchangedGateWait =
+      derivedGateStop &&
+      !published &&
+      !paused &&
+      stop.label === "inProgress" &&
+      (await gateWaitPublished({ issueDir, runId, summary: stop.summary }));
+    if (unchangedGateWait)
+      output.stderr("Unchanged planning gate wait; not republished.");
+    if (!published && !paused && !unchangedGateWait) await publish();
     if (stop.label === "done" && displayFacts?.stage === "implementation") {
       await cleanupMergedIssue({
         ...deps,
@@ -484,6 +522,7 @@ export async function runOneIssue(
           startedAt,
           finishedAt: now().toISOString(),
           outcome,
+          ...(unchangedGateWait ? { republished: false } : {}),
           sessions,
           progress: projectRunProgress(
             {
@@ -528,9 +567,7 @@ export async function runOneIssue(
         summary: stop.summary,
         warnings: [...stop.warnings, ...publicationErrors],
         outcomeLabel:
-          config.workflow.stateTracking === "local"
-            ? WORKFLOW_STATUS_TITLES[stop.label]
-            : config.labels[stop.label],
+          stateTrackingMode(config).statusTitles(config)[stop.label],
         logPath: join(runDir, "pi.log"),
         sessionPath: join(runDir, "sessions"),
         cost,
@@ -544,6 +581,6 @@ export async function runOneIssue(
     });
     return outcome;
   } finally {
-    await lock.release();
+    if (lock !== heldLock) await lock.release();
   }
 }

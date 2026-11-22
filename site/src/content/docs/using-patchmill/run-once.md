@@ -69,6 +69,11 @@ Several implementation branches stop with `needs-info`.
 | No required gate remains and both documents exist                   | Run implementation.                             |
 | Implementation PR is merged and closes the issue                    | Stop with `agent-done`.                         |
 
+While a required planning PR is open, an unattended run posts the waiting
+comment once. A later run with the same gate summary does not post it again. It
+writes `"republished": false` in its `result.json`. A changed gate, or a failed
+earlier comment, posts again.
+
 `workflow.specApproval.required` and `workflow.planApproval.required` both
 default off. With both on, merge the spec PR, then the plan PR, before
 implementation. Review approval or an approval label does not unlock either
@@ -167,6 +172,11 @@ cancellation, or termination, the kernel sends `SIGTERM` to the process group.
 After five seconds, it sends `SIGKILL` if needed. The kernel attempts label
 cleanup and closes the local lock handle in `finally`. A hard crash can still
 leave host labels unchanged.
+
+Ctrl-C or `SIGTERM` pauses an unattended run. Patchmill publishes no comment or
+label change, the issue stays `in-progress`, and the next start resumes it. A
+signal before the claim leaves the issue untouched. Verified completed work
+still publishes.
 
 ### Merged-issue cleanup
 

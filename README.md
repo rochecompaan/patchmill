@@ -58,7 +58,7 @@ change the skills, as [Skills](#skills) describes. The
 
 - A git repository with an `origin` remote on GitHub, Forgejo, or Gitea.
 - The `gh` or `tea` CLI, logged in to that host.
-- Node.js 22.19.0 or later (included in the Nix package).
+- Node.js 24 or later (included in the Nix package).
 - An account with a model provider that Pi supports, by subscription or API key.
 
 ## Installation
@@ -79,7 +79,7 @@ The Nix package includes Node.js, but you must provide Git and the authenticated
 
 ### npm
 
-With Node.js 22.19.0 or later installed:
+With Node.js 24 or later installed:
 
 ```sh
 npm install -g patchmill
@@ -123,13 +123,68 @@ patchmill run-once --plan-only      # stop after planning
 A dry run does not claim the issue and does not start Pi. If a planning gate
 waits for a merge, the issue stays `in-progress` and no Pi session runs. Merge
 the planning pull request, then run `patchmill run-once --issue N` again. Review
-approval alone does not unlock a gate.
+approval alone does not unlock a gate. While the gate waits, later runs do not
+post the same waiting comment again. They post a new comment only when the gate
+changes.
+
+Ctrl-C or `SIGTERM` pauses the run. Patchmill publishes nothing, the issue stays
+`in-progress`, and the next `run-once` resumes it.
 
 With both gates on, merge the spec pull request, then the plan pull request.
 Each later branch starts from the base branch with the merged documents.
 
 The [Run-once guide](https://patchmill.dev/using-patchmill/run-once/) explains
 gates, resume, and failures.
+
+### Run unattended
+
+`patchmill run` triages and runs issues one at a time until you stop it. Each
+pass is one `run-once` without `--issue`. Triage runs every
+`run.triageIntervalMinutes`. When no issue is eligible, or a planning gate waits
+for a merge, the runner waits. The wait grows to `run.idleBackoff` limits. After
+an error, it waits with the `run.errorBackoff` limits. Three Needs Info stops in
+a row also count as an error, so that a broken provider does not move each ready
+issue to `needs-info` without a pause.
+
+```sh
+patchmill run
+```
+
+Run it under a process supervisor. This is an example `systemd` unit:
+
+```ini
+[Unit]
+Description=Patchmill runner for my-repo
+
+[Service]
+WorkingDirectory=/srv/my-repo
+ExecStart=/usr/bin/env patchmill run
+Restart=on-failure
+RestartPreventExitStatus=2
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
+```
+
+The first `SIGINT` or `SIGTERM` stops the loop. The active run pauses and keeps
+its state for the next start. A second signal forces an exit. A forced exit can
+leave a Pi process running, so keep `KillMode=control-group` to stop the whole
+process group.
+
+| Exit code | Meaning                                                                               |
+| --------- | ------------------------------------------------------------------------------------- |
+| 0         | A clean stop after a signal.                                                          |
+| 1         | Invalid arguments, configuration, mode, or host CLI, a fatal error, or a forced exit. |
+| 2         | Another `patchmill run` owns this clone and its worktrees.                            |
+
+One runner owns a clone and all its worktrees. The lock does not cover a second
+clone. In local state mode, run one runner per repository. In label mode, two
+clones can still race for the same claim in a short window. The
+[Run unattended guide](https://patchmill.dev/using-patchmill/run/) gives more
+detail.
 
 ### Interactive issue runs
 
@@ -285,6 +340,7 @@ measurements, set `LAYOUT_EVIDENCE` to a local JSON path.
 | `patchmill labels setup`                                                   | Create missing labels.                                                                                                                  |
 | `patchmill triage [--dry-run]`                                             | Run the triage skill for each candidate issue. A dry run prints the labels and comment instead of applying them.                        |
 | `patchmill run-once [--issue N] [--dry-run] [--plan-only] [--interactive]` | Advance one issue. A dry run prints the selected issue and its next step without a claim and without Pi.                                |
+| `patchmill run`                                                            | Triage and run issues one at a time until stopped. See [Run unattended](#run-unattended).                                               |
 | `patchmill release --issue N`                                              | Clear a stale claim after a hard crash.                                                                                                 |
 | `patchmill status [--all] [--issue N]`                                     | Show workflow status in local state mode. Read blockers of ready and in-progress issues live from the tracker.                          |
 | `patchmill skills update`                                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files that the pack dropped. |
@@ -350,6 +406,11 @@ Each key is optional. Patchmill rejects unknown keys by name.
     "stateTracking": "labels",
     "specApproval": { "required": false },
     "planApproval": { "required": false }
+  },
+  "run": {
+    "triageIntervalMinutes": 5,
+    "idleBackoff": { "initialSeconds": 60, "maxSeconds": 900 },
+    "errorBackoff": { "initialSeconds": 30, "maxSeconds": 1800 }
   }
 }
 ```
@@ -362,6 +423,7 @@ These keys change the most:
   [local state](#local-state-mode).
 - `pi.timeoutMinutes` limits each Pi session.
 - `git.baseBranch: null` uses the default branch of the remote.
+- `run` sets the triage interval and the wait limits of `patchmill run`.
 
 The label names must be different from each other. The comparison ignores case.
 `init` does not change a valid configuration, and rejects an invalid one. The

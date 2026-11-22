@@ -1,6 +1,7 @@
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
 import { ensureLabels } from "../../../kernel/labels.ts";
+import { stateTrackingMode } from "../../../kernel/state-tracking-mode.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
 
@@ -37,8 +38,9 @@ export async function main(
   try {
     const repoRoot = options.repoRoot ?? process.cwd();
     const config = await loadConfig(repoRoot);
-    if (config.workflow.stateTracking === "local") {
-      output.stderr("Local state mode does not use labels.");
+    const setup = stateTrackingMode(config).labelsSetup;
+    if (!setup.allowed) {
+      output.stderr(setup.reason);
       return 1;
     }
     const host = createHost(config, options.runner ?? runCommand, repoRoot);

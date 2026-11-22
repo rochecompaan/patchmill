@@ -12,7 +12,7 @@ review-label settings are accepted but ignored.
 
 ### npm (non-Nix)
 
-With Node.js 22.19.0 or later, install with npm:
+With Node.js 24 or later, install with npm:
 
 ```sh
 npm install -g patchmill

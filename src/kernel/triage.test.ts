@@ -720,3 +720,94 @@ test("a failed triage comment after the swap warns and counts", async (t) => {
   assert.deepEqual(f.host.state().issues[0]!.labels, ["agent-ready"]);
   assert.match(f.stderr.join("\n"), /Comment failed: comment denied/);
 });
+
+function hostWrites(f: Awaited<ReturnType<typeof setup>>) {
+  return f.host
+    .state()
+    .calls.filter((call) =>
+      /^(addIssueDependency|setLabels|commentIssue):/.test(call),
+    ).length;
+}
+const blockedIssues = () => [
+  issue(9),
+  issue(1, ["agent-unsuitable"]),
+  issue(2, ["agent-unsuitable"]),
+];
+
+test("the pre-write check runs before each dependency link and status write", async (t) => {
+  const f = await setup(
+    t,
+    [block("agent-ready", "Wait", [1, 2])],
+    blockedIssues(),
+  );
+  const seen: number[] = [];
+  assert.deepEqual(
+    await f.run({
+      beforeWrite: async () => {
+        seen.push(hostWrites(f));
+      },
+    }),
+    [{ issue: 9, status: "ready", applied: true }],
+  );
+  assert.deepEqual(seen, [0, 1, 2]);
+});
+
+test("a throwing pre-write check stops triage before its first write", async (t) => {
+  const f = await setup(
+    t,
+    [block("agent-ready", "Wait", [1]), block()],
+    [issue(9), issue(10), issue(1, ["agent-unsuitable"])],
+  );
+  await assert.rejects(
+    f.run({
+      beforeWrite: async () => {
+        throw new Error("triage lock lost");
+      },
+    }),
+    /triage lock lost/,
+  );
+  assert.equal(hostWrites(f), 0);
+  assert.equal(
+    (await fs.readFile(join(f.root, "launches"), "utf8")).trim().split("\n")
+      .length,
+    1,
+  );
+});
+
+test("a check that throws at the status write keeps the dependency links", async (t) => {
+  const f = await setup(
+    t,
+    [block("agent-ready", "Wait", [1, 2])],
+    blockedIssues(),
+  );
+  let calls = 0;
+  await assert.rejects(
+    f.run({
+      beforeWrite: async () => {
+        if (++calls === 3) throw new Error("triage lock lost");
+      },
+    }),
+    /triage lock lost/,
+  );
+  const state = f.host.state();
+  assert.ok(state.calls.includes("addIssueDependency:9:1"));
+  assert.ok(state.calls.includes("addIssueDependency:9:2"));
+  assert.equal(state.calls.includes("setLabels:9"), false);
+});
+
+test("a dry run does not call the pre-write check", async (t) => {
+  const f = await setup(
+    t,
+    [block("agent-ready", "Wait", [1])],
+    [issue(9), issue(1, ["agent-unsuitable"])],
+  );
+  assert.deepEqual(
+    await f.run({
+      dryRun: true,
+      beforeWrite: async () => {
+        throw new Error("must not run");
+      },
+    }),
+    [{ issue: 9, status: "ready", applied: false }],
+  );
+});

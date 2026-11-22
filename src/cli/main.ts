@@ -3,6 +3,7 @@ import { main as doctorMain } from "./commands/doctor/main.ts";
 import { main as initMain } from "./commands/init/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
+import { main as runMain } from "./commands/run/main.ts";
 import { main as releaseMain } from "./commands/release/main.ts";
 import { main as statusMain } from "./commands/status/main.ts";
 import { main as labelsMain } from "./commands/labels/main.ts";
@@ -21,6 +22,7 @@ Commands:
   labels      Manage repository labels.
   triage      Classify repository issues for agent readiness.
   run-once    Advance one issue.
+  run         Triage and run issues until stopped.
   release     Reset an issue from in-progress to ready.
   status      Show local workflow state (local state mode).
   skills      Update the managed project-local skill pack.
@@ -108,6 +110,7 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["doctor", doctorMain],
   ["triage", triageMain],
   ["run-once", runOnceMain],
+  ["run", runMain],
   ["release", releaseMain],
   ["status", statusMain],
   ["labels", labelsMain],

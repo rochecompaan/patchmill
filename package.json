@@ -55,9 +55,9 @@
     "format:check": "prettier --check .",
     "prepare": "husky",
     "pretest": "npm run check:dependencies",
-    "test": "npm run check:types && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\" \"scripts/*.test.mjs\"",
+    "test": "npm run check:types && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test --test-timeout=120000 --test-force-exit \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\" \"scripts/*.test.mjs\"",
     "check:types": "tsc -p tsconfig.quality.json",
-    "test:cli": "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test bin/*.test.ts src/cli/main.test.ts",
+    "test:cli": "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test --test-timeout=120000 --test-force-exit bin/*.test.ts src/cli/main.test.ts",
     "test:web": "node scripts/check-serve-layout.mjs && node scripts/check-web-session.mjs && node scripts/check-web-presence.mjs && node scripts/check-document-sandbox.mjs",
     "site:dev": "npm --prefix site run dev",
     "site:build": "npm --prefix site run build",
@@ -75,7 +75,7 @@
     }
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=24"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

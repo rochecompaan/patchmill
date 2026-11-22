@@ -39,6 +39,23 @@ issue lock. Ungated documents go into the next required planning pull request,
 or the implementation pull request when no later gate is required. With both
 gates off, planning writes both documents and continues to implementation.
 
+## Run loop
+
+The `run` section controls `patchmill run`. Other commands ignore it.
+
+| Key                               | Default | Meaning                                 |
+| --------------------------------- | ------- | --------------------------------------- |
+| `run.triageIntervalMinutes`       | `5`     | Minimum time between two triage runs.   |
+| `run.idleBackoff.initialSeconds`  | `60`    | First wait when no issue is eligible.   |
+| `run.idleBackoff.maxSeconds`      | `900`   | Longest wait when no issue is eligible. |
+| `run.errorBackoff.initialSeconds` | `30`    | First wait after a failed pass.         |
+| `run.errorBackoff.maxSeconds`     | `1800`  | Longest wait after failed passes.       |
+
+Each wait doubles after each pass of the same kind, up to its maximum. Jitter
+makes the actual wait between half and all of that value. A pass that does work
+resets both waits. Each value must be a number greater than 0. Each `maxSeconds`
+must be at least its `initialSeconds` and at most `2147483` (about 24 days).
+
 ## Paths and git
 
 `paths` contains `specsDir`, `plansDir`, `worktreeDir`, and `runsDir`. The
@@ -121,6 +138,11 @@ returns to the shell without opening Pi chat. See
   "workflow": {
     "specApproval": { "required": false },
     "planApproval": { "required": false }
+  },
+  "run": {
+    "triageIntervalMinutes": 5,
+    "idleBackoff": { "initialSeconds": 60, "maxSeconds": 900 },
+    "errorBackoff": { "initialSeconds": 30, "maxSeconds": 1800 }
   }
 }
 ```
