@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -67,10 +74,18 @@ test("provisioning writes and repairs the implementation worker without rewritin
   await agent.provisionAgentDir(root, "agent");
   const content = await readFile(file, "utf8");
   assert.match(content, /name: patchmill-implementation/);
-  assert.match(
-    content,
-    /tools: read, grep, find, ls, bash, edit, write, subagent/,
+  const tools =
+    /^tools: read, grep, find, ls, bash, edit, write, subagent, bg_wait, subagent_supervisor$/m;
+  assert.match(content, tools);
+  const skills = join(root, "skills");
+  await mkdir(skills);
+  await agent.provisionAgentDir(root, "skilled", [skills]);
+  const skilled = await readFile(
+    join(root, "skilled/agents/patchmill-implementation.md"),
+    "utf8",
   );
+  assert.match(skilled, /^skillPath: /m);
+  assert.match(skilled, tools);
   const before = (await stat(file)).mtimeMs;
   await agent.provisionAgentDir(root, "agent");
   assert.equal((await stat(file)).mtimeMs, before);
