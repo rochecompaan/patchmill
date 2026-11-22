@@ -36,6 +36,7 @@ import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { projectRunProgress, writeRunProgress } from "./run-progress.ts";
 import { createRunHistory } from "./run-history.ts";
+import { gateWaitPublished } from "./gate-wait.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue } from "./merged-cleanup.ts";
@@ -219,6 +220,9 @@ export async function runOneIssue(
   let paused = false;
   let totalOutputTokens = 0;
   let published = false;
+  // An unattended gate stop derived before any session in this attempt.
+  let derivedGateStop = false;
+  let republished = true;
   const publicationErrors: string[] = [];
   const publish = async () => {
     publicationErrors.push(
@@ -307,6 +311,8 @@ export async function runOneIssue(
             sinceHuman = 0;
             continue;
           }
+          derivedGateStop =
+            stop.label === "inProgress" && !deps.human && !sessions.length;
           break;
         }
         if (
@@ -474,6 +480,17 @@ export async function runOneIssue(
       paused = true;
       stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
     }
+    if (
+      derivedGateStop &&
+      !published &&
+      !paused &&
+      stop.label === "inProgress" &&
+      (await gateWaitPublished({ issueDir, runId, summary: stop.summary }))
+    ) {
+      published = true;
+      republished = false;
+      output.stderr("Unchanged planning gate wait; not republished.");
+    }
     if (!published && !paused) await publish();
     if (stop.label === "done" && displayFacts?.stage === "implementation") {
       await cleanupMergedIssue({
@@ -509,6 +526,7 @@ export async function runOneIssue(
           startedAt,
           finishedAt: now().toISOString(),
           outcome,
+          ...(republished ? {} : { republished: false }),
           sessions,
           progress: projectRunProgress(
             {
