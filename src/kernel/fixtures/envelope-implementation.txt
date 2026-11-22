@@ -56,6 +56,7 @@ Last comment
 Hard rules:
 
 - Commit and push your work before you finish.
+- Do not end your turn while a subagent run that you started or resumed is still running. Wait for it in the same turn with `bg_wait({ id, stopOnAttention: false })`, then read its result.
 - Never push the base branch.
 - Never force-push.
 - Never change labels or post issue comments.

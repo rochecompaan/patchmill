@@ -26,7 +26,10 @@ if (!sessionDir) throw new Error("--session-dir is required");
 await fs.mkdir(sessionDir, { recursive: true });
 await fs.writeFile(
   join(sessionDir, "fake.jsonl"),
-  '{"usage":{"input":100,"output":20,"cost":{"total":0.05}}}\n',
+  '{"usage":{"input":100,"output":20,"cost":{"total":0.05}}}\n' +
+    (step.sessionEntries ?? [])
+      .map((entry) => `${JSON.stringify(entry)}\n`)
+      .join(""),
 );
 async function sideEffects() {
   for (const [path, content] of Object.entries(step.writeFiles ?? {})) {

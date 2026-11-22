@@ -71,6 +71,10 @@ export function registerConsoleTools(
     name: "patchmill_run_status",
     label: "Issue run status",
     description: "Show the current Issue run, worker, wait and estimated cost.",
+    promptGuidelines: [
+      "When you answer a Patchmill worker's supervisor request with `subagent_supervisor`, never tell the worker to yield, to end its turn, or to end without its JSON result. A worker runs as a subagent: its run ends with its turn, and nothing wakes it later.",
+      "Tell the worker to wait for its own subagent runs in the same turn with `bg_wait({ id })`, and then to finish with its JSON result.",
+    ],
     parameters: Type.Object({}),
     async execute() {
       return text(JSON.stringify(controller().status(), null, 2));

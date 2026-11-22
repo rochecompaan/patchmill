@@ -36,7 +36,8 @@ export type PhaseLaunch = {
 export type PhaseRun = {
   planningApproval?: "pr" | "no-pr";
   result: ParsedResult;
-  session: Pick<PiSession, "exitCode" | "timedOut" | "aborted">;
+  session: Pick<PiSession, "exitCode" | "timedOut" | "aborted"> &
+    Partial<Pick<PiSession, "signal">>;
 };
 export type PhaseLauncher = (launch: PhaseLaunch) => Promise<PhaseRun>;
 

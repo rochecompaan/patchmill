@@ -81,6 +81,9 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
       : reviewed
         ? "Commit your work before submitting, but do not push. Only Patchmill pushes the documents to the implementation branch, after the maintainer reviews them. This overrides the skill's push requirement."
         : "Commit and push your work before you finish.",
+    waitRules: interactivePlanning
+      ? ""
+      : "\n- Do not end your turn while a subagent run that you started or resumed is still running. Wait for it in the same turn with `bg_wait({ id, stopOnAttention: false })`, then read its result.",
     humanRules: interactivePlanning
       ? "A maintainer is present in this chat. Ask them your questions here and wait for their answers. Do not return `needs-input` for questions."
       : "Put questions in the summary.\n- End with the JSON block. Do not put text after it.",

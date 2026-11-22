@@ -16,7 +16,8 @@ export type VerifyInput = {
   repository: Pick<Repository, "owner" | "repo">;
   phase: Phase;
   result: ParsedResult;
-  session: Pick<PiSession, "exitCode" | "timedOut" | "aborted">;
+  session: Pick<PiSession, "exitCode" | "timedOut" | "aborted"> &
+    Partial<Pick<PiSession, "signal">>;
   facts: Facts;
   logPath: string;
   uncommitted: boolean;
@@ -50,6 +51,7 @@ function missingResultBlock(input: VerifyInput): boolean {
     !result.ok &&
     result.missing === true &&
     session.exitCode === 0 &&
+    !session.signal &&
     !session.timedOut &&
     !session.aborted &&
     input.phase === "implementation"
@@ -78,13 +80,32 @@ function pullRequestGaps(input: VerifyInput): string[] {
   return missing;
 }
 
+/** A clean exit is code 0 without a signal; anything else is abnormal. */
+function abnormalExit(session: VerifyInput["session"]): string | undefined {
+  if (session.signal)
+    return `Pi was stopped by signal ${session.signal} after a done result.`;
+  if (session.exitCode === 0) return undefined;
+  if (session.exitCode === null)
+    return "Pi exited without an exit code after a done result.";
+  return `Pi exited with code ${session.exitCode} after a done result.`;
+}
+
 export function verifyOutcome(input: VerifyInput): Outcome {
   const { result, session, facts } = input;
   const missingBlock = missingResultBlock(input);
   const failures: string[] = [];
   if (session.timedOut) failures.push("The session timed out.");
   if (session.aborted) failures.push("The session was aborted.");
-  if (!result.ok && !missingBlock) failures.push(result.reason);
+  if (!result.ok) {
+    if (!missingBlock) failures.push(result.reason);
+  } else if (
+    result.result.status === "done" &&
+    !session.timedOut &&
+    !session.aborted
+  ) {
+    const abnormal = abnormalExit(session);
+    if (abnormal) failures.push(abnormal);
+  }
 
   let label: OutcomeLabel = "needsInfo";
   let reason: string;
@@ -153,7 +174,11 @@ export function verifyOutcome(input: VerifyInput): Outcome {
   return {
     kind: "stop",
     label,
-    comment: [reason, summary, `Exit code: ${session.exitCode}`]
+    comment: [
+      reason,
+      summary,
+      `Exit code: ${session.exitCode}${session.signal ? ` (signal ${session.signal})` : ""}`,
+    ]
       .filter(Boolean)
       .join("\n\n"),
     warnings,

@@ -169,6 +169,11 @@ export async function runRpc({ step, script, sideEffects }) {
     lines.push(`\`\`\`json\n${JSON.stringify(step.result)}\n\`\`\``);
   message(lines.join("\n"));
   if (step.sleepMs) await sleep(step.sleepMs);
+  // A crash after the result: an external kill, such as the OOM killer.
+  if (step.killSignal) {
+    process.kill(process.pid, step.killSignal);
+    await new Promise(() => {});
+  }
   if (step.exitCode) process.exit(step.exitCode);
   const counts = step.backgroundCounts ?? [0];
   for (const [index, count] of counts.entries()) {

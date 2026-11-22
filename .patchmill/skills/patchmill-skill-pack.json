@@ -1,7 +1,7 @@
 {
-  "installedAt": "2026-11-20T12:20:15.728Z",
+  "installedAt": "2026-11-22T15:11:10.012Z",
   "sources": {
-    "patchmill": "1.0.0",
+    "patchmill": "1.1.0",
     "superpowers": "7.0.2",
     "simpleEnglish": "1.2.0",
     "mattPocock": "1.3.2"
@@ -129,7 +129,7 @@
     },
     {
       "path": "patchmill-frontend-review/SKILL.md",
-      "sha256": "99329c02d40dfe7116e13907e7299dad194c4795bb151be027c8ad2f654575f8"
+      "sha256": "642fb2148c94142765ff35f020c32a2b0755868caceb09dc4913e937ba98449c"
     },
     {
       "path": "patchmill-implementation/review-appendix.md",
@@ -137,7 +137,7 @@
     },
     {
       "path": "patchmill-implementation/SKILL.md",
-      "sha256": "36c0d6fda8749154a6bf52ea72c5a5b087d87c5830009b919ff9d21fa43a1727"
+      "sha256": "122b62b2a73f8b6707434c5a14c5a31153faf395ec76e1eafb9e352ed7954eb1"
     },
     {
       "path": "patchmill-issue-triage/SKILL.md",
