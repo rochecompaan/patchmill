@@ -253,7 +253,7 @@ Combined pass with the spec
 - Reviewer: canonical `reviewer` agent, model `claude-bridge/claude-opus-5-5`,
   thinking `high`. Base revision `12f871afd84725007a81cd629cae8e5ac6182444`.
 - Compared spec body SHA-256:
-  `e38d428f5aa3dd8b9aeba35f5bbe67105644a959ff6f0095142dadb7534ae10f`.
+  `cbc3eda1b567156f6c504428de6294e5eb9b18c7550f2bdd9c0661c3cbe5c72a`.
 - Survey: as in the spec record. The reviewer checked each path, symbol, and
   command against the base and found task order correct.
 - Findings (no blockers):
@@ -271,9 +271,10 @@ Combined pass with the spec
 - Inspection limits: as in the spec record.
 - Confirmation: a fresh scoped confirmation confirmed S2, S3, and S4 at plan
   body SHA-256
-  `7ba235b6b8cfa7262bffe84487d009fed49e5a331d98ce700617dedc6aa172f5`. It found
-  S5 and called it a one-line wording change that needs no further review. The
-  S5 edit is the reviewer's exact proposed text.
+  `7ba235b6b8cfa7262bffe84487d009fed49e5a331d98ce700617dedc6aa172f5` (hashed
+  before this record existed). It found S5 and called it a one-line wording
+  change that needs no further review. The S5 edit is the reviewer's exact
+  proposed text.
 - Final body SHA-256:
-  `fcfec86e890918fd6ec92f2bd6a9e71ab7476255e04ad0cecb845c3ce2962e6f`.
+  `5ea5b0f57eb2db9faac8ddbfff4f0421b7ea8db6f2d4be0fd31412e2f600ea90`.
 - Outcome: `ready`.

@@ -223,5 +223,5 @@ Combined pass with the plan
 - Confirmation: a fresh scoped confirmation confirmed S1 and S2 with no new
   problem.
 - Final body SHA-256:
-  `e38d428f5aa3dd8b9aeba35f5bbe67105644a959ff6f0095142dadb7534ae10f`.
+  `cbc3eda1b567156f6c504428de6294e5eb9b18c7550f2bdd9c0661c3cbe5c72a`.
 - Outcome: `ready`.
