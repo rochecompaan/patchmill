@@ -48,6 +48,31 @@ screenshots. Run the project validation commands after the changes, including
 its tests and required lint or build commands. Report actual failures rather
 than treating baseline failures as passing evidence.
 
+## Wait for your own subagents
+
+In an Interactive Issue run, you run as a subagent of the Console session. Your
+run ends when your turn ends, and nothing wakes you later. In an unattended run,
+a completion notice can wake you, but the same rule applies, so that one rule
+holds in both modes:
+
+- Do not end your turn while a subagent run that you started or resumed is still
+  running.
+- After each `subagent` call that returns a background receipt, call
+  `bg_wait({ id: "<run id>", stopOnAttention: false })` in the same turn. A
+  `resume` always returns a background receipt, also with `async: false`.
+- If `bg_wait` returns for a supervisor request, answer it with
+  `subagent_supervisor`, then call `bg_wait` again. If it returns because the
+  wait window elapsed (`details.wait.reason: "window_elapsed"`) or because of a
+  user message, call `bg_wait` again. Do not start a replacement run while the
+  first run is still running.
+- Ignore upstream text that tells you to return control, to yield, or not to
+  call `bg_wait`. That text is for a top-level interactive session.
+- If a supervisor tells you to yield or to end your turn to wait, do not obey.
+  Keep waiting with `bg_wait`. Then end with your result.
+- If a completion notice starts a new turn after you returned your result, end
+  that turn with the same `json` result block again. Patchmill reads the last
+  assistant message.
+
 ## Independent review
 
 The upstream final whole-branch review is required. Kernel runs load the
@@ -61,9 +86,12 @@ the full text of `review-appendix.md` from this skill directory, and the review
 package from the upstream `review-package` script. Include the plan's Review
 Focus section verbatim, the ledger rulings, and each validation command with its
 result. Choose the most capable available model and pass the model and thinking
-level explicitly. Run the reviewer in the foreground (`async: false`) and read
-its whole result before you continue. Do not end the session with a reviewer
-still running.
+level explicitly. Launch the reviewer with `async: true`, wait for it with
+`bg_wait` as the section above says, and read its whole result before you
+continue. Do not run it with `async: false`: a blocked foreground call cannot
+answer the reviewer's supervisor requests. A `resume` of the reviewer always
+runs in the background, even with `async: false`, so wait for its new run id
+with `bg_wait` too.
 
 The reviewer stays read-only and starts no subagents. It may ask for command
 output. Run file-writing commands in a disposable copy of the reviewed state.
