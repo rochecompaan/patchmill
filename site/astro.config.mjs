@@ -68,6 +68,7 @@ export default defineConfig({
           items: [
             { label: "Triage", slug: "using-patchmill/triage" },
             { label: "Run-once", slug: "using-patchmill/run-once" },
+            { label: "Run unattended", slug: "using-patchmill/run" },
             {
               label: "Interactive skills",
               slug: "using-patchmill/interactive-skills",
