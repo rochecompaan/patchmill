@@ -79,7 +79,7 @@ for (const [name, result, session, reasons] of [
   [
     "timeout overrides done",
     input.result,
-    { exitCode: null, timedOut: true, aborted: false },
+    { exitCode: null, signal: "SIGTERM", timedOut: true, aborted: false },
     [/timed out/i, /The work is ready\./],
   ],
   [
@@ -111,6 +111,43 @@ for (const [name, result, session, reasons] of [
       new RegExp(`exit code: ${session.exitCode}`, "i"),
     );
     assert.ok(outcome.comment.includes(input.logPath));
+    assert.doesNotMatch(outcome.comment, /after a done result/);
+  });
+}
+
+for (const [name, session, reason, exitLine] of [
+  [
+    "exit 7",
+    { exitCode: 7 },
+    /Pi exited with code 7 after a done result\./,
+    /Exit code: 7$/,
+  ],
+  [
+    "SIGKILL",
+    { exitCode: null, signal: "SIGKILL" },
+    /Pi was stopped by signal SIGKILL after a done result\./,
+    /Exit code: null \(signal SIGKILL\)$/,
+  ],
+  [
+    "no exit code",
+    { exitCode: null },
+    /Pi exited without an exit code after a done result\./,
+    /Exit code: null$/,
+  ],
+] satisfies [string, Partial<VerifyInput["session"]>, RegExp, RegExp][]) {
+  test(`done after an abnormal exit fails verification: ${name}`, () => {
+    const outcome = verifyOutcome({
+      ...input,
+      session: { ...input.session, ...session },
+    });
+    assert.equal(outcome.kind, "stop");
+    if (outcome.kind !== "stop") return;
+    assert.equal(outcome.label, "needsInfo");
+    assert.match(outcome.comment, reason);
+    assert.match(outcome.comment, exitLine);
+    assert.match(outcome.comment, /The work is ready\./);
+    assert.ok(outcome.comment.includes(input.logPath));
+    assert.doesNotMatch(outcome.comment, /claim was not verified/i);
   });
 }
 
@@ -237,7 +274,7 @@ for (const [name, pullRequest, diagnostic] of [
     const outcome = verifyOutcome({
       ...input,
       facts: { ...facts, pullRequest },
-      session: { ...input.session, exitCode: 1 },
+      session: { ...input.session, exitCode: 0 },
     });
     assert.equal(outcome.kind, "stop");
     if (outcome.kind !== "stop") return;
@@ -245,11 +282,11 @@ for (const [name, pullRequest, diagnostic] of [
     assert.match(outcome.comment, /claim was not verified/i);
     assert.match(outcome.comment, diagnostic);
     assert.match(outcome.comment, /The work is ready\./);
-    assert.match(outcome.comment, /exit code: 1/i);
+    assert.match(outcome.comment, /exit code: 0/i);
   });
 }
 
-for (const exitCode of [0, 1, null]) {
+for (const exitCode of [0]) {
   test(`verified PR succeeds with exit code ${exitCode} and no extra planning gate`, () => {
     const outcome = verifyOutcome({
       ...input,

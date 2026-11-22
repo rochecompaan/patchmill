@@ -42,6 +42,31 @@ for (const mode of ["draft", "dirty"] as const) {
     );
   });
 }
+for (const mode of ["exit 7", "SIGKILL"] as const) {
+  test(`implementation ${mode} after done stops with needsInfo`, async (t) => {
+    const c = await setupRun(t, [
+      {
+        pullRequest: { draft: false, body: "Closes #9" },
+        result: done,
+        ...(mode === "exit 7" ? { exitCode: 7 } : { killSignal: "SIGKILL" }),
+      },
+    ]);
+    await c.seed({ [spec]: "spec", [plan]: "plan" });
+    await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
+    const outcome = await c.run();
+    assert.equal(outcome.status, "stopped");
+    if (outcome.status === "stopped") assert.equal(outcome.label, "needsInfo");
+    const issue = c.host.state().issues[0]!;
+    assert.ok(issue.labels.includes("needs-info"));
+    assert.ok(!issue.labels.includes("agent-done"));
+    assert.match(
+      issue.comments[0]!.body,
+      mode === "exit 7"
+        ? /Pi exited with code 7 after a done result\./
+        : /Pi was stopped by signal SIGKILL after a done result\./,
+    );
+  });
+}
 for (const mode of [
   "timeout",
   "invalid",
