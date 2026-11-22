@@ -39,7 +39,7 @@ import { createRunHistory } from "./run-history.ts";
 import { gateWaitPublished } from "./gate-wait.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
-import { cleanupMergedIssue } from "./merged-cleanup.ts";
+import { cleanupMergedIssue, type CleanupResult } from "./merged-cleanup.ts";
 import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
 import { explainMissingResult } from "./unfinished-runs.ts";
 
@@ -499,8 +499,9 @@ export async function runOneIssue(
     if (unchangedGateWait)
       output.stderr("Unchanged planning gate wait; not republished.");
     if (!published && !paused && !unchangedGateWait) await publish();
+    let cleanup: CleanupResult | undefined;
     if (stop.label === "done" && displayFacts?.stage === "implementation") {
-      await cleanupMergedIssue({
+      cleanup = await cleanupMergedIssue({
         ...deps,
         config,
         issue: issueNumber,
@@ -586,10 +587,11 @@ export async function runOneIssue(
         elapsedSeconds: (now().getTime() - started.getTime()) / 1000,
       }),
     );
-    await snapshot.ended(stop.summary, {
-      status: outcome.status,
-      label: stop.label,
-    });
+    await snapshot.ended(
+      stop.summary,
+      { status: outcome.status, label: stop.label },
+      cleanup?.status,
+    );
     return outcome;
   } finally {
     if (lock !== heldLock) await lock.release();

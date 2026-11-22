@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { Facts } from "./facts.ts";
 import type { Phase } from "./phase.ts";
 import { sumSessionUsage, type PiUsage } from "./pi-cost.ts";
+import type { CleanupResult } from "./merged-cleanup.ts";
 
 export type RunState =
   | "deriving"
@@ -28,6 +29,8 @@ export type RunSnapshot = {
   usage?: PiUsage;
   summary?: string;
   outcome?: ObservedRunOutcome;
+  /** Merged-issue cleanup result; absent when cleanup did not run. */
+  cleanup?: CleanupResult["status"];
 };
 
 /** Write-only progress projection; never drives the run's decisions. */
@@ -80,7 +83,16 @@ export function runSnapshot(
       delete current.usage;
       await emit(usage ? { usage } : {});
     },
-    ended: (summary: string, outcome: ObservedRunOutcome) =>
-      emit({ state: "ended", summary, outcome }),
+    ended: (
+      summary: string,
+      outcome: ObservedRunOutcome,
+      cleanup?: CleanupResult["status"],
+    ) =>
+      emit({
+        state: "ended",
+        summary,
+        outcome,
+        ...(cleanup === undefined ? {} : { cleanup }),
+      }),
   };
 }
