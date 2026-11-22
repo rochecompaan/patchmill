@@ -225,8 +225,8 @@ The CLI binds `triage` to
 `runTriage(config, deps, { signal, onProgress, beforeWrite })`. Progress goes to
 stdout through the existing `createTriageProgressReporter` in
 `src/cli/commands/triage/progress-output.ts`. `runTriage` already warns and
-continues when one issue fails. It throws only for a listing failure, a blocker
-write failure, or a `beforeWrite` throw.
+continues when one issue fails, including a failed blocker write. It throws only
+when `workflow.sync` or the issue listing fails, or when `beforeWrite` throws.
 
 ### Work source (local)
 
@@ -239,28 +239,50 @@ export function localWorkSource(input: {
 ```
 
 Each `pass(signal)` calls `runOneIssue(config, deps, { signal })` with no other
-option and maps the outcome:
+option and maps the outcome. The first matching row wins:
 
-| `runOneIssue` outcome             | `PassResult`                                         |
-| --------------------------------- | ---------------------------------------------------- |
-| `completed`                       | `worked`                                             |
-| `stopped`, label not `inProgress` | `worked`                                             |
-| `stopped`, label `inProgress`     | `idle`: `issue #N waits for a planning pull request` |
-| `no-work`                         | `idle`: `no eligible issue`                          |
-| `claimed-elsewhere`               | `idle`: `issue #N is claimed elsewhere`              |
-| `refused`                         | `idle`: the refusal reason                           |
-| `paused`, signal aborted          | `idle`: `stopping`. The shell then sees the abort.   |
-| `paused`, signal not aborted      | `fatal`: `run paused without a stop request`         |
-| `dry-run`                         | `fatal`: `unexpected dry-run outcome`                |
-| a throw                           | the throw passes through to the shell                |
+| `runOneIssue` outcome                                | `PassResult`                                         |
+| ---------------------------------------------------- | ---------------------------------------------------- |
+| `completed` or `stopped` with `publicationErrors`    | throw: `publication failed for issue #N: <errors>`   |
+| `completed`                                          | `worked`                                             |
+| `stopped`, label `inProgress`                        | `idle`: `issue #N waits for a planning pull request` |
+| `stopped`, label `needsInfo`, third in a row or more | throw: `<k> runs in a row stopped with Needs Info`   |
+| `stopped`, other cases                               | `worked`                                             |
+| `no-work`                                            | `idle`: `no eligible issue`                          |
+| `claimed-elsewhere`                                  | `idle`: `issue #N is claimed elsewhere`              |
+| `refused`                                            | `idle`: the refusal reason                           |
+| `paused`, signal aborted                             | `idle`: `stopping`. The shell then sees the abort.   |
+| `paused`, signal not aborted                         | `fatal`: `run paused without a stop request`         |
+| `dry-run`                                            | `fatal`: `unexpected dry-run outcome`                |
+| a throw                                              | the throw passes through to the shell                |
 
-The `stopped`/`inProgress` row differs from the issue's table on purpose. Such a
-stop means that a planning gate waits for a human merge. The issue stays
-`inProgress`, and `selectRunIssue` in `src/kernel/issue-selection.ts` selects
-the oldest `ready` or `inProgress` issue. So the next pass selects the same
-issue again. If this row mapped to `worked`, the runner would call the host in a
-tight loop until the merge. As `idle`, it backs off. The planner proposed this
-change during planning, and the maintainer did not object.
+A throw from the source is an error pass, so the shell applies error backoff.
+
+**Publication errors.** `publicationErrors` means that a label or comment write
+failed. The issue then keeps a `ready` or `inProgress` status on the host, so
+the next pass selects it again. Reads often still work in this case, for example
+with a token that cannot write or under a rate limit on writes. As `worked`, the
+runner would repeat the writes in a tight loop. As an error pass, it backs off.
+`run-once` already exits 1 for this case. A publication failure also counts in
+the Needs Info streak when its label is `needsInfo`.
+
+**Gate wait.** The `stopped`/`inProgress` row differs from the issue's table on
+purpose. Such a stop means that a planning gate waits for a human merge. The
+issue stays `inProgress`, and `selectRunIssue` in
+`src/kernel/issue-selection.ts` selects the oldest `ready` or `inProgress`
+issue. So the next pass selects the same issue again. As `worked`, the runner
+would call the host in a tight loop until the merge. As `idle`, it backs off.
+The planner proposed this change during planning, and the maintainer did not
+object. See also Unchanged gate waits publish once.
+
+**Needs Info streak.** The source counts `stopped` outcomes with label
+`needsInfo` in a row, in memory. A `completed` outcome or a `stopped` outcome
+with another label resets the count. Other outcomes do not change it. From the
+third in a row (`NEEDS_INFO_STREAK_LIMIT = 3`, not configurable), each such
+outcome is an error pass. So a broken provider or Pi installation that fails
+every session does not move each `ready` issue to `needsInfo` without a pause.
+The maintainer chose this interim guard during planning. The host-retry and
+budget policy of #236 and #237 replaces it.
 
 `claimed-elsewhere` is `idle` because a terminal or another clone holds the
 issue. `refused` is `idle` because the per-issue lock is held, for example by a
@@ -332,12 +354,13 @@ export function acquireLifetimeLock(input: {
 - **Stale check.** When the `flock` is free and the file holds a record, the
   previous owner did not release it (an unclean exit). The call keeps the
   `flock` and checks the record:
-  - Same host, and the PID is not alive, or the PID is alive with a different
-    start marker: stale. Replace the record and log
-    `replaced a stale run lock (pid N, started T)`.
-  - Same host, and the PID is alive with the same start marker, or the marker is
-    unknown: not demonstrably stale. Release the `flock` and throw
-    `LifetimeLockHeldError`.
+  - Same host, and the PID is not alive: stale, whatever the start marker is.
+    Replace the record and log `replaced a stale run lock (pid N, started T)`.
+  - Same host, and the PID is alive with a different start marker (PID reuse):
+    stale. Replace the record and log the same line.
+  - Same host, and the PID is alive with the same start marker, or the PID is
+    alive and either marker is unknown: not demonstrably stale. Release the
+    `flock` and throw `LifetimeLockHeldError`.
   - Another host: not demonstrably stale, because `flock` across a network file
     system is not reliable. Release the `flock` and throw
     `LifetimeLockHeldError`. The message tells the operator to remove the file
@@ -376,6 +399,11 @@ Signals:
 - A second signal logs `forced exit` and calls the injected `exit(1)` at once.
   The lock file keeps its record, and the `flock` ends with the process. The
   next start replaces the record as stale.
+- A forced exit also ends the 5-second `SIGKILL` timer in `supervisePi`
+  (`src/kernel/pi-supervisor.ts`). A detached Pi process group that ignores
+  `SIGTERM` can then live on. The README tells operators to run the runner under
+  a supervisor that kills the whole control group. The systemd example keeps the
+  default `KillMode=control-group` and sets `TimeoutStopSec=30`.
 - The handlers are removed in the `finally`.
 
 Exit codes:
@@ -400,13 +428,53 @@ This slice changes `runOneIssue`, for `run` and plain `run-once` alike:
 - If `options.signal` is aborted before the claim, `runOneIssue` returns
   `{ status: "no-work" }` without a claim and without output.
 - After the claim, if `options.signal` is aborted when the run would publish a
-  stop whose label is not `done`, the run sets `paused`. It publishes nothing,
-  and returns `{ status: "paused", issue, summary: "Run paused." }`. This covers
-  an aborted session and a throw that the abort caused.
+  stop whose label is not `done`, and nothing was published yet in this attempt,
+  the run sets `paused`. It replaces the stop with
+  `{ label: "inProgress", summary: "Run paused.", warnings: [] }`, as the
+  interactive pause does. It publishes nothing, and returns
+  `{ status: "paused", issue, summary: "Run paused." }`. This covers an aborted
+  session and a throw that the abort caused. Because the label is replaced, the
+  run result, progress, and console line show the pause, not Needs Info.
 - The issue keeps `inProgress`, so the next pass or the next `run-once` resumes
   it. `result.json` and the run history still record the attempt.
 
 A `done` stop still publishes, because its work is complete and verified.
+
+### Unchanged gate waits publish once
+
+Without a change, each idle pass on a gate-waiting issue would publish the same
+stop again. In label mode, `LabelWorkflowState.setStatus` posts a comment for
+each status with a summary. So the issue would get the same "Waiting for it to
+be merged" comment on each pass, about 96 times per day at the 15-minute idle
+cap. The maintainer chose to publish an unchanged gate wait only once.
+
+`runOneIssue` changes as follows, in every mode:
+
+- The rule applies only to an unattended run (no `deps.human`) whose stop came
+  from `derivedStop` before any session started in this attempt, with label
+  `inProgress`.
+- Before it publishes, the run reads the newest earlier `result.json` in the
+  issue's run directory (`<runsDir>/issue-N/*/result.json`, newest by
+  `finishedAt`, other than its own).
+- If that result has `outcome.status === "stopped"`,
+  `outcome.label === "inProgress"`, and `outcome.summary` equal to the new
+  summary, the run does not publish. It still writes its own `result.json`, with
+  the same outcome and `"republished": false`. It prints
+  `Unchanged planning gate wait; not republished.` to stderr.
+- A missing or unreadable earlier result means that the run publishes as today.
+- The outcome is unchanged: `{ status: "stopped", label: "inProgress", ... }`,
+  so the work source maps it to `idle`.
+
+The comparison uses the run history that already exists. It adds no new local
+state. The summary from `planningGateComment` includes the pull request state
+and URL, so a change in the gate, for example a closed pull request, publishes
+again. The planning session that opens the pull request publishes its own
+summary, which differs from the gate summary. So a gate wait gives two comments:
+the planning result and the first gate wait.
+
+The claim still sets `inProgress` on each pass, without a summary. In label mode
+this is a label write with no comment. In local mode it appends a status record.
+This is the behavior of `run-once` today.
 
 ### Configuration
 
@@ -442,7 +510,9 @@ The diagram shows one cycle of the shell and where each seam sits.
 flowchart TD
   start([patchmill run]) --> mode{mode.run allowed?}
   mode -- no --> exit1([exit 1])
-  mode -- yes --> lock{lifetime lock}
+    mode -- yes --> hostcheck{host CLI check}
+  hostcheck -- fails --> exit1
+  hostcheck -- ok --> lock{lifetime lock}
   lock -- live owner --> exit2([exit 2])
   lock -- acquired --> stop1{stop requested?}
   stop1 -- yes --> exit0([release lock, exit 0])
@@ -453,7 +523,7 @@ flowchart TD
   stop2 -- no --> pass{{Work source: pass}}
   pass -- worked --> stop1
   pass -- idle --> idleWait[wait: idle backoff] --> stop1
-  pass -- throw --> errWait[wait: error backoff] --> stop1
+    pass -- "throw (error, publication failure, Needs Info streak)" --> errWait[wait: error backoff] --> stop1
   pass -- fatal --> exitF([release lock, exit 1])
 ```
 
@@ -480,6 +550,15 @@ Runner shell (unchanged by #360 and #361)
 - **Triage and work in sequence.** A long triage delays work, and a long run
   delays triage. #361 moves triage to its own lane.
 - **Second clone.** The lock does not cover a second clone of the repository.
+- **Triage timing.** The shell asks the gate only between waits. So triage runs
+  every `max(triageIntervalMinutes, current wait)`, which can be up to 30
+  minutes during error backoff.
+- **Run directories.** Each idle pass on a gate-waiting issue still writes a
+  small run directory under `<runsDir>/issue-N/`. Cleanup of old run directories
+  is out of scope.
+- **Needs Info guard.** The guard backs off after three `needsInfo` stops in a
+  row, but those three issues still move to `needsInfo`. #236 and #237 replace
+  the guard with a real host-retry and budget policy.
 
 ## Verification
 
@@ -492,7 +571,9 @@ Runner shell (unchanged by #360 and #361)
 | `npm test`, `npm run lint`, `npm run build`, `nix build` pass                                                                                        | Run each command                                                                                                                                 |
 
 Other tests: the aborted unattended run returns `paused` and keeps `inProgress`
-(`run-once-failures.test.ts`), the `run` config validation
+(`run-once-failures.test.ts`), an unchanged gate wait publishes once
+(`run-once.test.ts`), the publication-error and Needs Info streak rows
+(`local-work-source.test.ts`), the `run` config validation
 (`src/config/config.test.ts`), and the CLI exit codes 0, 1, and 2
 (`src/cli/commands/run/main.test.ts`).
 

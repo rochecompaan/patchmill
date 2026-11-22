@@ -39,6 +39,10 @@ by the spec), and the #356 spec
 - Delay: `min(max, initial * 2^(streak-1)) * (0.5 + 0.5 * random)` seconds,
   returned in milliseconds.
 - Log prefix: `patchmill run:` on stderr.
+- `NEEDS_INFO_STREAK_LIMIT = 3`, not configurable: the third `needsInfo` stop in
+  a row and later ones are error passes.
+- An unattended gate wait whose summary equals the previous run result is not
+  published again.
 
 ## Review Focus
 
@@ -49,7 +53,7 @@ by the spec), and the #356 spec
 3. **Planning-gate wait.** `stopped` with label `inProgress` must back off, not
    loop. Test in Task 3.
 4. **PID reuse.** A record whose PID is alive with another start marker is
-   stale. Test in Task 5.
+   stale. Test in Task 6.
 5. **Abort before the claim.** `runOneIssue` with an aborted signal must not
    claim an issue. Test in Task 4.
 
@@ -68,12 +72,14 @@ src/kernel/state-tracking-mode.ts        modify: run answer
 src/kernel/state-tracking-mode.test.ts   modify
 src/kernel/run-once.ts                   modify: abort pauses
 src/kernel/run-once-failures.test.ts     modify
+src/kernel/run-once.test.ts              modify: gate wait publishes once
 src/kernel/runner/lifetime-lock.ts       create
 src/kernel/runner/lifetime-lock.test.ts  create
 test-support/lifetime-lock-child.mjs     create
 src/cli/commands/run/main.ts             create
 src/cli/commands/run/main.test.ts        create
 src/cli/main.ts                          modify: HELP_TEXT, COMMANDS
+src/cli/main.test.ts                     modify: help-text guard
 README.md                                modify
 site/src/content/docs/using-patchmill/run.md  create
 site/src/content/docs/...                modify: run-once, configuration
@@ -118,8 +124,8 @@ site/astro.config.mjs                    modify: sidebar entry
 - [ ] **Step 3: Implement.** Add the five leaf paths to `schema` with kind
       `"number"`, the defaults to `DEFAULT_CONFIG`, and a check after `walk`
       that each value is finite and `> 0` and each
-      `maxSeconds >=     initialSeconds`. The `NaN` case cannot come from JSON,
-      but `parseConfig` is also called with objects in tests, so reject it.
+      `maxSeconds >= initialSeconds`. The `NaN` case cannot come from JSON, but
+      `parseConfig` is also called with objects in tests, so reject it.
 
 - [ ] **Step 4: Run the test file.** Expected: PASS.
 
@@ -143,9 +149,10 @@ site/astro.config.mjs                    modify: sidebar entry
   `backoffDelay(delay, streak, random): number`.
 
 Test harness: a scripted fake work source that returns or throws the next item
-of an array and aborts a shared controller when the array ends; a fake gate that
-grants on chosen calls and counts `release()`; a fake `sleep` that records `ms`
-and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
+of an array. The call after the last item aborts the shared controller and
+returns `idle`, so the shell stops without a wait; a fake gate that grants on
+chosen calls and counts `release()`; a fake `sleep` that records `ms` and
+resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
 
 - [ ] **Step 1: Write the failing tests**
   - `backoffDelay doubles, jitters, and caps`: with
@@ -153,13 +160,13 @@ and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
     streak 1, random 0.999… → `< 10000`; streak 3, random 0.5 → `30000`; streak
     10, random 0.5 → `45000`.
   - `worked runs the next pass without a wait`: script `[worked, worked]`;
-    `sleeps` is `[]` and `pass` was called 2 times, then the result is
-    `{ kind: "stopped" }`.
+    `sleeps` is `[]` and `pass` was called 3 times (the third aborts), then the
+    result is `{ kind: "stopped" }`.
   - `idle backs off with a growing idle delay`: script `[idle, idle, idle]` with
     idle `{ 10, 60 }` → sleeps `[7500, 15000, 30000]`; the log contains the idle
     reason.
   - `a throw backs off with the error delay`: script
-    `[throw "host down", throw, ...]` with error `{ 5, 100 }` → sleeps
+    `[throw "host down", throw "host down"]` with error `{ 5, 100 }` → sleeps
     `[3750, 7500]`; the log matches `/host down/`.
   - `worked resets both streaks`: script `[idle, idle, worked, idle]` → sleeps
     `[7500, 15000, 7500]`; script `[throw, throw, worked, throw]` → error sleeps
@@ -169,7 +176,8 @@ and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
   - `fatal returns at once`: script `[fatal "conflict", worked]` → result
     `{ kind: "fatal", reason: "conflict" }`; `pass` called once.
   - `triage runs before the pass when the gate grants, and its grant is released`:
-    gate grants on call 1 only; the call order recorded by the fakes is
+    script `[worked]`; gate grants on call 1 only; the call order recorded by
+    the fakes is
     `["tryGrant", "triage", "release", "pass", "tryGrant", "pass"]`.
   - `the grant's beforeWrite reaches triage`: the fake `triage` receives the
     same `grant` object that `tryGrant` returned.
@@ -218,6 +226,7 @@ and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
   `RunOnceDeps`, `RunOnceOutcome` (types only) from `src/kernel/run-once.ts`.
 - Produces:
   - `localTriageGate(input: { intervalMs: number; now: () => Date }): TriageGate`
+    - `export const NEEDS_INFO_STREAK_LIMIT = 3` in `local-work-source.ts`
   - `type LocalWorkSourceInput = { config: PatchmillConfig; deps: RunOnceDeps; runOneIssue: typeof runOneIssue }`
   - `localWorkSource(input: LocalWorkSourceInput): WorkSource`
   - `StateTrackingMode.run: { allowed: true; createWorkSource(input: LocalWorkSourceInput): WorkSource } | { allowed: false; reason: string }`
@@ -227,22 +236,35 @@ and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
   In `local-work-source.test.ts`, a fake `runOneIssue` returns a fixed outcome
   and records its options. One test per row, using a table-driven loop:
 
-  | outcome                                                                    | expected `PassResult`                                                    |
-  | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-  | `{ status: "completed", issue: 4 }`                                        | `{ kind: "worked" }`                                                     |
-  | `{ status: "stopped", issue: 4, label: "needsInfo", summary: "s" }`        | `{ kind: "worked" }`                                                     |
-  | `{ status: "stopped", issue: 4, label: "inProgress", summary: "s" }`       | `{ kind: "idle", reason: "issue #4 waits for a planning pull request" }` |
-  | `{ status: "no-work" }`                                                    | `{ kind: "idle", reason: "no eligible issue" }`                          |
-  | `{ status: "claimed-elsewhere", issue: 4 }`                                | `{ kind: "idle", reason: "issue #4 is claimed elsewhere" }`              |
-  | `{ status: "refused", issue: 4, reason: "another Run attempt is active" }` | `{ kind: "idle", reason: "another Run attempt is active" }`              |
-  | `{ status: "paused", issue: 4, summary: "s" }`, aborted                    | `{ kind: "idle", reason: "stopping" }`                                   |
-  | `{ status: "paused", issue: 4, summary: "s" }`, not aborted                | `{ kind: "fatal", reason: "run paused without a stop request" }`         |
-  | `{ status: "dry-run", issue: 4, derived: "ambiguous-branches" }`           | `{ kind: "fatal", reason: "unexpected dry-run outcome" }`                |
+  | outcome                                                                                        | expected `PassResult`                                                    |
+  | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+  | `{ status: "completed", issue: 4 }`                                                            | `{ kind: "worked" }`                                                     |
+  | `{ status: "completed", issue: 4, publicationErrors: ["Label update failed: x"] }`             | rejects with `/publication failed for issue #4: Label update failed: x/` |
+  | `{ status: "stopped", issue: 4, label: "inProgress", summary: "s", publicationErrors: ["c"] }` | rejects with `/publication failed for issue #4/`                         |
+  | `{ status: "stopped", issue: 4, label: "needsInfo", summary: "s" }`                            | `{ kind: "worked" }`                                                     |
+  | `{ status: "stopped", issue: 4, label: "inProgress", summary: "s" }`                           | `{ kind: "idle", reason: "issue #4 waits for a planning pull request" }` |
+  | `{ status: "no-work" }`                                                                        | `{ kind: "idle", reason: "no eligible issue" }`                          |
+  | `{ status: "claimed-elsewhere", issue: 4 }`                                                    | `{ kind: "idle", reason: "issue #4 is claimed elsewhere" }`              |
+  | `{ status: "refused", issue: 4, reason: "another Run attempt is active" }`                     | `{ kind: "idle", reason: "another Run attempt is active" }`              |
+  | `{ status: "paused", issue: 4, summary: "s" }`, aborted                                        | `{ kind: "idle", reason: "stopping" }`                                   |
+  | `{ status: "paused", issue: 4, summary: "s" }`, not aborted                                    | `{ kind: "fatal", reason: "run paused without a stop request" }`         |
+  | `{ status: "dry-run", issue: 4, derived: "ambiguous-branches" }`                               | `{ kind: "fatal", reason: "unexpected dry-run outcome" }`                |
 
   Also:
   - `the pass passes only its signal`: the recorded options deep-equal
     `{ signal }`.
-  - `a runOneIssue throw passes through`: `pass()` rejects with the same error.
+    - `a runOneIssue throw passes through`: `pass()` rejects with the same
+      error.
+  - `the third Needs Info stop in a row is an error pass`: outcomes
+    `[needsInfo, needsInfo, needsInfo, needsInfo]` (stopped, label `needsInfo`)
+    → `worked`, `worked`, rejects `/3 runs in a row stopped with Needs Info/`,
+    rejects `/4 runs in a row/`.
+  - `the Needs Info streak resets on completed or another stop label`:
+    `[needsInfo, needsInfo, completed, needsInfo, needsInfo]` → all resolve
+    `worked`; `[needsInfo, needsInfo, unsuitable, needsInfo]` → all `worked`.
+  - `idle outcomes do not reset the Needs Info streak`:
+    `[needsInfo, needsInfo, no-work, needsInfo]` → `worked`, `worked`, `idle`,
+    rejects.
   - `the local gate grants at start, then once per interval`: with a mutable
     clock at T, `tryGrant()` grants; at T+4 min it returns `undefined`; at T+5
     min it grants; at T+9 min `undefined`. The grant has no `beforeWrite`, and
@@ -255,7 +277,9 @@ and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
 
 - [ ] **Step 2: Run both test files.** Expected: FAIL.
 
-- [ ] **Step 3: Implement** the gate, the source, and the `run` answer in
+- [ ] **Step 3: Implement** the gate, the source (the rows apply in the spec's
+      order: publication errors first, and the streak counter lives in the
+      closure of one `localWorkSource` call), and the `run` answer in
       `LABELS_MODE` and `LOCAL_MODE`. `local-work-source.ts` uses `import type`
       for everything from `run-once.ts`.
 
@@ -286,8 +310,8 @@ and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
     exist.
   - In `workflow question policy: abort`, assert `outcome.status === "paused"`,
     `updates.length === 1`, `updates[0].status === "inProgress"`, and that
-    `result.json` has `outcome.status === "paused"`. Keep the other modes as
-    they are.
+    `result.json` has `outcome.status === "paused"` and
+    `progress.outcome.label === "inProgress"`. Keep the other modes as they are.
   - Add `an abort that makes the run throw pauses without publishing`: make
     `c.deps.git.fetch` abort the controller and then throw `"fetch failed"`;
     assert `status === "paused"` and no `commentIssue` or `setLabels` call after
@@ -305,17 +329,68 @@ and resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
       `{ status:     "no-work" }` when `options.signal?.aborted`. Change the
       pause condition to
       `(deps.human || options.signal?.aborted) && session.aborted`. Before
-      `if (!published && !paused) await publish()`, set `paused = true` and
-      `stop.summary = "Run paused."` when `options.signal?.aborted` and
-      `stop.label !== "done"`.
+      `if (!published && !paused) await publish()`, when
+      `options.signal?.aborted && !published && stop.label !== "done"`, set
+      `paused = true` and
+      `stop = { label: "inProgress", summary: "Run paused.", warnings: [] }`, as
+      the interactive pause branch does.
 
 - [ ] **Step 4: Run
-      `node --test src/kernel/run-once*.test.ts     src/cli/commands/run-once/main.test.ts`.**
+      `node --test src/kernel/run-once*.test.ts src/cli/commands/run-once/main.test.ts`.**
       Expected: PASS.
 
 - [ ] **Step 5: Commit** `fix(kernel): pause an aborted unattended run`.
 
-### Task 5: Lifetime lock
+### Task 5: Unchanged gate waits publish once
+
+**Files:**
+
+- Modify: `src/kernel/run-once.ts`
+- Test: `src/kernel/run-once.test.ts`
+
+**Interfaces:**
+
+- Produces: unchanged `runOneIssue` signature and outcome. `result.json` gains
+  an optional `republished: false` field when the rule skips publication.
+
+- [ ] **Step 1: Write the failing tests** (use the gated-planning setup of
+      `gated planning publishes a spec PR and keeps in-progress with one cost     comment`
+      in `run-once.test.ts`, with `specApproval.required = true`)
+  - `an unchanged unattended gate wait publishes once`: run 1 publishes the
+    planning PR (1 comment). Run 2 has no Pi step and stops at the gate (2
+    comments, `Waiting for it to be merged`). Run 3 also stops at the gate:
+    still 2 comments, its outcome is `stopped` with label `inProgress`, its
+    `result.json` has `republished: false`, and the output contains
+    `Unchanged planning gate wait; not republished.`
+  - `a changed gate wait publishes again`: after run 3, set the pull request
+    state to `closed` in the fake host state. Run 4 posts a third comment that
+    matches `/closed, not merged/`.
+  - `an unreadable earlier result publishes as today`: after run 2, overwrite
+    its `result.json` with `{`. Run 3 posts a third comment.
+  - `an interactive gate wait is not affected`: with `fakeHuman`, the rule does
+    not apply, and the existing interactive gate tests still pass unchanged.
+
+- [ ] **Step 2: Run `node --test src/kernel/run-once.test.ts`.** Expected: the
+      new tests fail.
+
+- [ ] **Step 3: Implement.** Add a private helper in `run-once.ts`,
+      `previousResult(issueDir: string, runId: string): Promise<{ status: string; label?: string; summary?: string } | undefined>`,
+      that reads `*/result.json` other than `runId`, ignores unreadable files,
+      and returns the `outcome` of the newest by `finishedAt`. Record a flag
+      `derivedGateStop` when `decision.kind === "stop"` with label `inProgress`,
+      `sessions.length === 0`, and no `deps.human`. Before the final
+      `publish()`, skip it when the flag is set and the previous outcome equals
+      `{ status: "stopped", label: "inProgress", summary: stop.summary }`. Then
+      write `republished: false` into `result.json` and print the stderr line.
+      If `run-once.ts` grows past its module-size limit, put the helper in
+      `src/kernel/run-history.ts` instead.
+
+- [ ] **Step 4: Run `node --test src/kernel/run-once*.test.ts`.** Expected:
+      PASS.
+
+- [ ] **Step 5: Commit** `fix(kernel): publish an unchanged gate wait once`.
+
+### Task 6: Lifetime lock
 
 **Files:**
 
@@ -347,6 +422,9 @@ the test kills it with `SIGKILL`. Each test creates a temporary repository with
   - `a live owner refuses a second runner`: child `hold`; then
     `acquireLifetimeLock` rejects with `LifetimeLockHeldError` whose
     `record.pid` is the child PID; the same holds from the worktree.
+    - `a dead PID is stale even without a start marker`: write a record with
+      this host, the PID of an exited child, and `processStart: null`; acquire
+      resolves and logs the replacement.
   - `recovery after an unclean exit`: child `crash`, then `SIGKILL`, await
     `exit`; `acquireLifetimeLock` resolves, the log matches
     `/replaced a stale run lock \(pid <childPid>/`, and the file record has the
@@ -380,14 +458,14 @@ the test kills it with `SIGKILL`. Each test creates a temporary repository with
 
 - [ ] **Step 5: Commit** `feat(kernel): add the runner lifetime lock`.
 
-### Task 6: `patchmill run` command and documentation
+### Task 7: `patchmill run` command and documentation
 
 **Files:**
 
 - Create: `src/cli/commands/run/main.ts`
 - Create: `site/src/content/docs/using-patchmill/run.md`
-- Modify: `src/cli/main.ts`, `README.md`, `site/astro.config.mjs`,
-  `site/src/content/docs/using-patchmill/run-once.md`,
+- Modify: `src/cli/main.ts`, `src/cli/main.test.ts`, `README.md`,
+  `site/astro.config.mjs`, `site/src/content/docs/using-patchmill/run-once.md`,
   `site/src/content/docs/getting-started/configuration.md`,
   `site/src/content/docs/reference/configuration-example.md`
 - Test: `src/cli/commands/run/main.test.ts`
@@ -398,7 +476,11 @@ the test kills it with `SIGKILL`. Each test creates a temporary repository with
   `src/cli/commands/run-once/deps.ts`; `runTriage`;
   `createTriageProgressReporter`.
 - Produces:
-  `main(args?: string[], options?: { runner?; output?; repoRoot?; runOneIssue?; runTriage?; runRunnerShell?; acquireLifetimeLock?; stateTrackingMode?; exit?: (code: number) => void }): Promise<number>`.
+  `main(args?: string[], options?: { runner?; output?; repoRoot?; now?: () => Date; runOneIssue?; runTriage?; runRunnerShell?; acquireLifetimeLock?; stateTrackingMode?; exit?: (code: number) => void }): Promise<number>`.
+
+The tests that get past the host check inject a fake `runner` whose `gh` replies
+make `host.checkCli()` pass, as `src/cli/commands/triage/main.test.ts` and the
+run-once CLI tests do.
 
 - [ ] **Step 1: Write the failing tests**
   - `help prints usage without configuration`: `main(["--help"])` returns 0 and
@@ -421,6 +503,14 @@ the test kills it with `SIGKILL`. Each test creates a temporary repository with
     config `run.idleBackoff.initialSeconds: 7`, the shell input has
     `backoff.idle.initialSeconds === 7`, and calling
     `input.workSource.pass(signal)` calls the injected `runOneIssue`.
+    - `the configured triage interval reaches the gate`: with
+      `run.triageIntervalMinutes: 5` and an injected mutable `now`,
+      `input.triageGate.tryGrant()` grants, returns `undefined` 4 minutes later,
+      and grants again 5 minutes after the first grant.
+  - `the help text lists run`: in `src/cli/main.test.ts`, replace the guard
+    `assert.doesNotMatch(HELP_TEXT, /set-spec|run /)` with
+    `assert.doesNotMatch(HELP_TEXT, /set-spec/)` and
+    `assert.match(HELP_TEXT, /^\s+run\s+/m)`.
   - `the shell's triage calls runTriage with the grant's beforeWrite`: call
     `input.triage({ beforeWrite: fn, release }, signal)`; the injected
     `runTriage` receives `beforeWrite === fn` and the same `signal`.
@@ -455,7 +545,7 @@ the test kills it with `SIGKILL`. Each test creates a temporary repository with
 
 - [ ] **Step 6: Commit** `feat(cli): add patchmill run`.
 
-### Task 7: Full verification
+### Task 8: Full verification
 
 - [ ] **Step 1:** `npm test`. Expected: all tests pass.
 - [ ] **Step 2:** `npm run lint`. Expected: no errors or warnings.
@@ -468,10 +558,11 @@ the test kills it with `SIGKILL`. Each test creates a temporary repository with
 
 ## Verification choice
 
-Automated tests cover the shell, backoff, mapping, lock, run-once pause, config
-validation, and CLI exit codes, because each is production behavior with a
-regression worth catching. Documentation, help text, and the glossary are
-checked by `npm run lint` and inspection, not by tests that assert text.
+Automated tests cover the shell, backoff, mapping, Needs Info streak, lock,
+run-once pause, single publication of a gate wait, config validation, and CLI
+exit codes, because each is production behavior with a regression worth
+catching. Documentation, help text, and the glossary are checked by
+`npm run lint` and inspection, not by tests that assert text.
 
 ## Visual explanation
 
@@ -481,11 +572,13 @@ Task order and what each task gives to later tasks:
 flowchart LR
   T1[1 config run section] --> T2[2 shell + backoff]
   T2 --> T3[3 local source, gate, mode answer]
-  T4[4 run-once abort pauses] --> T6
-  T3 --> T6[6 CLI run + README]
-  T5[5 lifetime lock] --> T6
-  T6 --> T7[7 full verification]
+  T4[4 run-once abort pauses] --> T5[5 gate wait publishes once]
+  T3 --> T7[7 CLI run + docs]
+  T5 --> T7
+  T6[6 lifetime lock] --> T7
+  T7 --> T8[8 full verification]
 ```
 
-Tasks 4 and 5 are independent of Tasks 2 and 3. Inline execution runs them in
-number order.
+Tasks 4, 5, and 6 are independent of Tasks 2 and 3. Task 5 edits the same
+publication step of `run-once.ts` as Task 4, so it comes after it. Inline
+execution runs them in number order.
