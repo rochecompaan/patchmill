@@ -36,6 +36,7 @@ import { sumSessionUsage, costLine } from "./pi-cost.ts";
 import { runSnapshot, type RunSnapshot } from "./run-snapshot.ts";
 import { projectRunProgress, writeRunProgress } from "./run-progress.ts";
 import { createRunHistory } from "./run-history.ts";
+import { gateWaitPublished } from "./gate-wait.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue } from "./merged-cleanup.ts";
@@ -164,6 +165,8 @@ export async function runOneIssue(
     config.paths.runsDir,
     `issue-${issueNumber}`,
   );
+  // A stop request that arrived before the claim leaves the issue untouched.
+  if (options.signal?.aborted) return { status: "no-work" };
   let lock: IssueLock;
   try {
     lock = heldLock ?? (await acquireLock(join(issueDir, "lock"), { now }));
@@ -217,6 +220,8 @@ export async function runOneIssue(
   let paused = false;
   let totalOutputTokens = 0;
   let published = false;
+  // An unattended gate stop derived before any session in this attempt.
+  let derivedGateStop = false;
   const publicationErrors: string[] = [];
   const publish = async () => {
     publicationErrors.push(
@@ -305,6 +310,8 @@ export async function runOneIssue(
             sinceHuman = 0;
             continue;
           }
+          derivedGateStop =
+            stop.label === "inProgress" && !deps.human && !sessions.length;
           break;
         }
         if (
@@ -371,9 +378,9 @@ export async function runOneIssue(
             : {}),
         });
         await snapshot.session();
-        // Only a console shutdown aborts an interactive session: a pause,
+        // A console shutdown or a stop request aborts a session: a pause,
         // not a failure. Publish nothing; the next start continues the run.
-        if (deps.human && session.aborted) {
+        if ((deps.human || options.signal?.aborted) && session.aborted) {
           paused = true;
           stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
           break;
@@ -466,7 +473,21 @@ export async function runOneIssue(
     }
     const usage = await sumSessionUsage(join(runDir, "sessions"));
     const cost = costLine(usage);
-    if (!published && !paused) await publish();
+    // A stop request pauses an unfinished unattended attempt too, also when
+    // the abort made it throw. Verified completed work still publishes.
+    if (options.signal?.aborted && !published && stop.label !== "done") {
+      paused = true;
+      stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
+    }
+    const unchangedGateWait =
+      derivedGateStop &&
+      !published &&
+      !paused &&
+      stop.label === "inProgress" &&
+      (await gateWaitPublished({ issueDir, runId, summary: stop.summary }));
+    if (unchangedGateWait)
+      output.stderr("Unchanged planning gate wait; not republished.");
+    if (!published && !paused && !unchangedGateWait) await publish();
     if (stop.label === "done" && displayFacts?.stage === "implementation") {
       await cleanupMergedIssue({
         ...deps,
@@ -501,6 +522,7 @@ export async function runOneIssue(
           startedAt,
           finishedAt: now().toISOString(),
           outcome,
+          ...(unchangedGateWait ? { republished: false } : {}),
           sessions,
           progress: projectRunProgress(
             {

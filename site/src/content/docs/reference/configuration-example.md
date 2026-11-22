@@ -32,6 +32,11 @@ Unknown keys fail by name. Copy only the values that your repository needs.
   "workflow": {
     "specApproval": { "required": false },
     "planApproval": { "required": false }
+  },
+  "run": {
+    "triageIntervalMinutes": 5,
+    "idleBackoff": { "initialSeconds": 60, "maxSeconds": 900 },
+    "errorBackoff": { "initialSeconds": 30, "maxSeconds": 1800 }
   }
 }
 ```

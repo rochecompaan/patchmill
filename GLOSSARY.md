@@ -61,16 +61,34 @@ the issue number, a title slug that is fixed when the issue's first Planning
 branch is created, and its stage. _Avoid_: Spec worktree, gate branch
 
 **Run-once workflow**: The atomic processing of one selected issue from claim
-through its terminal or resumable outcome. _Avoid_: Run loop, coordinator
+through its terminal or resumable outcome. _Avoid_: Run loop, Runner
 
-**Coordinator**: The long-lived Patchmill role that decides when a run-once
-workflow may start and applies capacity, budget, and operator policy between
-issue runs. _Avoid_: Runner, worker
+**Runner**: The long-lived `patchmill run` process of one clone. It decides when
+a Run-once workflow may start and applies capacity, budget, and operator policy
+between issue runs. _Avoid_: Coordinator, worker
+
+**Runner shell**: The part of a Runner that owns its lifetime: the Lifetime
+lock, stop signals, the loop, and backoff. It sees only Pass results. _Avoid_:
+Run loop
+
+**Triage gate**: The part of a Runner that decides when triage may run. _Avoid_:
+Triage schedule
+
+**Work source**: The part of a Runner that does one pass of unattended work and
+reports a Pass result. _Avoid_: Work queue
+
+**Pass result**: What one Work source pass tells the Runner shell to do next:
+continue, back off, or stop for operator action. _Avoid_: Normalized run
+outcome, Run-once outcome
+
+**Lifetime lock**: A lock that a Runner holds for its whole life, so that one
+clone and its worktrees have at most one Runner. _Avoid_: Issue lock, Console
+session lock
 
 **Event ledger**: The canonical durable ordered record of normalized Patchmill
 lifecycle, control, usage, approval, failure, quarantine, and notification
-facts. It is the source for coordinator policy and audit history, but excludes
-raw Pi conversations and detailed workflow checkpoints. _Avoid_: Console log, Pi
+facts. It is the source for runner policy and audit history, but excludes raw Pi
+conversations and detailed workflow checkpoints. _Avoid_: Console log, Pi
 session log, Run recovery state
 
 **Ledger event**: An immutable, versioned, past-tense domain fact recorded in
@@ -132,19 +150,19 @@ Typing event
 **Review wait**: The part of an Interactive Issue run after the implementation
 pull request is verified and labeled `agent-done`, and before it is merged.
 
-**Normalized run outcome**: The small coordinator-facing result of one Run
-attempt — completed, no work, deferred, cancelled, or failed — produced from a
-rich Run-once workflow result. _Avoid_: Pipeline status
+**Normalized run outcome**: The small runner-facing result of one Run attempt —
+completed, no work, deferred, cancelled, or failed — produced from a rich
+Run-once workflow result. _Avoid_: Pipeline status
 
 **Pi session log**: A raw, potentially sensitive Pi execution transcript used as
-evidence and as input when normalizing usage. It is not a coordinator policy or
-audit source after ingestion. _Avoid_: Event ledger
+evidence and as input when normalizing usage. It is not a runner policy or audit
+source after ingestion. _Avoid_: Event ledger
 
 **Budget window**: A daily or weekly period in the configured timezone. All
 committed model usage that occurred in the period counts toward its selection
 limits. _Avoid_: Billing period
 
-**Budget wait**: Coordinator activity in which desired mode remains running but
+**Budget wait**: Runner activity in which desired mode remains running but
 Patchmill cannot select another Issue run because a Budget window has reached a
 limit. _Avoid_: Pause, Drain
 
@@ -152,19 +170,18 @@ limit. _Avoid_: Pause, Drain
 host-retry state allow one Run-once workflow to start. _Avoid_: Budget check,
 throttle
 
-**Operator control**: A maintainer instruction that changes coordinator intent,
-such as pause, resume, drain, or shutdown. _Avoid_: Workflow action
+**Operator control**: A maintainer instruction that changes runner intent, such
+as pause, resume, drain, or shutdown. _Avoid_: Workflow action
 
-**Desired mode**: The coordinator's durable operator intent, either running or
+**Desired mode**: The runner's durable operator intent, either running or
 paused, independent of its current activity. _Avoid_: Activity state
 
-**Coordinator activity**: The coordinator's observed current condition, such as
-idle, executing, waiting, or faulted, reported separately from desired mode.
-_Avoid_: Desired mode
+**Runner activity**: The runner's observed current condition, such as idle,
+executing, waiting, or faulted, reported separately from desired mode. _Avoid_:
+Desired mode
 
 **Drain**: An operator control that lets the active issue run finish, persists a
-paused desired mode, and then stops the coordinator cleanly. _Avoid_: Pause,
-shutdown
+paused desired mode, and then stops the runner cleanly. _Avoid_: Pause, shutdown
 
 **Quarantine**: A durable issue state that excludes repeatedly failing work from
 selection until an operator intervenes. _Avoid_: Backoff, pause

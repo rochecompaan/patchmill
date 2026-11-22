@@ -12,6 +12,7 @@ import {
   type WorkflowStateInput,
 } from "./state-tracking-mode.ts";
 import { WORKFLOW_STATUS_TITLES } from "./workflow-state.ts";
+import { localWorkSource } from "./runner/local-work-source.ts";
 
 async function input(
   t: TestContext,
@@ -64,4 +65,15 @@ test("local state mode answers from local state", async (t) => {
   });
   assert.equal(mode.doctorWorkflowCheck, "state");
   assert.deepEqual(mode.ignoredStatePaths, [".patchmill/state/"]);
+});
+
+test("labels and local modes allow run with the local work source", () => {
+  for (const stateTracking of ["labels", "local"] as const) {
+    const mode = stateTrackingMode(
+      parseConfig({ workflow: { stateTracking } }),
+    );
+    assert.equal(mode.run.allowed, true);
+    if (mode.run.allowed)
+      assert.equal(mode.run.createWorkSource, localWorkSource);
+  }
 });
