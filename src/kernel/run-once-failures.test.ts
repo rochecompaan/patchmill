@@ -101,7 +101,7 @@ for (const mode of [
       mode === "timeout"
         ? /timed out.*|Log:/
         : mode === "invalid"
-          ? /no result/
+          ? /without a result block/
           : mode === "no plan"
             ? new RegExp(plan.replaceAll(".", "\\."))
             : /not verified/,
@@ -168,7 +168,7 @@ test("a worker that ends with a running reviewer names the cause", async (t) => 
   assert.match(
     issue.comments[0]!.body,
     new RegExp(
-      `no result: the worker ended its turn while its reviewer run ${run} was still running`,
+      `without a result block, also after a reminder\\. It ended its turn while its reviewer run ${run} was still running\\.`,
     ),
   );
   assert.equal((await c.records()).result.sessions[0].status, "invalid");

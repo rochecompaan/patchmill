@@ -13,6 +13,8 @@ export async function runRpc({ step, script, sideEffects }) {
   const out = (record) => process.stdout.write(`${JSON.stringify(record)}\n`);
   const dialogs = new Map();
   const prompted = Promise.withResolvers();
+  let prompts = 0;
+  let settles = 0;
   const handle = (command) => {
     appendFileSync(`${script}.commands.log`, `${JSON.stringify(command)}\n`);
     if (command.type === "extension_ui_response") {
@@ -31,7 +33,30 @@ export async function runRpc({ step, script, sideEffects }) {
       });
       return;
     }
+    if (command.type === "prompt" && prompts > 0) {
+      const reminder = step.reminder ?? {};
+      if (reminder.promptError) {
+        out({
+          id: command.id,
+          type: "response",
+          command: "prompt",
+          success: false,
+          error: reminder.promptError,
+        });
+        return;
+      }
+      out({
+        id: command.id,
+        type: "response",
+        command: "prompt",
+        success: true,
+        data: { disposition: reminder.handled ? "handled" : "started" },
+      });
+      if (!reminder.handled) void reminderTurn();
+      return;
+    }
     if (command.type === "prompt") {
+      prompts += 1;
       out({
         id: command.id,
         type: "response",
@@ -84,6 +109,31 @@ export async function runRpc({ step, script, sideEffects }) {
       statusText: `${settle}:${count}`,
     });
 
+  // A later prompt is the Result reminder. Its answer comes from `step.reminder`.
+  const reminderTurn = async () => {
+    const reminder = step.reminder ?? {};
+    if (step.duplicateZero) {
+      report(1, 0);
+      await sleep(50);
+    }
+    out({ type: "agent_start" });
+    const lines = [];
+    if (reminder.stdout !== undefined) lines.push(reminder.stdout);
+    if (reminder.result !== undefined && reminder.result !== null)
+      lines.push(`\`\`\`json\n${JSON.stringify(reminder.result)}\n\`\`\``);
+    out({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: lines.join("\n") }],
+        stopReason: reminder.stopReason ?? "stop",
+      },
+    });
+    const settle = ++settles;
+    report(settle, 0);
+    out({ type: "agent_settled" });
+  };
+
   if (step.spawnChild) {
     // A group member that outlives Pi and ignores its closed input.
     const grandchild = spawn(
@@ -128,6 +178,7 @@ export async function runRpc({ step, script, sideEffects }) {
   const counts = step.backgroundCounts ?? [0];
   for (const [index, count] of counts.entries()) {
     const settle = index + 1;
+    settles = settle;
     if (!step.noReport && !step.reportAfterSettle) report(settle, count);
     out({ type: "agent_settled" });
     if (!step.noReport && step.reportAfterSettle) report(settle, count);

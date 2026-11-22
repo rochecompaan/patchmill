@@ -189,8 +189,15 @@ Use `done` only after validation, the independent review and its fix pass,
 commit, push, passing pull request checks, and the ready pull request handoff
 succeed. Use `needs-input` for missing decisions or prerequisites. Put questions
 in `summary`. Use `failed` for execution failures. Include the pull request URL
-and validation or screenshot paths in the summary as needed. End with a fenced
-`json` block containing exactly these fields, and no text after it:
+and validation or screenshot paths in the summary as needed.
+
+The result block is the last and required step. Write it after the ready pull
+request handoff and after every subagent has finished. Patchmill reads the phase
+result only from this block. If the runtime asks you to write your findings to a
+file, still end your last message with this block.
+
+End with a fenced `json` block containing exactly these fields, and no text
+after it:
 
 ```json
 {
