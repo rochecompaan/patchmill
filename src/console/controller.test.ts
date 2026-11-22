@@ -8,6 +8,7 @@ import type { PhaseLaunch, PhaseRun } from "../kernel/launch.ts";
 import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { fakeExtensionApi } from "../../test-support/fake-extension-api.ts";
+import type { StatusLine } from "./run-status.ts";
 
 const sessionDir = await fs.mkdtemp(join(tmpdir(), "console-planning-test-"));
 after(() => fs.rm(sessionDir, { recursive: true, force: true }));
@@ -29,7 +30,7 @@ const result: PhaseRun = {
 };
 function setup(
   startRun: StartRun = async () => ({ status: "no-work" }),
-  runStatus?: { show(snapshot: RunSnapshot): void; clear(): void },
+  runStatus?: { show(line: StatusLine): void; clear(): void },
 ) {
   const pi = fakeExtensionApi();
   let stops = 0;
@@ -54,8 +55,8 @@ function recordingStatus() {
   const calls: string[][] = [];
   return {
     calls,
-    show: (snapshot: RunSnapshot) => {
-      calls.push(["show", snapshot.state]);
+    show: (line: StatusLine) => {
+      calls.push(["show", line.label]);
     },
     clear: () => {
       calls.push(["clear"]);
@@ -85,8 +86,8 @@ test("snapshots update the status and a settled run clears it", async () => {
   await controller.startIssueRun(9);
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(status.calls, [
-    ["show", "deriving"],
-    ["show", "planning"],
+    ["show", "preparing"],
+    ["show", "01 planning"],
     ["show", "ended"],
     ["clear"],
   ]);
@@ -101,7 +102,7 @@ test("a thrown run clears the status", async () => {
   }, status);
   await controller.startIssueRun(9);
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(status.calls, [["show", "deriving"], ["clear"]]);
+  assert.deepEqual(status.calls, [["show", "preparing"], ["clear"]]);
   await controller.shutdown();
 });
 
@@ -113,10 +114,10 @@ test("shutdown clears the status", async () => {
     return { status: "no-work" };
   }, status);
   await controller.startIssueRun(9);
-  assert.deepEqual(status.calls, [["show", "gate-wait"]]);
+  assert.deepEqual(status.calls, [["show", "awaiting approval"]]);
   await controller.shutdown();
   assert.deepEqual(status.calls.slice(0, 2), [
-    ["show", "gate-wait"],
+    ["show", "awaiting approval"],
     ["clear"],
   ]);
 });

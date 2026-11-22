@@ -13,7 +13,7 @@ import type { WorkerLauncher } from "./worker-launcher.ts";
 import type { ConsoleSession } from "./planning-usage.ts";
 import { collectPlanningDialogFacts } from "./planning-dialog-facts.ts";
 import { PlanningConversation } from "./planning-conversation.ts";
-import type { RunStatus } from "./run-status.ts";
+import { progressLabel, type RunStatus } from "./run-status.ts";
 
 export type StartRun = (
   issue: number | undefined,
@@ -66,7 +66,11 @@ export class ConsoleController implements HumanChannel {
     this.active = Promise.resolve()
       .then(() =>
         this.deps.startRun(issue, this, (snapshot) => {
-          this.deps.runStatus?.show(snapshot);
+          this.deps.runStatus?.show({
+            issue: snapshot.issue,
+            ...(snapshot.title === undefined ? {} : { title: snapshot.title }),
+            label: progressLabel(snapshot),
+          });
           this.snapshot = snapshot;
           if (
             snapshot.state === "planning" ||
