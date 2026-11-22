@@ -8,12 +8,31 @@ See [Providers](/guides/providers/) before initialization. Patchmill has no
 general migration path from earlier configuration or workflow state. Retired
 review-label settings are accepted but ignored.
 
-## Install and initialize
+## Install
 
-For GitHub, run these commands in the repository:
+### npm (non-Nix)
+
+With Node.js 24 or later, install with npm:
 
 ```sh
 npm install -g patchmill
+```
+
+### Nix
+
+With Nix flakes enabled, install from GitHub:
+
+```sh
+nix profile install github:rochecompaan/patchmill
+```
+
+You do not need a global npm installation when using Nix.
+
+## Initialize
+
+For GitHub, run these commands in the repository you want Patchmill to manage:
+
+```sh
 patchmill init --provider github-gh
 patchmill auth
 patchmill labels setup
