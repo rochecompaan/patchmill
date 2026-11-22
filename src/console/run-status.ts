@@ -9,21 +9,27 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const labels = {
   deriving: "preparing",
   "gate-wait": "awaiting approval",
-  "review-wait": "awaiting review",
+  "review-wait": "awaiting review — merge the PR, then tell me to continue",
   blocked: "blocked",
   ended: "ended",
 };
 
-/** Keep the state visible by spending the remaining terminal columns on the title. */
-export function formatRunStatus(snapshot: RunSnapshot, width: number): string {
+/** One issue line: the issue, its title when known, and a state label. */
+export type StatusLine = { issue: number; title?: string; label: string };
+
+/** The label of a run that is still in progress. */
+export function progressLabel(snapshot: RunSnapshot): string {
   const { state, phase, session } = snapshot;
-  const label =
-    state === "planning" || state === "implementation"
-      ? formatPhaseStart(phase ?? state, session)
-      : labels[state];
-  const prefix = `#${snapshot.issue}`;
-  const suffix = separator + label;
-  const title = cleanValue(snapshot.title ?? "")
+  return state === "planning" || state === "implementation"
+    ? formatPhaseStart(phase ?? state, session)
+    : labels[state];
+}
+
+/** Keep the state visible by spending the remaining terminal columns on the title. */
+export function formatRunStatus(line: StatusLine, width: number): string {
+  const prefix = `#${line.issue}`;
+  const suffix = separator + line.label;
+  const title = cleanValue(line.title ?? "")
     .replace(/\s+/g, " ")
     .trim();
   if (!title) return prefix + suffix;
@@ -47,14 +53,14 @@ export type RunStatusUi = {
   columns(): number;
 };
 export type RunStatus = {
-  show(snapshot: RunSnapshot): void;
+  show(line: StatusLine): void;
   refresh(): void;
   clear(): void;
 };
 
 /** A stale or failing footer must not affect run decisions or shutdown. */
 export function createRunStatus(ui: RunStatusUi): RunStatus {
-  let current: RunSnapshot | undefined;
+  let current: StatusLine | undefined;
   const refresh = () => {
     if (!current) return;
     try {
@@ -64,8 +70,8 @@ export function createRunStatus(ui: RunStatusUi): RunStatus {
     }
   };
   return {
-    show(snapshot) {
-      current = snapshot;
+    show(line) {
+      current = line;
       refresh();
     },
     refresh,

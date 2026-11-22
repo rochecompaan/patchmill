@@ -2,9 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { RunSnapshot, RunState } from "../kernel/run-snapshot.ts";
-import { createRunStatus, formatRunStatus } from "./run-status.ts";
+import {
+  createRunStatus,
+  formatRunStatus as formatLine,
+  progressLabel,
+  type StatusLine,
+} from "./run-status.ts";
 
 const SEP = " \u00a0·\u00a0 ";
+const line = (s: RunSnapshot): StatusLine => ({
+  issue: s.issue,
+  ...(s.title === undefined ? {} : { title: s.title }),
+  label: progressLabel(s),
+});
+const formatRunStatus = (s: RunSnapshot, width: number) =>
+  formatLine(line(s), width);
 function snap(state: RunState, extra: Partial<RunSnapshot> = {}): RunSnapshot {
   return {
     issue: 142,
@@ -25,7 +37,10 @@ test("labels every run state", () => {
     [snap("planning", { phase: "planning", session: 1 }), "01 planning"],
     [snap("implementation", { phase: "implementation" }), "02 implementation"],
     [snap("gate-wait", { phase: "planning" }), "awaiting approval"],
-    [snap("review-wait", { phase: "implementation" }), "awaiting review"],
+    [
+      snap("review-wait", { phase: "implementation" }),
+      "awaiting review — merge the PR, then tell me to continue",
+    ],
     [snap("blocked", { phase: "implementation" }), "blocked"],
     [snap("ended", { phase: "implementation" }), "ended"],
     [snap("planning", { session: 3 }), "03 planning"],
@@ -84,6 +99,24 @@ test("drops the title when no room remains", () => {
   );
 });
 
+test("a long end label keeps the issue and shortens only the title", () => {
+  const text = formatLine(
+    {
+      issue: 142,
+      title: "Show issue and step in status bar",
+      label: "merged · cleaned up — safe to quit",
+    },
+    60,
+  );
+  assert.ok(text.startsWith("#142"));
+  assert.ok(text.endsWith(`${SEP}merged · cleaned up — safe to quit`));
+  assert.ok(visibleWidth(text) <= 60);
+  assert.notEqual(
+    text,
+    `#142 Show issue and step in status bar${SEP}merged · cleaned up — safe to quit`,
+  );
+});
+
 test("show, refresh and clear drive the patchmill status", () => {
   const calls: [string, string | undefined][] = [];
   let columns = 200;
@@ -91,7 +124,7 @@ test("show, refresh and clear drive the patchmill status", () => {
     setStatus: (key, text) => calls.push([key, text]),
     columns: () => columns,
   });
-  status.show(snap("implementation"));
+  status.show(line(snap("implementation")));
   assert.deepEqual(calls, [
     [
       "patchmill",
@@ -122,7 +155,7 @@ test("status errors are ignored", () => {
         return 80;
       },
     });
-    assert.doesNotThrow(() => status.show(snap("planning")));
+    assert.doesNotThrow(() => status.show(line(snap("planning"))));
     assert.doesNotThrow(() => status.refresh());
     assert.doesNotThrow(() => status.clear());
   }

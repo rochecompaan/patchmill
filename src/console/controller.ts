@@ -13,7 +13,13 @@ import type { WorkerLauncher } from "./worker-launcher.ts";
 import type { ConsoleSession } from "./planning-usage.ts";
 import { collectPlanningDialogFacts } from "./planning-dialog-facts.ts";
 import { PlanningConversation } from "./planning-conversation.ts";
-import type { RunStatus } from "./run-status.ts";
+import { progressLabel, type RunStatus } from "./run-status.ts";
+import {
+  describeRunEnd,
+  summaryOf,
+  type EndedRun,
+  type RunEndInput,
+} from "./run-end.ts";
 
 export type StartRun = (
   issue: number | undefined,
@@ -25,6 +31,7 @@ export type ConsoleStatus = {
   worker?: { id: string; state: string };
   waiting?: Wait;
   estimatedCost?: string;
+  ended?: EndedRun;
 };
 type Dependencies = {
   pi: Pick<ExtensionAPI, "sendUserMessage" | "sendMessage">;
@@ -32,6 +39,8 @@ type Dependencies = {
   workers: WorkerLauncher;
   startRun: StartRun;
   runStatus?: Pick<RunStatus, "show" | "clear">;
+  /** Post the end-of-run message. The Web session posts its own closing line. */
+  announceRunEnd?: boolean;
 };
 const aborted: PhaseRun = {
   result: { ok: false, reason: "Console shut down." },
@@ -43,6 +52,7 @@ export class ConsoleController implements HumanChannel {
   private deps: Dependencies;
   private active: Promise<void> | undefined;
   private snapshot: RunSnapshot | undefined;
+  private ended: EndedRun | undefined;
   private planning: PlanningConversation;
   private waiting: Wait | undefined;
   private continuation: ((answer: "continue" | "quit") => void) | undefined;
@@ -63,11 +73,20 @@ export class ConsoleController implements HumanChannel {
     const refusal = this.startRefusal();
     if (refusal) throw new Error(refusal);
     this.snapshot = undefined;
+    this.ended = undefined;
+    if (issue !== undefined)
+      this.deps.runStatus?.show({ issue, label: "preparing" });
     this.active = Promise.resolve()
       .then(() =>
         this.deps.startRun(issue, this, (snapshot) => {
-          this.deps.runStatus?.show(snapshot);
+          // Shutdown already cleared the status; a late snapshot shows nothing.
+          if (this.closing) return;
           this.snapshot = snapshot;
+          this.deps.runStatus?.show({
+            issue: snapshot.issue,
+            ...(snapshot.title === undefined ? {} : { title: snapshot.title }),
+            label: progressLabel(snapshot),
+          });
           if (
             snapshot.state === "planning" ||
             snapshot.state === "implementation"
@@ -78,30 +97,54 @@ export class ConsoleController implements HumanChannel {
         }),
       )
       .then(
-        (outcome) => {
-          this.reportNext(
-            this.snapshot?.summary ??
-              ("summary" in outcome
-                ? outcome.summary
-                : "reason" in outcome
-                  ? outcome.reason
-                  : `Issue run ${outcome.status}.`),
-          );
-        },
-        (error: unknown) => {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          this.notify(message);
-          this.reportNext(message);
-        },
+        (outcome) => this.settle(issue, { outcome }),
+        (error: unknown) =>
+          this.settle(issue, {
+            error: error instanceof Error ? error.message : String(error),
+          }),
       )
       .finally(() => {
-        this.deps.runStatus?.clear();
         this.active = undefined;
       });
     return issue === undefined
       ? "Started the next Issue run."
       : `Started Issue run #${issue}.`;
+  }
+
+  /** Keep the ended run on screen until shutdown; never rejects `active`. */
+  private settle(issue: number | undefined, settled: RunEndInput["settled"]) {
+    if (this.closing) return;
+    let reply = summaryOf({
+      ...(this.snapshot ? { snapshot: this.snapshot } : {}),
+      settled,
+    });
+    try {
+      const ended = describeRunEnd({
+        ...(issue === undefined ? {} : { issue }),
+        ...(this.snapshot ? { snapshot: this.snapshot } : {}),
+        settled,
+      });
+      if (!ended) {
+        if ("error" in settled) this.notify(settled.error);
+        return;
+      }
+      this.ended = ended;
+      this.deps.runStatus?.show(ended);
+      if (this.deps.announceRunEnd === false) {
+        reply = ended.summary;
+        if ("error" in settled) this.notify(settled.error);
+        return;
+      }
+      reply = ended.message;
+      this.deps.pi.sendMessage(
+        { customType: "patchmill", content: ended.message, display: true },
+        { triggerTurn: ended.explain },
+      );
+    } catch {
+      /* Display only. The Pi context may already be closed. */
+    } finally {
+      this.reportNext(reply);
+    }
   }
 
   runPlanning(launch: PhaseLaunch, feedback?: string): Promise<PhaseRun> {
@@ -204,6 +247,7 @@ export class ConsoleController implements HumanChannel {
       ...(this.snapshot?.usage
         ? { estimatedCost: costLine(this.snapshot.usage) }
         : {}),
+      ...(this.ended ? { ended: this.ended } : {}),
     };
   }
   shutdown(): Promise<void> {
@@ -219,6 +263,7 @@ export class ConsoleController implements HumanChannel {
     this.waiting = undefined;
     this.guidance?.({ kind: "quit" });
     this.guidance = undefined;
+    this.reportNext("The console is shutting down.");
     try {
       await this.deps.workers.stopActive();
     } finally {

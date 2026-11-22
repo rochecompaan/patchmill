@@ -23,6 +23,31 @@ export function isReviewWait(
   );
 }
 
+/** The review-wait text. The Console agent relays it, so it speaks as "I". */
+export function reviewWaitMessage(input: {
+  url: string;
+  issue: number;
+  recheck: boolean;
+}): string {
+  const { url, issue } = input;
+  if (input.recheck)
+    return [
+      `Pull request ${url} is not merged yet. The wait continues.`,
+      "",
+      "- Merge the pull request, then tell me to continue.",
+      "- If the pull request needs changes, tell me what to change.",
+      "- To stop the wait, quit or pause the session.",
+    ].join("\n");
+  return [
+    `Pull request ready for review: ${url}`,
+    "",
+    "- You review and merge the pull request. Patchmill does not check for the merge by itself.",
+    `- After the merge, tell me to continue. Patchmill then confirms the merge and removes the worktrees and branches of issue #${issue}.`,
+    "- If the pull request needs changes, tell me what to change. I make the changes on the issue branch and push them. The wait continues.",
+    `- To stop the wait, quit or pause the session. The next start of issue #${issue} continues the wait.`,
+  ].join("\n");
+}
+
 /** Owns the review wait, including its already-published restart path. */
 export async function reviewWait(input: {
   facts: Facts;
@@ -44,12 +69,18 @@ export async function reviewWait(input: {
   if (input.restart) await workflow.setStatus(issue, { status: "done" });
   else await input.publish();
   await input.update(facts, "done", "The pull request was verified.");
+  let recheck = false;
   while (
     (await human.awaitContinue({
       kind: "review",
-      message: `${facts.pullRequest!.url}: waiting for the merge.`,
+      message: reviewWaitMessage({
+        url: facts.pullRequest!.url,
+        issue,
+        recheck,
+      }),
     })) === "continue"
   ) {
+    recheck = true;
     facts = await input.refresh();
     const repository = await host.repository();
     const decision = derivePhase(facts);

@@ -8,6 +8,7 @@ import type { PhaseLaunch, PhaseRun } from "../kernel/launch.ts";
 import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { fakeExtensionApi } from "../../test-support/fake-extension-api.ts";
+import type { StatusLine } from "./run-status.ts";
 
 const sessionDir = await fs.mkdtemp(join(tmpdir(), "console-planning-test-"));
 after(() => fs.rm(sessionDir, { recursive: true, force: true }));
@@ -29,7 +30,8 @@ const result: PhaseRun = {
 };
 function setup(
   startRun: StartRun = async () => ({ status: "no-work" }),
-  runStatus?: { show(snapshot: RunSnapshot): void; clear(): void },
+  runStatus?: { show(line: StatusLine): void; clear(): void },
+  announceRunEnd?: boolean,
 ) {
   const pi = fakeExtensionApi();
   let stops = 0;
@@ -46,6 +48,7 @@ function setup(
     workers,
     startRun,
     ...(runStatus ? { runStatus } : {}),
+    ...(announceRunEnd === undefined ? {} : { announceRunEnd }),
   });
   return { pi, controller, workers, stops: () => stops };
 }
@@ -54,8 +57,8 @@ function recordingStatus() {
   const calls: string[][] = [];
   return {
     calls,
-    show: (snapshot: RunSnapshot) => {
-      calls.push(["show", snapshot.state]);
+    show: (line: StatusLine) => {
+      calls.push(["show", line.label]);
     },
     clear: () => {
       calls.push(["clear"]);
@@ -74,35 +77,176 @@ function statusSnapshot(state: RunSnapshot["state"]): RunSnapshot {
   };
 }
 
-test("snapshots update the status and a settled run clears it", async () => {
+const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+function mergedSnapshot(cleanup: RunSnapshot["cleanup"]): RunSnapshot {
+  return {
+    ...statusSnapshot("ended"),
+    summary: "The pull request is merged.",
+    facts: {
+      pullRequest: { state: "merged", url: "https://x/pr/1" },
+    } as unknown as NonNullable<RunSnapshot["facts"]>,
+    ...(cleanup ? { cleanup } : {}),
+  };
+}
+const stopped: RunOnceOutcome = {
+  status: "stopped",
+  issue: 9,
+  label: "needsInfo",
+  summary: "Checks failed.",
+};
+const endMessages = (pi: ReturnType<typeof fakeExtensionApi>) =>
+  pi.messages.filter((m) => m.message.content.startsWith("Issue #"));
+
+test("the status shows preparing at once and keeps the end label after a merged run", async () => {
   const status = recordingStatus();
-  const { controller } = setup(async (_issue, _human, observe) => {
+  const { controller, pi } = setup(async (_issue, _human, observe) => {
     observe(statusSnapshot("deriving"));
     observe({ ...statusSnapshot("planning"), phase: "planning" });
-    observe(statusSnapshot("ended"));
-    return { status: "no-work" };
+    observe(mergedSnapshot("cleaned"));
+    return { status: "completed", issue: 9 };
   }, status);
   await controller.startIssueRun(9);
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(status.calls[0], ["show", "preparing"]);
+  await tick();
   assert.deepEqual(status.calls, [
-    ["show", "deriving"],
-    ["show", "planning"],
+    ["show", "preparing"],
+    ["show", "preparing"],
+    ["show", "01 planning"],
     ["show", "ended"],
-    ["clear"],
+    ["show", "merged · cleaned up — safe to quit"],
   ]);
+  const [end] = endMessages(pi);
+  assert.match(
+    end!.message.content,
+    /^Issue #9 run ended: the pull request is merged\./,
+  );
+  assert.deepEqual(end!.options, { triggerTurn: false });
   await controller.shutdown();
 });
 
-test("a thrown run clears the status", async () => {
+test("a stopped run keeps the end label", async () => {
   const status = recordingStatus();
   const { controller } = setup(async (_issue, _human, observe) => {
+    observe(statusSnapshot("deriving"));
+    return stopped;
+  }, status);
+  await controller.startIssueRun(9);
+  await tick();
+  assert.deepEqual(status.calls.at(-1), [
+    "show",
+    "stopped: needs info — see the summary",
+  ]);
+  assert.equal(
+    status.calls.some(([call]) => call === "clear"),
+    false,
+  );
+  await controller.shutdown();
+});
+
+test("a thrown run keeps the end label and posts the error once", async () => {
+  const status = recordingStatus();
+  const { controller, pi } = setup(async (_issue, _human, observe) => {
     observe(statusSnapshot("deriving"));
     throw Error("boom");
   }, status);
   await controller.startIssueRun(9);
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(status.calls, [["show", "deriving"], ["clear"]]);
+  await tick();
+  assert.deepEqual(status.calls.at(-1), ["show", "failed — see the error"]);
+  const posted = pi.messages.filter((m) => m.message.content.includes("boom"));
+  assert.equal(posted.length, 1);
+  assert.match(posted[0]!.message.content, /^Issue #9 run ended: failed\./);
   await controller.shutdown();
+});
+
+test("stopped, failed and kept-cleanup runs ask the Console agent to explain", async () => {
+  const cases: [StartRun, boolean][] = [
+    [async () => stopped, true],
+    [
+      async () => {
+        throw Error("boom");
+      },
+      true,
+    ],
+    [
+      async (_issue, _human, observe) => {
+        observe(mergedSnapshot("kept"));
+        return { status: "completed", issue: 9 };
+      },
+      true,
+    ],
+    [
+      async (_issue, _human, observe) => {
+        observe(mergedSnapshot("cleaned"));
+        return { status: "completed", issue: 9 };
+      },
+      false,
+    ],
+  ];
+  for (const [startRun, explain] of cases) {
+    const { controller, pi } = setup(startRun);
+    await controller.startIssueRun(9);
+    await tick();
+    const [end] = endMessages(pi);
+    assert.deepEqual(end!.options, { triggerTurn: explain });
+    await controller.shutdown();
+  }
+});
+
+test("the end message resolves a pending continue", async () => {
+  const { controller, pi } = setup(async (_issue, human, observe) => {
+    await human.awaitContinue({ kind: "review", message: "Merge PR" });
+    observe(mergedSnapshot("cleaned"));
+    return { status: "completed", issue: 9 };
+  });
+  await controller.startIssueRun(9);
+  const next = await controller.continueRun();
+  assert.equal(next, controller.status().ended!.message);
+  assert.equal(pi.messages.at(-1)!.message.content, next);
+  await controller.shutdown();
+});
+
+test("status reports the ended run", async () => {
+  const { controller } = setup(async (_issue, _human, observe) => {
+    observe(mergedSnapshot("cleaned"));
+    return { status: "completed", issue: 9 };
+  });
+  await controller.startIssueRun(9);
+  await tick();
+  const status = controller.status();
+  assert.equal(status.ended!.outcome, "merged");
+  assert.equal(status.ended!.label, "merged · cleaned up — safe to quit");
+  assert.equal(status.snapshot!.state, "ended");
+  await controller.shutdown();
+});
+
+test("a new run resets the ended run", async () => {
+  const status = recordingStatus();
+  let calls = 0;
+  const { controller } = setup(async (_issue, human, observe) => {
+    if (++calls === 1) return stopped;
+    observe(statusSnapshot("gate-wait"));
+    await human.awaitContinue({ kind: "gate", message: "Merge" });
+    return { status: "no-work" };
+  }, status);
+  await controller.startIssueRun(9);
+  await tick();
+  assert.ok(controller.status().ended);
+  const before = status.calls.length;
+  await controller.startIssueRun(9);
+  assert.equal(controller.status().ended, undefined);
+  assert.deepEqual(status.calls[before], ["show", "preparing"]);
+  await tick();
+  assert.deepEqual(status.calls.at(-1), ["show", "awaiting approval"]);
+  await controller.shutdown();
+});
+
+test("shutdown after an ended run clears the status", async () => {
+  const status = recordingStatus();
+  const { controller } = setup(async () => stopped, status);
+  await controller.startIssueRun(9);
+  await tick();
+  await controller.shutdown();
+  assert.deepEqual(status.calls.at(-1), ["clear"]);
 });
 
 test("shutdown clears the status", async () => {
@@ -113,12 +257,96 @@ test("shutdown clears the status", async () => {
     return { status: "no-work" };
   }, status);
   await controller.startIssueRun(9);
-  assert.deepEqual(status.calls, [["show", "gate-wait"]]);
-  await controller.shutdown();
-  assert.deepEqual(status.calls.slice(0, 2), [
-    ["show", "gate-wait"],
-    ["clear"],
+  await tick();
+  assert.deepEqual(status.calls, [
+    ["show", "preparing"],
+    ["show", "awaiting approval"],
   ]);
+  await controller.shutdown();
+  assert.deepEqual(status.calls.at(2), ["clear"]);
+});
+
+test("a run that settles during shutdown shows and posts nothing", async () => {
+  const status = recordingStatus();
+  const { controller, pi } = setup(async (_issue, human, observe) => {
+    observe(statusSnapshot("review-wait"));
+    assert.equal(
+      await human.awaitContinue({ kind: "review", message: "Merge PR" }),
+      "quit",
+    );
+    observe({ ...statusSnapshot("ended"), summary: "Waiting." });
+    return { status: "completed", issue: 9 };
+  }, status);
+  await controller.startIssueRun(9);
+  await tick();
+  const posted = pi.messages.length;
+  await controller.shutdown();
+  const cleared = status.calls.findIndex(([call]) => call === "clear");
+  assert.deepEqual(status.calls.slice(cleared), [["clear"]]);
+  assert.equal(pi.messages.length, posted);
+  assert.equal(controller.status().ended, undefined);
+});
+
+test("shutdown resolves a pending continue", async () => {
+  const { controller } = setup(async (_issue, human) => {
+    while (
+      (await human.awaitContinue({ kind: "review", message: "Merge PR" })) ===
+      "continue"
+    );
+    return { status: "completed", issue: 9 };
+  });
+  await controller.startIssueRun(9);
+  await tick();
+  const next = controller.continueRun();
+  await controller.shutdown();
+  assert.equal(await next, "The console is shutting down.");
+});
+
+test("announceRunEnd false posts only a thrown error", async () => {
+  const quiet = setup(
+    async (_issue, human) => {
+      await human.awaitContinue({ kind: "review", message: "Merge PR" });
+      return stopped;
+    },
+    undefined,
+    false,
+  );
+  await quiet.controller.startIssueRun(9);
+  const next = await quiet.controller.continueRun();
+  assert.equal(next, "Checks failed.");
+  assert.equal(endMessages(quiet.pi).length, 0);
+  assert.equal(quiet.controller.status().ended!.outcome, "stopped");
+  await quiet.controller.shutdown();
+  const status = recordingStatus();
+  const failing = setup(
+    async () => {
+      throw Error("boom");
+    },
+    status,
+    false,
+  );
+  await failing.controller.startIssueRun(9);
+  await tick();
+  assert.deepEqual(
+    failing.pi.messages.map((m) => m.message.content),
+    ["boom"],
+  );
+  assert.deepEqual(status.calls.at(-1), ["show", "failed — see the error"]);
+  await failing.controller.shutdown();
+});
+
+test("a failing end message does not block continue or shutdown", async () => {
+  const { controller, pi } = setup(async (_issue, human) => {
+    await human.awaitContinue({ kind: "review", message: "Merge PR" });
+    return stopped;
+  });
+  await controller.startIssueRun(9);
+  pi.sendMessage = () => {
+    throw new Error("stale context");
+  };
+  const next = await controller.continueRun();
+  assert.match(next, /^Issue #9 run ended: stopped/);
+  await controller.shutdown();
 });
 
 test("planning sends envelope, feedback, and accepts only a pending result", async () => {
@@ -210,14 +438,16 @@ for (const next of ["wait", "phase", "end"] as const) {
       message: { customType: "patchmill", content: "Merge PR", display: true },
       options: { triggerTurn: true },
     });
-    assert.equal(
-      await controller.continueRun(),
-      next === "wait"
-        ? "Still open"
-        : next === "phase"
-          ? "The Issue run continues with implementation."
-          : "Finished",
-    );
+    const reported = await controller.continueRun();
+    if (next === "end")
+      assert.match(reported, /^Issue #9 run ended: stopped \(needs info\)\./);
+    else
+      assert.equal(
+        reported,
+        next === "wait"
+          ? "Still open"
+          : "The Issue run continues with implementation.",
+      );
     await controller.shutdown();
   });
 }
@@ -258,7 +488,7 @@ test("status combines observed snapshot, cost, worker and wait; shutdown is idem
   assert.equal(stops(), 1);
 });
 
-test("settled runs release the slot and only thrown errors notify", async () => {
+test("settled runs release the slot; an unknown issue posts only its error", async () => {
   let calls = 0;
   const { controller, pi } = setup(async () => {
     if (++calls === 1) throw new Error("boom");
@@ -269,8 +499,13 @@ test("settled runs release the slot and only thrown errors notify", async () => 
   assert.equal(pi.messages[0]?.message.content, "boom");
   assert.deepEqual(pi.messages[0]?.options, { triggerTurn: false });
   await controller.startIssueRun(10);
+  await new Promise<void>((resolve) => setImmediate(resolve));
   await controller.shutdown();
-  assert.equal(pi.messages.length, 1);
+  assert.equal(pi.messages.length, 2);
+  assert.match(
+    pi.messages[1]!.message.content,
+    /^Issue #10 run ended: the run did not start\./,
+  );
 });
 
 for (const ending of ["completed", "rejected"] as const) {

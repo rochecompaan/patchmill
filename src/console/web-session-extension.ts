@@ -99,6 +99,8 @@ export function createWebSessionExtension(options: {
     createPatchmillExtension({
       firstIssue: options.issue,
       startRun,
+      // The Web session exits after the run and posts its own closing line.
+      announceRunEnd: false,
       ...(options.client ? { client: options.client } : {}),
       registerShutdown: (shutdown) => {
         stopRun = shutdown;

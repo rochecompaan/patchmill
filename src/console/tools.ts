@@ -62,6 +62,16 @@ export function registerConsoleTools(
     name: "patchmill_continue_issue_run",
     label: "Continue Issue run",
     description: "Recheck a waiting merge and continue the Issue run.",
+    promptGuidelines: [
+      "In a review wait, the maintainer reviews and merges the pull request. Patchmill does not detect the merge by itself. Call `patchmill_continue_issue_run` when the maintainer says that the pull request is merged or asks you to check again.",
+      "When the maintainer asks for pull request changes during a review wait, make them yourself. Never tell the maintainer to edit the code. Get the worktree, branch and pull request from `patchmill_run_status` (`snapshot.facts`). Work only in that worktree.",
+      "For those changes, follow the rules of the patchmill-implementation skill for a revision of a ready pull request. Run the repository checks, commit, and push to the issue branch. Never force-push. Keep the pull request ready, and keep its closing reference. Never merge the pull request.",
+      "After you push, tell the maintainer what changed. Then tell them to merge the pull request and tell you to continue.",
+      "After the run ends, use `ended` from `patchmill_run_status` to say what to do next. Do not call `patchmill_continue_issue_run` for a run that has ended.",
+      "When an end-of-run message says that you explain the problem, do it at once. Read the summary and the messages before it. Say in plain words what went wrong and how you can resolve it, and offer to do it. Do not only tell the maintainer to read the summary.",
+      "Resolve a problem after the run only when the maintainer agrees. Work only in the issue worktree. Never discard uncommitted changes, and never remove a worktree or branch that Patchmill kept, unless the maintainer has seen exactly what would be lost. Never merge, force-push, or push the base branch. Never change issue labels: the kernel owns the run state.",
+      "After the fix, tell the maintainer the next step. For a stopped or failed run: quit, and run `patchmill run-once --interactive --issue <N>`. For a cleanup that did not finish: Patchmill tries cleanup again at its next run start.",
+    ],
     parameters: Type.Object({}),
     async execute() {
       return text(await controller().continueRun());
@@ -70,7 +80,8 @@ export function registerConsoleTools(
   pi.registerTool({
     name: "patchmill_run_status",
     label: "Issue run status",
-    description: "Show the current Issue run, worker, wait and estimated cost.",
+    description:
+      "Show the current or ended Issue run, worker, wait and estimated cost.",
     promptGuidelines: [
       "When you answer a Patchmill worker's supervisor request with `subagent_supervisor`, never tell the worker to yield, to end its turn, or to end without its JSON result. A worker runs as a subagent: its run ends with its turn, and nothing wakes it later.",
       "Tell the worker to wait for its own subagent runs in the same turn with `bg_wait({ id })`, and then to finish with its JSON result.",

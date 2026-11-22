@@ -203,12 +203,19 @@ The console agent uses four tools:
 - `patchmill_submit_planning_result`: submit a planning result after your
   review, in one dialog. If you request changes or press Escape, planning stays
   open.
-- `patchmill_continue_issue_run`: check a merge that the run waits for, and
-  continue the run.
-- `patchmill_run_status`: show the current run, the worker, the wait, and the
-  estimated cost.
+- `patchmill_continue_issue_run`: check the merge and continue the run. You
+  merge the pull request yourself, then tell the agent to continue. Patchmill
+  does not check for the merge by itself.
+- `patchmill_run_status`: show the current or ended run, the worker, the wait,
+  and the estimated cost.
 - `patchmill_confirm_block_guidance`: send guidance to a blocked worker after
   you confirm it.
+
+While the run waits for your review, you can ask the console agent for pull
+request changes. The agent makes them on the issue branch and pushes them. The
+status bar keeps the issue and its state until you quit or switch issues. When
+the run ends, the console says the outcome, the cleanup result, and the next
+step.
 
 The planning dialog names the issue and the document. It shows the files, the
 branch, and a short commit hash. It lists two to five key decisions, not the

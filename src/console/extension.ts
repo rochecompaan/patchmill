@@ -15,6 +15,8 @@ export function createPatchmillExtension(options: {
   startRun: StartRun;
   client?: (events: EventBus) => SubagentsClient;
   registerShutdown?: (shutdown: () => Promise<void>) => void;
+  /** Post the end-of-run message; the Web session posts its own. */
+  announceRunEnd?: boolean;
 }): ExtensionFactory {
   return (pi) => {
     let controller: ConsoleController | undefined;
@@ -67,6 +69,9 @@ export function createPatchmillExtension(options: {
         workers: createWorkerLauncher(client),
         startRun: options.startRun,
         ...(runStatus ? { runStatus } : {}),
+        ...(options.announceRunEnd === undefined
+          ? {}
+          : { announceRunEnd: options.announceRunEnd }),
       });
       try {
         const stopped = await stopWorkers(client);
