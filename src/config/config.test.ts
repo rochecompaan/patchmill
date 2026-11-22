@@ -303,3 +303,18 @@ test("run rejects unknown keys", () => {
     /Unknown config key: run\.lane/,
   );
 });
+
+test("run rejects a wait longer than the timer limit", () => {
+  // Node runs a longer timer after 1 ms, which would make backoff a tight loop.
+  assert.throws(
+    () => parseConfig({ run: { idleBackoff: { maxSeconds: 2_147_484 } } }),
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      /run\.idleBackoff\.maxSeconds/.test(error.message),
+  );
+  assert.equal(
+    parseConfig({ run: { idleBackoff: { maxSeconds: 2_147_483 } } }).run
+      .idleBackoff.maxSeconds,
+    2_147_483,
+  );
+});

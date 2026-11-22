@@ -103,6 +103,8 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "run.errorBackoff.maxSeconds", kind: "number" },
 ];
 
+const MAX_WAIT_SECONDS = Math.floor((2 ** 31 - 1) / 1000);
+
 function checkRun(run: RunConfig) {
   const positive = (path: string, value: number) => {
     if (!Number.isFinite(value) || value <= 0)
@@ -112,6 +114,11 @@ function checkRun(run: RunConfig) {
   for (const key of ["idleBackoff", "errorBackoff"] as const) {
     positive(`${key}.initialSeconds`, run[key].initialSeconds);
     positive(`${key}.maxSeconds`, run[key].maxSeconds);
+    // Node runs a longer timer after 1 ms, which would make backoff a tight loop.
+    if (run[key].maxSeconds > MAX_WAIT_SECONDS)
+      throw new ConfigError(
+        `Invalid value for run.${key}.maxSeconds: use at most ${MAX_WAIT_SECONDS}`,
+      );
     if (run[key].maxSeconds < run[key].initialSeconds)
       throw new ConfigError(
         `Invalid value for run.${key}.maxSeconds: it must be at least run.${key}.initialSeconds`,

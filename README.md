@@ -151,11 +151,11 @@ its state for the next start. A second signal forces an exit. A forced exit can
 leave a Pi process running, so keep `KillMode=control-group` to stop the whole
 process group.
 
-| Exit code | Meaning                                                          |
-| --------- | ---------------------------------------------------------------- |
-| 0         | A clean stop after a signal.                                     |
-| 1         | Invalid arguments, configuration, or host CLI, or a fatal error. |
-| 2         | Another `patchmill run` owns this clone and its worktrees.       |
+| Exit code | Meaning                                                                               |
+| --------- | ------------------------------------------------------------------------------------- |
+| 0         | A clean stop after a signal.                                                          |
+| 1         | Invalid arguments, configuration, mode, or host CLI, a fatal error, or a forced exit. |
+| 2         | Another `patchmill run` owns this clone and its worktrees.                            |
 
 One runner owns a clone and all its worktrees. The lock does not cover a second
 clone. In local state mode, run one runner per repository. In label mode, two

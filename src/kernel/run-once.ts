@@ -222,7 +222,6 @@ export async function runOneIssue(
   let published = false;
   // An unattended gate stop derived before any session in this attempt.
   let derivedGateStop = false;
-  let republished = true;
   const publicationErrors: string[] = [];
   const publish = async () => {
     publicationErrors.push(
@@ -480,18 +479,15 @@ export async function runOneIssue(
       paused = true;
       stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
     }
-    if (
+    const unchangedGateWait =
       derivedGateStop &&
       !published &&
       !paused &&
       stop.label === "inProgress" &&
-      (await gateWaitPublished({ issueDir, runId, summary: stop.summary }))
-    ) {
-      published = true;
-      republished = false;
+      (await gateWaitPublished({ issueDir, runId, summary: stop.summary }));
+    if (unchangedGateWait)
       output.stderr("Unchanged planning gate wait; not republished.");
-    }
-    if (!published && !paused) await publish();
+    if (!published && !paused && !unchangedGateWait) await publish();
     if (stop.label === "done" && displayFacts?.stage === "implementation") {
       await cleanupMergedIssue({
         ...deps,
@@ -526,7 +522,7 @@ export async function runOneIssue(
           startedAt,
           finishedAt: now().toISOString(),
           outcome,
-          ...(republished ? {} : { republished: false }),
+          ...(unchangedGateWait ? { republished: false } : {}),
           sessions,
           progress: projectRunProgress(
             {

@@ -203,7 +203,9 @@ test("a pass that throws after the abort is not an error", async () => {
   ]);
   assert.deepEqual(await h.run(), { kind: "stopped" });
   assert.deepEqual(h.sleeps, []);
-  assert.doesNotMatch(h.log.join("\n"), /error/i);
+  assert.doesNotMatch(h.log.join("\n"), /pass failed/);
+  // The operator still learns why the stopped pass ended.
+  assert.match(h.log.join("\n"), /pass ended after the stop: aborted run/);
 });
 
 test("a signal during triage stops before the pass", async () => {

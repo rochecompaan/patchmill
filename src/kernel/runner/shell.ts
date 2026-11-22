@@ -63,7 +63,11 @@ export async function runRunnerShell(
     try {
       result = await input.workSource.pass(signal);
     } catch (error) {
-      if (signal.aborted) break;
+      if (signal.aborted) {
+        // Not an error pass, but the operator must learn why it ended.
+        log(`${PREFIX} pass ended after the stop: ${errorMessage(error)}`);
+        break;
+      }
       idleStreak = 0;
       errorStreak += 1;
       log(`${PREFIX} pass failed: ${errorMessage(error)}`);

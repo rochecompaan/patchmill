@@ -54,7 +54,7 @@ The `run` section controls `patchmill run`. Other commands ignore it.
 Each wait doubles after each pass of the same kind, up to its maximum. Jitter
 makes the actual wait between half and all of that value. A pass that does work
 resets both waits. Each value must be a number greater than 0. Each `maxSeconds`
-must be at least its `initialSeconds`.
+must be at least its `initialSeconds` and at most `2147483` (about 24 days).
 
 ## Paths and git
 
