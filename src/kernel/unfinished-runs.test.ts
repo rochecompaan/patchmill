@@ -4,6 +4,13 @@ import os from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { explainMissingResult, unfinishedRuns } from "./unfinished-runs.ts";
+import { MISSING_RESULT_REASON, type ParsedResult } from "./result.ts";
+
+const missing: ParsedResult = {
+  ok: false,
+  reason: MISSING_RESULT_REASON,
+  missing: true,
+};
 
 const RUN = "c4856e0b-4247-4f52-9a9b-cf0f9b326737";
 const START = "2026-11-20T07:53:05.900Z";
@@ -197,16 +204,14 @@ async function tempDir(t: test.TestContext): Promise<string> {
   return dir;
 }
 
-test("explainMissingResult names the run in a no result reason", async (t) => {
+test("explainMissingResult names the run in a missing result reason", async (t) => {
   const dir = await tempDir(t);
   await fs.writeFile(join(dir, "a.jsonl"), resumeSession);
-  assert.deepEqual(
-    await explainMissingResult({ ok: false, reason: "no result" }, dir),
-    {
-      ok: false,
-      reason: `no result: the worker ended its turn while its reviewer run ${RUN} was still running`,
-    },
-  );
+  assert.deepEqual(await explainMissingResult(missing, dir), {
+    ok: false,
+    reason: `${MISSING_RESULT_REASON} It ended its turn while its reviewer run ${RUN} was still running.`,
+    missing: true,
+  });
 });
 
 test("explainMissingResult names one run with an unknown agent", async (t) => {
@@ -215,14 +220,11 @@ test("explainMissingResult names one run with an unknown agent", async (t) => {
     join(dir, "a.jsonl"),
     lines(header(START), receipt(LATER, "c1", "1a2b")),
   );
-  assert.deepEqual(
-    await explainMissingResult({ ok: false, reason: "no result" }, dir),
-    {
-      ok: false,
-      reason:
-        "no result: the worker ended its turn while its subagent run 1a2b was still running",
-    },
-  );
+  assert.deepEqual(await explainMissingResult(missing, dir), {
+    ok: false,
+    reason: `${MISSING_RESULT_REASON} It ended its turn while its subagent run 1a2b was still running.`,
+    missing: true,
+  });
 });
 
 test("explainMissingResult lists several runs", async (t) => {
@@ -232,13 +234,11 @@ test("explainMissingResult lists several runs", async (t) => {
     join(dir, "b.jsonl"),
     lines(header(START), receipt(LATER, "c9", "1a2b")),
   );
-  assert.deepEqual(
-    await explainMissingResult({ ok: false, reason: "no result" }, dir),
-    {
-      ok: false,
-      reason: `no result: the worker ended its turn while its subagent runs reviewer ${RUN}, 1a2b were still running`,
-    },
-  );
+  assert.deepEqual(await explainMissingResult(missing, dir), {
+    ok: false,
+    reason: `${MISSING_RESULT_REASON} It ended its turn while its subagent runs reviewer ${RUN}, 1a2b were still running.`,
+    missing: true,
+  });
 });
 
 test("explainMissingResult keeps other results", async (t) => {
@@ -249,6 +249,9 @@ test("explainMissingResult keeps other results", async (t) => {
     result: { status: "done" as const, summary: "ok" },
   };
   const invalid = { ok: false as const, reason: "invalid JSON: x" };
+  // The reason text alone does not mark a missing block.
+  const legacy = { ok: false as const, reason: "no result" };
+  assert.equal(await explainMissingResult(legacy, dir), legacy);
   assert.equal(await explainMissingResult(done, dir), done);
   assert.equal(await explainMissingResult(invalid, dir), invalid);
 });
@@ -261,19 +264,13 @@ test("explainMissingResult reads only top-level session files", async (t) => {
     resumeSession,
   );
   await fs.writeFile(join(dir, "a.jsonl"), lines(header(START)));
-  assert.deepEqual(
-    await explainMissingResult({ ok: false, reason: "no result" }, dir),
-    { ok: false, reason: "no result" },
-  );
+  assert.deepEqual(await explainMissingResult(missing, dir), missing);
 });
 
-test("explainMissingResult keeps no result for a missing directory", async (t) => {
+test("explainMissingResult keeps the missing result for a missing directory", async (t) => {
   const dir = await tempDir(t);
   assert.deepEqual(
-    await explainMissingResult(
-      { ok: false, reason: "no result" },
-      join(dir, "missing"),
-    ),
-    { ok: false, reason: "no result" },
+    await explainMissingResult(missing, join(dir, "missing")),
+    missing,
   );
 });

@@ -127,13 +127,13 @@ function describe(runs: UnfinishedRun[]): string {
   return `its subagent runs ${runs.map(name).join(", ")} were still running`;
 }
 
-/** Adds the cause to a `no result` reason when the session files show
+/** Adds the cause to a missing result block when the session files show
  * unfinished runs. Returns every other result unchanged. */
 export async function explainMissingResult(
   result: ParsedResult,
   sessionDir: string,
 ): Promise<ParsedResult> {
-  if (result.ok || result.reason !== "no result") return result;
+  if (result.ok || !result.missing) return result;
 
   let files: string[];
   try {
@@ -160,6 +160,7 @@ export async function explainMissingResult(
 
   return {
     ok: false,
-    reason: `no result: the worker ended its turn while ${describe([...runs.values()])}`,
+    reason: `${result.reason} It ended its turn while ${describe([...runs.values()])}.`,
+    missing: true,
   };
 }

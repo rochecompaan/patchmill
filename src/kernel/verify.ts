@@ -41,6 +41,45 @@ export function closesIssue(
   );
 }
 
+export const MISSING_RESULT_WARNING =
+  "the worker ended without a result block, so Patchmill verified the ready pull request";
+
+/** A normal end without a result block, which the repository facts can decide. */
+function missingResultBlock(input: VerifyInput): boolean {
+  const { result, session } = input;
+  return (
+    !result.ok &&
+    result.missing === true &&
+    session.exitCode === 0 &&
+    !session.signal &&
+    !session.timedOut &&
+    !session.aborted &&
+    input.phase === "implementation"
+  );
+}
+
+function pullRequestGaps(input: VerifyInput): string[] {
+  const { facts } = input;
+  const pr = facts.pullRequest;
+  const missing: string[] = [];
+  if (!pr) {
+    missing.push("No pull request exists for the branch.");
+  } else {
+    if (pr.state !== "open")
+      missing.push(`The pull request is ${pr.state}, not open.`);
+    if (pr.draft) missing.push("The pull request is a draft.");
+    if (wrongTarget(pr, facts.baseBranch)) {
+      missing.push(
+        `The pull request targets ${pr.baseBranch}, not ${facts.baseBranch}.`,
+      );
+    }
+    if (!closesIssue(pr.body, input.issue, input.repository)) {
+      missing.push(`The pull request body does not close #${input.issue}.`);
+    }
+  }
+  return missing;
+}
+
 /** A clean exit is code 0 without a signal; anything else is abnormal. */
 function abnormalExit(session: VerifyInput["session"]): string | undefined {
   if (session.signal)
@@ -53,11 +92,13 @@ function abnormalExit(session: VerifyInput["session"]): string | undefined {
 
 export function verifyOutcome(input: VerifyInput): Outcome {
   const { result, session, facts } = input;
+  const missingBlock = missingResultBlock(input);
   const failures: string[] = [];
   if (session.timedOut) failures.push("The session timed out.");
   if (session.aborted) failures.push("The session was aborted.");
-  if (!result.ok) failures.push(result.reason);
-  else if (
+  if (!result.ok) {
+    if (!missingBlock) failures.push(result.reason);
+  } else if (
     result.result.status === "done" &&
     !session.timedOut &&
     !session.aborted
@@ -68,6 +109,7 @@ export function verifyOutcome(input: VerifyInput): Outcome {
 
   let label: OutcomeLabel = "needsInfo";
   let reason: string;
+  const warnings: string[] = [];
   if (failures.length > 0) {
     reason = `${failures.join(" ")} Log: ${input.logPath}`;
   } else if (result.ok && result.result.status !== "done") {
@@ -112,32 +154,18 @@ export function verifyOutcome(input: VerifyInput): Outcome {
       return { kind: "advance" };
     }
   } else {
-    const pr = facts.pullRequest;
-    const missing: string[] = [];
-    if (!pr) {
-      missing.push("No pull request exists for the branch.");
-    } else {
-      if (pr.state !== "open")
-        missing.push(`The pull request is ${pr.state}, not open.`);
-      if (pr.draft) missing.push("The pull request is a draft.");
-      if (wrongTarget(pr, facts.baseBranch)) {
-        missing.push(
-          `The pull request targets ${pr.baseBranch}, not ${facts.baseBranch}.`,
-        );
-      }
-      if (!closesIssue(pr.body, input.issue, input.repository)) {
-        missing.push(`The pull request body does not close #${input.issue}.`);
-      }
-    }
-    if (missing.length > 0) {
+    const missing = pullRequestGaps(input);
+    if (missing.length > 0 && missingBlock && !result.ok) {
+      reason = `${result.reason} The repository does not prove completion. ${missing.join(" ")} Log: ${input.logPath}`;
+    } else if (missing.length > 0) {
       reason = `The claim was not verified. ${missing.join(" ")}`;
     } else {
       label = "done";
       reason = "The pull request was verified.";
+      if (missingBlock) warnings.push(MISSING_RESULT_WARNING);
     }
   }
 
-  const warnings: string[] = [];
   if (input.uncommitted) warnings.push("uncommitted changes in the worktree");
   if (input.unpushed === "no-remote-branch" || input.unpushed > 0) {
     warnings.push("unpushed commits");

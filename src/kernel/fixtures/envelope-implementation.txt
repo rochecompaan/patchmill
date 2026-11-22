@@ -17,6 +17,11 @@ Facts:
 Return only the fields `status` and `summary` in a final `json` block. Use
 `done`, `needs-input`, or `failed` for `status`. Use a string for `summary`.
 
+This block is the required last step. Patchmill reads the result only from
+this block. Write it after all other work and after every subagent has
+finished. If the runtime asks you to write your findings to a file, still end
+your last message with this block.
+
 ```json
 { "status": "done", "summary": "Describe the result." }
 ```

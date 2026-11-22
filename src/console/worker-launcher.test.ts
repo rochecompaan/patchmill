@@ -10,7 +10,12 @@ import {
   type Script,
 } from "../../test-support/fake-subagents.ts";
 import { rpcModeLauncher, type PhaseLaunch } from "../kernel/launch.ts";
-import { parseAgentResult } from "../kernel/result.ts";
+import {
+  MISSING_RESULT_REASON,
+  parseAgentResult,
+  REMINDED_RESULT_REASON,
+  RESULT_REMINDER,
+} from "../kernel/result.ts";
 import { SubagentsClient } from "./subagents-client.ts";
 import { createWorkerLauncher } from "./worker-launcher.ts";
 import { ConsoleController } from "./controller.ts";
@@ -100,7 +105,11 @@ test("missing JSON matches rpcModeLauncher parsing and uses completion fallback"
   })(f.launch);
   assert.deepEqual(run.result, parseAgentResult("plain text"));
   assert.deepEqual(run.result, launched.result);
-  assert.deepEqual(run.result, { ok: false, reason: "no result" });
+  assert.deepEqual(run.result, {
+    ok: false,
+    reason: MISSING_RESULT_REASON,
+    missing: true,
+  });
   assert.deepEqual(run.session, {
     exitCode: 1,
     timedOut: true,
@@ -125,7 +134,7 @@ test("resume uses previous id and fresh fallback rather than stale output", asyn
   const f = await fixture(t);
   const initial = f.launcher.run(f.launch);
   await waitUntil(() => f.launcher.active() !== undefined);
-  f.bus.complete("run-1");
+  f.bus.complete("run-1", { results: [{ output: text }] });
   await initial;
   await writeFile(join(f.launch.sessionDir, "output.md"), "stale");
   const resumed = f.launcher.resume(f.launch, "guidance");
@@ -173,7 +182,7 @@ for (const method of ["spawn", "resume"] as const) {
     if (method === "resume") {
       const initial = f.launcher.run(f.launch);
       await waitUntil(() => f.launcher.active() !== undefined);
-      f.bus.complete("run-1");
+      f.bus.complete("run-1", { results: [{ output: text }] });
       await initial;
     }
     const original = f.client[
@@ -219,7 +228,7 @@ for (const method of ["spawn", "resume"] as const) {
       if (method === "resume") {
         const initial = f.launcher.run(f.launch);
         await waitUntil(() => f.launcher.active() !== undefined);
-        f.bus.complete("run-1");
+        f.bus.complete("run-1", { results: [{ output: text }] });
         await initial;
         // Human waiting is not charged against the next execution allowance.
         await delay(30);
@@ -642,3 +651,263 @@ for (const succeeds of [true, false]) {
     assert.equal(f.launcher.active(), undefined);
   });
 }
+
+async function sessionWith(root: string, last: string, name = "worker.jsonl") {
+  const file = join(root, name);
+  const entry = (role: string, text: string) =>
+    JSON.stringify({
+      type: "message",
+      message: {
+        role,
+        content: [{ type: "text", text }],
+        ...(role === "assistant" ? { stopReason: "stop" } : {}),
+      },
+    });
+  await writeFile(
+    file,
+    [
+      JSON.stringify({ type: "session" }),
+      entry("user", "task"),
+      entry("assistant", "earlier"),
+      "not json",
+      entry("assistant", last),
+      entry("user", "trailing user note"),
+    ].join("\n"),
+  );
+  return file;
+}
+const resumes = (f: {
+  bus: { requests: { method: string; params?: any }[] };
+}) => f.bus.requests.filter((request) => request.method === "resume");
+const needsInput = { status: "needs-input", summary: "Which provider?" };
+const needsInputText = `\`\`\`json\n${JSON.stringify(needsInput)}\n\`\`\``;
+
+for (const [name, last, expected] of [
+  ["the last message block wins over a prose output file", text, done],
+  [
+    "a needs-input block in the last message is kept",
+    needsInputText,
+    needsInput,
+  ],
+] as const) {
+  test(name, async (t) => {
+    const f = await fixture(t);
+    const sessionFile = await sessionWith(f.root, last);
+    const pending = f.launcher.run(f.launch);
+    await waitUntil(() => f.launcher.active() !== undefined);
+    await writeFile(join(f.launch.sessionDir, "output.md"), "# Report");
+    f.bus.complete("run-1", { results: [{ sessionFile }] });
+    const run = await pending;
+    assert.deepEqual(run.result, { ok: true, result: expected });
+    assert.equal(run.session.exitCode, 0);
+    assert.equal(resumes(f).length, 0);
+    const log = await readFile(f.launch.logPath, "utf8");
+    assert.ok(log.includes("# Report"));
+    assert.ok(log.includes(JSON.stringify(expected)));
+  });
+}
+
+test("an unreadable session file uses the output text", async (t) => {
+  const f = await fixture(t);
+  const sessionFile = join(f.root, "worker.jsonl");
+  await writeFile(sessionFile, "session");
+  const pending = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  await writeFile(join(f.launch.sessionDir, "output.md"), text);
+  f.bus.complete("run-1", { results: [{ sessionFile }] });
+  assert.deepEqual((await pending).result, { ok: true, result: done });
+  assert.equal(resumes(f).length, 0);
+});
+
+test("a complete worker without a block is resumed once with the reminder", async (t) => {
+  const f = await fixture(t);
+  const pending = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  f.bus.complete("run-1", { results: [{ output: "prose" }] });
+  await waitUntil(() => f.launcher.active()?.id === "run-2");
+  assert.deepEqual(
+    resumes(f).map((r) => r.params),
+    [{ id: "run-1", message: RESULT_REMINDER }],
+  );
+  f.bus.complete("run-2", { results: [{ output: text }] });
+  const run = await pending;
+  assert.deepEqual(run.result, { ok: true, result: done });
+  assert.equal(run.session.exitCode, 0);
+  const log = await readFile(f.launch.logPath, "utf8");
+  assert.ok(log.includes("prose"));
+  assert.ok(log.includes(JSON.stringify(done)));
+  assert.equal(f.launcher.active(), undefined);
+});
+
+test("a reminder answer without a block reports the reminded reason", async (t) => {
+  const f = await fixture(t);
+  const pending = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  f.bus.complete("run-1", { results: [{ output: "prose" }] });
+  await waitUntil(() => f.launcher.active()?.id === "run-2");
+  f.bus.complete("run-2", { results: [{ output: "still prose" }] });
+  const run = await pending;
+  assert.deepEqual(run.result, {
+    ok: false,
+    reason: REMINDED_RESULT_REASON,
+    missing: true,
+  });
+  assert.equal(run.session.exitCode, 0);
+  assert.equal(resumes(f).length, 1);
+});
+
+test("a worker with a block is not resumed", async (t) => {
+  const f = await fixture(t);
+  const pending = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  f.bus.complete("run-1", { results: [{ output: text }] });
+  assert.equal((await pending).result.ok, true);
+  assert.equal(resumes(f).length, 0);
+});
+
+for (const payload of [
+  { state: "failed" },
+  { state: "failed", timedOut: true },
+  { state: "stopped", stopped: true },
+]) {
+  test(`${JSON.stringify(payload)} completion is not reminded`, async (t) => {
+    const f = await fixture(t);
+    const pending = f.launcher.run(f.launch);
+    await waitUntil(() => f.launcher.active() !== undefined);
+    f.bus.complete("run-1", { ...payload, results: [{ output: "prose" }] });
+    const run = await pending;
+    assert.equal(run.session.exitCode, 1);
+    assert.equal(resumes(f).length, 0);
+  });
+}
+
+test("a guidance resume without a block gets one reminder", async (t) => {
+  const f = await fixture(t);
+  const initial = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  f.bus.complete("run-1", { results: [{ output: text }] });
+  await initial;
+  const resumed = f.launcher.resume(f.launch, "guidance");
+  await waitUntil(() => f.launcher.active()?.id === "run-2");
+  f.bus.complete("run-2", { results: [{ output: "prose" }] });
+  await waitUntil(() => f.launcher.active()?.id === "run-3");
+  f.bus.complete("run-3", { results: [{ output: "more prose" }] });
+  const run = await resumed;
+  assert.deepEqual(
+    resumes(f).map((r) => r.params),
+    [
+      { id: "run-1", message: "guidance" },
+      { id: "run-2", message: RESULT_REMINDER },
+    ],
+  );
+  assert.deepEqual(run.result, {
+    ok: false,
+    reason: REMINDED_RESULT_REASON,
+    missing: true,
+  });
+});
+
+test("a failed reminder resume keeps the missing result", async (t) => {
+  const f = await fixture(t, {
+    resume: () => ({ error: { code: "not_found", message: "gone" } }),
+  });
+  const pending = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  f.bus.complete("run-1", { results: [{ output: "prose" }] });
+  const run = await pending;
+  assert.deepEqual(run.result, {
+    ok: false,
+    reason: MISSING_RESULT_REASON,
+    missing: true,
+  });
+  assert.deepEqual(run.session, {
+    exitCode: 0,
+    timedOut: false,
+    aborted: false,
+  });
+  assert.equal(resumes(f).length, 1);
+});
+
+test("a timeout during the reminder reports timedOut", async (t) => {
+  const f = await fixture(t);
+  const pending = f.launcher.run({ ...f.launch, timeoutMs: 100 });
+  await waitUntil(() => f.launcher.active() !== undefined);
+  f.bus.complete("run-1", { results: [{ output: "prose" }] });
+  const run = await pending;
+  assert.equal(resumes(f).length, 1);
+  assert.equal(run.session.timedOut, true);
+  assert.equal(run.result.ok, false);
+  assert.ok(
+    f.bus.requests.some((r) => r.method === "stop" && r.params.id === "run-2"),
+  );
+  assert.ok((await readFile(f.launch.logPath, "utf8")).includes("prose"));
+});
+
+test("an abort before the reminder sends no resume", async (t) => {
+  const f = await fixture(t, { stop: () => NO_REPLY });
+  const controller = new AbortController();
+  const pending = f.launcher.run({ ...f.launch, signal: controller.signal });
+  await waitUntil(() => f.launcher.active() !== undefined);
+  controller.abort();
+  f.bus.complete("run-1", { results: [{ output: "prose" }] });
+  await pending;
+  assert.equal(resumes(f).length, 0);
+});
+
+for (const kind of ["shutdown", "deadline"] as const) {
+  test(
+    `${kind} during the reminder resume stops the resumed worker`,
+    { timeout: 3000 },
+    async (t) => {
+      const f = await fixture(t);
+      let release: (() => void) | undefined;
+      const original = f.client.resume.bind(f.client);
+      f.client.resume = async (...args) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return original(...args);
+      };
+      const pending = f.launcher.run({
+        ...f.launch,
+        timeoutMs: kind === "deadline" ? 50 : 1_000,
+      });
+      await waitUntil(() => f.launcher.active() !== undefined);
+      f.bus.complete("run-1", { results: [{ output: "prose" }] });
+      await waitUntil(() => release !== undefined);
+      let closing: Promise<void> | undefined;
+      if (kind === "shutdown") closing = f.launcher.stopActive();
+      else await delay(80);
+      release!();
+      const run = await pending;
+      await closing;
+      assert.ok(
+        f.bus.requests.some(
+          (r) => r.method === "stop" && r.params.id === "run-2",
+        ),
+      );
+      if (kind === "shutdown") assert.equal(run.session.aborted, true);
+      else assert.equal(run.session.timedOut, true);
+      assert.notEqual(run.session.exitCode, 0);
+      assert.equal(f.launcher.active(), undefined);
+    },
+  );
+}
+
+test("a stale last message after a failed guidance resume is not used", async (t) => {
+  const f = await fixture(t);
+  const sessionFile = await sessionWith(f.root, needsInputText);
+  const pending = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  f.bus.complete("run-1", {
+    state: "failed",
+    results: [{ output: "error", sessionFile }],
+  });
+  const run = await pending;
+  assert.deepEqual(run.result, {
+    ok: false,
+    reason: MISSING_RESULT_REASON,
+    missing: true,
+  });
+  assert.equal(resumes(f).length, 0);
+});
