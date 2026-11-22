@@ -14,6 +14,7 @@ import {
 } from "../../test-support/run-once-fixture.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import { acquireLock, LockHeldError } from "./lock.ts";
+import type { RunSnapshot } from "./run-snapshot.ts";
 
 const specBranch = "agent/issue-9-add-login--spec";
 const planning = (files: Record<string, string>, pr = false) => ({
@@ -77,7 +78,7 @@ test("a verified PR gets agent-done at once and the run waits for the merge", as
     onWait: async (wait) => {
       waited = true;
       assert.equal(wait.kind, "review");
-      assert.match(wait.message, /https:.*merge/i);
+      assert.match(wait.message, /^Pull request ready for review: https:/);
       assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
       assert.equal(kernelComments(c).length, 1);
       assert.match(
@@ -94,12 +95,40 @@ test("a verified PR gets agent-done at once and the run waits for the merge", as
   assert.equal(kernelComments(c).length, 1);
 });
 
+test("a merged review wait reports the cleanup result", async (t) => {
+  const c = await setupRun(t, [implement]);
+  await c.seed({ [spec]: "spec", [plan]: "plan" });
+  const human = fakeHuman(c, {
+    onWait: async () => {
+      await mergePullRequest(c, branch, { closeIssue: true });
+      return "continue";
+    },
+  });
+  const snapshots: RunSnapshot[] = [];
+  assert.equal(
+    (await c.run({ issue: 9 }, { human, observe: (s) => snapshots.push(s) }))
+      .status,
+    "completed",
+  );
+  assert.equal(snapshots.at(-1)!.state, "ended");
+  assert.equal(snapshots.at(-1)!.cleanup, "cleaned");
+});
+
 test("a restart in the review wait removes in-progress and starts no session", async (t) => {
   const c = await setupRun(t);
   await ready(c);
-  const human = fakeHuman(c);
-  await c.run({ issue: 9 }, { human });
+  const messages: string[] = [];
+  const human = fakeHuman(c, {
+    onWait: async (wait) => {
+      messages.push(wait.message);
+      return "quit";
+    },
+  });
+  const snapshots: RunSnapshot[] = [];
+  await c.run({ issue: 9 }, { human, observe: (s) => snapshots.push(s) });
   assert.deepEqual(human.calls, ["wait:review"]);
+  assert.match(messages[0]!, /^Pull request ready for review:/);
+  assert.equal(snapshots.at(-1)!.cleanup, "skipped");
   assert.deepEqual(c.host.state().issues[0]!.labels, ["agent-done"]);
   assert.equal(kernelComments(c).length, 0);
   assert.equal((await c.records()).result.sessions.length, 0);
@@ -136,8 +165,12 @@ for (const change of [
 test("review continue on an open PR waits again; quit publishes nothing more", async (t) => {
   const c = await setupRun(t, [implement]);
   await c.seed({ [spec]: "spec", [plan]: "plan" });
+  const messages: string[] = [];
   const human = fakeHuman(c, {
-    onWait: async (_wait, n) => (n === 1 ? "continue" : "quit"),
+    onWait: async (wait, n) => {
+      messages.push(wait.message);
+      return n === 1 ? "continue" : "quit";
+    },
   });
   await c.run({ issue: 9 }, { human });
   assert.deepEqual(human.calls, [
@@ -145,6 +178,8 @@ test("review continue on an open PR waits again; quit publishes nothing more", a
     "wait:review",
     "wait:review",
   ]);
+  assert.match(messages[0]!, /^Pull request ready for review:/);
+  assert.match(messages[1]!, /is not merged yet/);
   assert.equal(kernelComments(c).length, 1);
 });
 
