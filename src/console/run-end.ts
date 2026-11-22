@@ -136,7 +136,8 @@ function endCase(
   }
 }
 
-function summaryOf(input: RunEndInput): string {
+/** The summary of a settled run; a thrown error wins. */
+export function summaryOf(input: RunEndInput): string {
   const { snapshot, settled } = input;
   if ("error" in settled) return settled.error;
   if (snapshot?.state === "ended" && snapshot.summary) return snapshot.summary;

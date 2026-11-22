@@ -14,7 +14,12 @@ import type { ConsoleSession } from "./planning-usage.ts";
 import { collectPlanningDialogFacts } from "./planning-dialog-facts.ts";
 import { PlanningConversation } from "./planning-conversation.ts";
 import { progressLabel, type RunStatus } from "./run-status.ts";
-import { describeRunEnd, type EndedRun, type RunEndInput } from "./run-end.ts";
+import {
+  describeRunEnd,
+  summaryOf,
+  type EndedRun,
+  type RunEndInput,
+} from "./run-end.ts";
 
 export type StartRun = (
   issue: number | undefined,
@@ -109,14 +114,10 @@ export class ConsoleController implements HumanChannel {
   /** Keep the ended run on screen until shutdown; never rejects `active`. */
   private settle(issue: number | undefined, settled: RunEndInput["settled"]) {
     if (this.closing) return;
-    let reply =
-      "error" in settled
-        ? settled.error
-        : "summary" in settled.outcome
-          ? settled.outcome.summary
-          : "reason" in settled.outcome
-            ? settled.outcome.reason
-            : `Issue run ${settled.outcome.status}.`;
+    let reply = summaryOf({
+      ...(this.snapshot ? { snapshot: this.snapshot } : {}),
+      settled,
+    });
     try {
       const ended = describeRunEnd({
         ...(issue === undefined ? {} : { issue }),
