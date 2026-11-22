@@ -29,6 +29,13 @@ export type PatchmillConfig = {
     specApproval: { required: boolean };
     planApproval: { required: boolean };
   };
+  run: RunConfig;
+};
+export type BackoffSettings = { initialSeconds: number; maxSeconds: number };
+export type RunConfig = {
+  triageIntervalMinutes: number;
+  idleBackoff: BackoffSettings;
+  errorBackoff: BackoffSettings;
 };
 export const DEFAULT_CONFIG: PatchmillConfig = {
   host: { provider: "github-gh", login: "", trustedAuthors: [] },
@@ -57,6 +64,11 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
     specApproval: { required: false },
     planApproval: { required: false },
   },
+  run: {
+    triageIntervalMinutes: 5,
+    idleBackoff: { initialSeconds: 60, maxSeconds: 900 },
+    errorBackoff: { initialSeconds: 30, maxSeconds: 1800 },
+  },
 };
 export class ConfigError extends Error {}
 
@@ -84,7 +96,28 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "workflow.stateTracking", kind: "string" },
   { path: "workflow.specApproval.required", kind: "boolean" },
   { path: "workflow.planApproval.required", kind: "boolean" },
+  { path: "run.triageIntervalMinutes", kind: "number" },
+  { path: "run.idleBackoff.initialSeconds", kind: "number" },
+  { path: "run.idleBackoff.maxSeconds", kind: "number" },
+  { path: "run.errorBackoff.initialSeconds", kind: "number" },
+  { path: "run.errorBackoff.maxSeconds", kind: "number" },
 ];
+
+function checkRun(run: RunConfig) {
+  const positive = (path: string, value: number) => {
+    if (!Number.isFinite(value) || value <= 0)
+      throw new ConfigError(`Invalid value for run.${path}: use a number > 0`);
+  };
+  positive("triageIntervalMinutes", run.triageIntervalMinutes);
+  for (const key of ["idleBackoff", "errorBackoff"] as const) {
+    positive(`${key}.initialSeconds`, run[key].initialSeconds);
+    positive(`${key}.maxSeconds`, run[key].maxSeconds);
+    if (run[key].maxSeconds < run[key].initialSeconds)
+      throw new ConfigError(
+        `Invalid value for run.${key}.maxSeconds: it must be at least run.${key}.initialSeconds`,
+      );
+  }
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -152,6 +185,7 @@ export function parseConfig(raw: unknown): PatchmillConfig {
     }
   }
   walk(raw, config, "");
+  checkRun(config.run);
   // Preserve diagnostic priority independently of status display order.
   const labelKeys = Object.keys(DEFAULT_CONFIG.labels);
   const keys = [...WORKFLOW_STATUSES].sort(

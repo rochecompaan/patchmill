@@ -248,3 +248,58 @@ test("Tea selector never grants author trust when authenticated identity is unav
     ["reviewer"],
   );
 });
+
+test("run defaults apply when the section is absent", () => {
+  assert.deepEqual(parseConfig({}).run, {
+    triageIntervalMinutes: 5,
+    idleBackoff: { initialSeconds: 60, maxSeconds: 900 },
+    errorBackoff: { initialSeconds: 30, maxSeconds: 1800 },
+  });
+});
+
+test("run accepts partial overrides", () => {
+  assert.deepEqual(
+    parseConfig({ run: { idleBackoff: { maxSeconds: 120 } } }).run.idleBackoff,
+    { initialSeconds: 60, maxSeconds: 120 },
+  );
+});
+
+for (const path of [
+  ["triageIntervalMinutes"],
+  ["idleBackoff", "initialSeconds"],
+  ["errorBackoff", "maxSeconds"],
+]) {
+  for (const value of [0, -1, Number.NaN]) {
+    test(`run rejects ${String(value)} in run.${path.join(".")}`, () => {
+      const run: Record<string, unknown> =
+        path.length === 1
+          ? { [path[0]!]: value }
+          : { [path[0]!]: { [path[1]!]: value } };
+      assert.throws(
+        () => parseConfig({ run }),
+        (error: unknown) =>
+          error instanceof ConfigError &&
+          error.message.includes(`run.${path.join(".")}`),
+      );
+    });
+  }
+}
+
+test("run rejects a cap below its initial delay", () => {
+  assert.throws(
+    () =>
+      parseConfig({
+        run: { errorBackoff: { initialSeconds: 60, maxSeconds: 30 } },
+      }),
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      /run\.errorBackoff\.maxSeconds/.test(error.message),
+  );
+});
+
+test("run rejects unknown keys", () => {
+  assert.throws(
+    () => parseConfig({ run: { lane: 1 } }),
+    /Unknown config key: run\.lane/,
+  );
+});
