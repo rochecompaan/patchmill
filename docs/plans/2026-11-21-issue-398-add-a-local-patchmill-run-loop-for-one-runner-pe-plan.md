@@ -265,6 +265,10 @@ resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
   - `idle outcomes do not reset the Needs Info streak`:
     `[needsInfo, needsInfo, no-work, needsInfo]` → `worked`, `worked`, `idle`,
     rejects.
+  - `a Needs Info stop with publication errors counts in the streak`:
+    `[needsInfo, needsInfo, needsInfo with publicationErrors, needsInfo]` →
+    `worked`, `worked`, rejects `/publication failed/`, rejects
+    `/4 runs in a row/`.
   - `the local gate grants at start, then once per interval`: with a mutable
     clock at T, `tryGrant()` grants; at T+4 min it returns `undefined`; at T+5
     min it grants; at T+9 min `undefined`. The grant has no `beforeWrite`, and
@@ -354,17 +358,27 @@ resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
   an optional `republished: false` field when the rule skips publication.
 
 - [ ] **Step 1: Write the failing tests** (use the gated-planning setup of
-      `gated planning publishes a spec PR and keeps in-progress with one cost     comment`
-      in `run-once.test.ts`, with `specApproval.required = true`)
+      `gated planning publishes a spec PR and keeps in-progress with one cost comment`
+      in `run-once.test.ts`, with `specApproval.required = true`). The fixture
+      clock is frozen, so each run gets its own later time: pass
+      `c.run({}, { now: () => new Date(2026, 9, 15, 12, k) })` for run `k`.
+      `records()` asserts one run directory, so these tests read
+      `<runsDir>/issue-9/*/result.json` directly and pick the run by
+      `finishedAt`.
   - `an unchanged unattended gate wait publishes once`: run 1 publishes the
     planning PR (1 comment). Run 2 has no Pi step and stops at the gate (2
     comments, `Waiting for it to be merged`). Run 3 also stops at the gate:
     still 2 comments, its outcome is `stopped` with label `inProgress`, its
     `result.json` has `republished: false`, and the output contains
     `Unchanged planning gate wait; not republished.`
-  - `a changed gate wait publishes again`: after run 3, set the pull request
-    state to `closed` in the fake host state. Run 4 posts a third comment that
-    matches `/closed, not merged/`.
+    - `a changed gate summary publishes again`: after run 3, change the pull
+      request `url` in the fake host state to `https://example.invalid/pulls/2`.
+      The gate summary includes the URL, so run 4 keeps label `inProgress` and
+      posts a third comment that contains the new URL. (A closed or retargeted
+      pull request changes the label to `needsInfo`, which also publishes, but
+      does not test the summary check.)
+  - `a failed gate publication is retried`: make `commentIssue` fail in run 2
+    (its outcome has `publicationErrors`). Run 3 publishes the gate comment.
   - `an unreadable earlier result publishes as today`: after run 2, overwrite
     its `result.json` with `{`. Run 3 posts a third comment.
   - `an interactive gate wait is not affected`: with `fakeHuman`, the rule does
@@ -376,13 +390,15 @@ resolves at once (or at abort); `random: () => 0.5`; `log` collects lines.
 - [ ] **Step 3: Implement.** Add a private helper in `run-once.ts`,
       `previousResult(issueDir: string, runId: string): Promise<{ status: string; label?: string; summary?: string } | undefined>`,
       that reads `*/result.json` other than `runId`, ignores unreadable files,
-      and returns the `outcome` of the newest by `finishedAt`. Record a flag
-      `derivedGateStop` when `decision.kind === "stop"` with label `inProgress`,
+      and returns the `outcome` of the newest by `finishedAt` (ties broken by
+      file modification time). Record a flag `derivedGateStop` when
+      `decision.kind === "stop"` with label `inProgress`,
       `sessions.length === 0`, and no `deps.human`. Before the final
-      `publish()`, skip it when the flag is set and the previous outcome equals
-      `{ status: "stopped", label: "inProgress", summary: stop.summary }`. Then
-      write `republished: false` into `result.json` and print the stderr line.
-      If `run-once.ts` grows past its module-size limit, put the helper in
+      `publish()`, skip it when the flag is set, the previous outcome equals
+      `{ status: "stopped", label: "inProgress", summary: stop.summary }`, and
+      the previous outcome has no `publicationErrors`. Then write
+      `republished: false` into `result.json` and print the stderr line. If
+      `run-once.ts` grows past its module-size limit, put the helper in
       `src/kernel/run-history.ts` instead.
 
 - [ ] **Step 4: Run `node --test src/kernel/run-once*.test.ts`.** Expected:
@@ -532,11 +548,15 @@ run-once CLI tests do.
 
 - [ ] **Step 4: Update the documentation** listed in the spec section
       Documentation. `README.md` gets the Commands table row, a "Run unattended"
-      section (usage, an example `systemd` unit with `KillSignal=SIGTERM`, exit
-      codes, one runner per repository in local state mode, the label-mode claim
-      race between clones), the `run` keys in the Configuration example, and one
+      section (usage, an example `systemd` unit with `KillSignal=SIGTERM`, the
+      default `KillMode=control-group`, and `TimeoutStopSec=30`, with the note
+      that a forced exit can leave Pi running without them, exit codes, one
+      runner per repository in local state mode, the label-mode claim race
+      between clones), the `run` keys in the Configuration example, and one
       sentence that Ctrl-C in `run-once` now pauses the run and the next start
-      resumes it. The new site page `using-patchmill/run.md` gets the same
+      resumes it. Also state, in `README.md` and the site `run-once.md`
+      "Required planning PR is open" row, that an unchanged gate wait is
+      announced once. The new site page `using-patchmill/run.md` gets the same
       content in more detail and a sidebar entry
       `{ label: "Run unattended", slug: "using-patchmill/run" }` after Run-once
       in `site/astro.config.mjs`.

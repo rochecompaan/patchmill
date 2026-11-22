@@ -445,8 +445,9 @@ A `done` stop still publishes, because its work is complete and verified.
 Without a change, each idle pass on a gate-waiting issue would publish the same
 stop again. In label mode, `LabelWorkflowState.setStatus` posts a comment for
 each status with a summary. So the issue would get the same "Waiting for it to
-be merged" comment on each pass, about 96 times per day at the 15-minute idle
-cap. The maintainer chose to publish an unchanged gate wait only once.
+be merged" comment on each pass, about 100 times per day or more at the
+15-minute idle cap. The maintainer chose to publish an unchanged gate wait only
+once.
 
 `runOneIssue` changes as follows, in every mode:
 
@@ -457,11 +458,13 @@ cap. The maintainer chose to publish an unchanged gate wait only once.
   issue's run directory (`<runsDir>/issue-N/*/result.json`, newest by
   `finishedAt`, other than its own).
 - If that result has `outcome.status === "stopped"`,
-  `outcome.label === "inProgress"`, and `outcome.summary` equal to the new
-  summary, the run does not publish. It still writes its own `result.json`, with
-  the same outcome and `"republished": false`. It prints
-  `Unchanged planning gate wait; not republished.` to stderr.
+  `outcome.label === "inProgress"`, `outcome.summary` equal to the new summary,
+  and no `outcome.publicationErrors`, the run does not publish. It still writes
+  its own `result.json`, with the same outcome and `"republished": false`. It
+  prints `Unchanged planning gate wait; not republished.` to stderr.
 - A missing or unreadable earlier result means that the run publishes as today.
+  So does an earlier result whose publication failed, so a lost gate comment is
+  retried.
 - The outcome is unchanged: `{ status: "stopped", label: "inProgress", ... }`,
   so the work source maps it to `idle`.
 
@@ -557,8 +560,9 @@ Runner shell (unchanged by #360 and #361)
   small run directory under `<runsDir>/issue-N/`. Cleanup of old run directories
   is out of scope.
 - **Needs Info guard.** The guard backs off after three `needsInfo` stops in a
-  row, but those three issues still move to `needsInfo`. #236 and #237 replace
-  the guard with a real host-retry and budget policy.
+  row, but issues still move to `needsInfo`: three at once, then one after each
+  error-backoff wait. #236 and #237 replace the guard with a real host-retry and
+  budget policy.
 
 ## Verification
 
@@ -595,7 +599,11 @@ It changes no browser-visible surface.
   with the same content in more detail, linked from the sidebar in
   `site/astro.config.mjs` after Run-once.
 - `site/src/content/docs/using-patchmill/run-once.md`: Ctrl-C pauses an
-  unattended run, and the next start resumes it.
+  unattended run, and the next start resumes it. Plain `run-once` has no human
+  channel, so an unchanged gate wait is announced once there too. Update the
+  "Required planning PR is open" row.
+- The README systemd example keeps `KillMode=control-group` and sets
+  `TimeoutStopSec=30`, with the forced-exit note from Signals and exit codes.
 - `site/src/content/docs/getting-started/configuration.md` and
   `site/src/content/docs/reference/configuration-example.md`: the `run` keys and
   their defaults.
