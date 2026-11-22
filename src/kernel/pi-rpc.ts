@@ -32,6 +32,11 @@ export type PiRpcSession = {
 export type PiRpcOptions = Omit<PiSessionOptions, "onOutput"> & {
   onOutput: (chunk: string) => void;
   reportWaitMs?: number;
+  /**
+   * Called at most once, when the session settles normally. A returned
+   * message is sent as one more prompt in the same session.
+   */
+  remind?: (stdout: string) => string | undefined;
 };
 
 const REPORT_WAIT_MS = 15_000;
@@ -87,6 +92,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
   let lastAssistant: RpcMessage | undefined;
   let logFailed = false;
   let failedPrompt = false;
+  let reminderSettle: number | undefined;
   let interruption: Promise<void> | undefined;
   let escalation: Promise<void> | undefined;
 
@@ -177,9 +183,36 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     if (final.failed) failedPrompt = true;
     endInput();
   };
+  // Sends the reminder and returns true, or returns false to finish now.
+  const remind = () => {
+    if (reminderSettle !== undefined || failedPrompt || interruption)
+      return false;
+    const current = printModeResult(lastMessage);
+    if (current.failed) return false;
+    const message = options.remind?.(current.stdout);
+    if (message === undefined) return false;
+    reminderSettle = settles;
+    send("prompt", { message }).then(
+      (response) => {
+        if (
+          ("success" in response && !response.success) ||
+          (response as { data?: { disposition?: string } }).data
+            ?.disposition === "handled"
+        ) {
+          if ("success" in response && !response.success)
+            log(`${String(response.error ?? "Reminder failed")}\n`);
+          finish();
+        }
+      },
+      () => finish(),
+    );
+    return true;
+  };
   const evaluate = () => {
     if (finished || busy || settles === 0) return;
-    if (reports.get(settles) === 0) finish();
+    if (reminderSettle !== undefined && settles <= reminderSettle) return;
+    if (reports.get(settles) !== 0) return;
+    if (!remind()) finish();
   };
   const onRecord = (record: RpcRecord) => {
     switch (record.type) {

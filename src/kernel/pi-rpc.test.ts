@@ -6,7 +6,7 @@ import { test, type TestContext } from "node:test";
 import { piRpcArgs, runPiRpc, startPiRpc } from "./pi-rpc.ts";
 import { jsonlRecords } from "./pi-rpc-protocol.ts";
 import { signalGroup, type PiSessionOptions } from "./pi-supervisor.ts";
-import { parseAgentResult } from "./result.ts";
+import { hasResultBlock, parseAgentResult } from "./result.ts";
 
 const fakePiPath = new URL("../../test-support/fake-pi.mjs", import.meta.url)
   .pathname;
@@ -325,3 +325,122 @@ test("jsonlRecords splits only on newline and passes other text through", () => 
   assert.deepEqual(records, [{ a: "x\u2028y" }, { b: 1 }]);
   assert.deepEqual(text, ["not json", "[1]"]);
 });
+
+function reminder() {
+  const calls: string[] = [];
+  return {
+    calls,
+    remind: (stdout: string) => {
+      calls.push(stdout);
+      return hasResultBlock(stdout) ? undefined : "remind";
+    },
+  };
+}
+const prompts = (commands: Record<string, unknown>[]) =>
+  commands.filter((command) => command.type === "prompt");
+
+test("a settled session without a block gets one reminder and returns its answer", async (t) => {
+  const f = await fake(t, [
+    { stdout: "work done", reminder: { result: done } },
+  ]);
+  const r = reminder();
+  const result = await runPiRpc({ ...f.options, remind: r.remind });
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(parseAgentResult(result.stdout), { ok: true, result: done });
+  const sent = prompts(await f.commands());
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1]!.message, "remind");
+  assert.deepEqual(r.calls, ["work done\n"]);
+  assert.match(await f.log(), /work done/);
+});
+
+test("a reminder answer without a block ends the session without a second reminder", async (t) => {
+  const f = await fake(t, [
+    { stdout: "work done", reminder: { stdout: "still prose" } },
+  ]);
+  const r = reminder();
+  const result = await runPiRpc({ ...f.options, remind: r.remind });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout, "still prose\n");
+  assert.equal(prompts(await f.commands()).length, 2);
+  assert.equal(r.calls.length, 1);
+});
+
+test("a session with a block is not reminded", async (t) => {
+  const f = await fake(t, [{ result: done }]);
+  const r = reminder();
+  const result = await runPiRpc({ ...f.options, remind: r.remind });
+  assert.equal(parseAgentResult(result.stdout).ok, true);
+  assert.equal(prompts(await f.commands()).length, 1);
+});
+
+test("a duplicate zero report does not finish before the reminder turn", async (t) => {
+  const f = await fake(t, [
+    { stdout: "work done", duplicateZero: true, reminder: { result: done } },
+  ]);
+  const r = reminder();
+  const result = await runPiRpc({
+    ...f.options,
+    reportWaitMs: 60_000,
+    remind: r.remind,
+  });
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(parseAgentResult(result.stdout), { ok: true, result: done });
+});
+
+test("a truncated reminder answer exits with code 1", async (t) => {
+  const f = await fake(t, [
+    {
+      stdout: "work done",
+      reminder: { result: done, stopReason: "length" },
+    },
+  ]);
+  const result = await runPiRpc({ ...f.options, remind: reminder().remind });
+  assert.equal(result.exitCode, 1);
+});
+
+for (const [kind, step, extra] of [
+  ["crash", { stdout: "work", exitCode: 3 }, {}],
+  ["timeout", { stdout: "work", sleepMs: 500 }, { timeoutMs: 100 }],
+  ["abort", { stdout: "work", sleepMs: 500 }, { abort: true }],
+  ["error stop reason", { stdout: "work", stopReason: "error" }, {}],
+] as const) {
+  test(`abnormal end ${kind} is not reminded`, async (t) => {
+    const f = await fake(t, [step]);
+    const r = reminder();
+    const controller = new AbortController();
+    const session = startPiRpc({
+      ...f.options,
+      ...("timeoutMs" in extra ? { timeoutMs: extra.timeoutMs } : {}),
+      signal: controller.signal,
+      remind: r.remind,
+    });
+    if ("abort" in extra) {
+      await waitFor(async () => (await f.log()).includes("work"));
+      controller.abort();
+    }
+    await session.done;
+    assert.equal(prompts(await f.commands()).length, 1);
+    assert.equal(r.calls.length, 0);
+  });
+}
+
+for (const [kind, step] of [
+  ["failed", { promptError: "No model configured" }],
+  ["handled", { handled: true }],
+] as const) {
+  test(`a ${kind} first prompt is not reminded`, async (t) => {
+    const f = await fake(t, [step]);
+    let calls = 0;
+    await runPiRpc({
+      ...f.options,
+      reportWaitMs: 60_000,
+      remind: () => {
+        calls += 1;
+        return "remind";
+      },
+    });
+    assert.equal(prompts(await f.commands()).length, 1);
+    assert.equal(calls, 0);
+  });
+}

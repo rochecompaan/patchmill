@@ -4,7 +4,13 @@ import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { Phase } from "./phase.ts";
 import { runPiRpc } from "./pi-rpc.ts";
 import type { PiSession } from "./pi-supervisor.ts";
-import { parseAgentResult, type ParsedResult } from "./result.ts";
+import {
+  hasResultBlock,
+  parseAgentResult,
+  REMINDED_RESULT_REASON,
+  RESULT_REMINDER,
+  type ParsedResult,
+} from "./result.ts";
 
 export type PhaseLaunch = {
   phase: Phase;
@@ -53,6 +59,7 @@ export function rpcModeLauncher(options: {
   extensionPaths: string[];
 }): PhaseLauncher {
   return async (launch) => {
+    let reminded = false;
     const session = await runPiRpc({
       command: options.command,
       cwd: launch.worktree,
@@ -70,9 +77,18 @@ export function rpcModeLauncher(options: {
       timeoutMs: launch.timeoutMs,
       // Keep the agent protocol in the logs, not the operator's terminal.
       onOutput: () => {},
+      remind: (stdout) => {
+        if (hasResultBlock(stdout)) return undefined;
+        reminded = true;
+        return RESULT_REMINDER;
+      },
       ...(launch.signal ? { signal: launch.signal } : {}),
     });
-    const result = parseAgentResult(session.stdout);
+    const parsed = parseAgentResult(session.stdout);
+    const result: ParsedResult =
+      reminded && !parsed.ok && parsed.missing
+        ? { ok: false, reason: REMINDED_RESULT_REASON, missing: true }
+        : parsed;
     return { result, session };
   };
 }
