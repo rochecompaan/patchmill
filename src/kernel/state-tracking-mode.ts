@@ -4,6 +4,11 @@ import { STATE_DIR, stateDir, StateStore } from "../state/store.ts";
 import { LabelWorkflowState } from "./label-workflow.ts";
 import { LocalWorkflowState } from "./local-workflow.ts";
 import {
+  localWorkSource,
+  type LocalWorkSourceInput,
+} from "./runner/local-work-source.ts";
+import type { WorkSource } from "./runner/shell.ts";
+import {
   WORKFLOW_STATUS_TITLES,
   type WorkflowState,
   type WorkflowStatus,
@@ -27,6 +32,13 @@ export type StateTrackingMode = {
   readonly doctorWorkflowCheck: "labels" | "state";
   /** Extra paths that must be ignored by Git in this mode. */
   readonly ignoredStatePaths: readonly string[];
+  /** Whether `patchmill run` may start, and the work source it uses. */
+  readonly run:
+    | {
+        allowed: true;
+        createWorkSource(input: LocalWorkSourceInput): WorkSource;
+      }
+    | { allowed: false; reason: string };
 };
 
 const LABELS_MODE: StateTrackingMode = {
@@ -37,6 +49,7 @@ const LABELS_MODE: StateTrackingMode = {
   labelsSetup: { allowed: true },
   doctorWorkflowCheck: "labels",
   ignoredStatePaths: [],
+  run: { allowed: true, createWorkSource: localWorkSource },
 };
 
 const LOCAL_MODE: StateTrackingMode = {
@@ -55,6 +68,7 @@ const LOCAL_MODE: StateTrackingMode = {
   },
   doctorWorkflowCheck: "state",
   ignoredStatePaths: [`${STATE_DIR}/`],
+  run: { allowed: true, createWorkSource: localWorkSource },
 };
 
 export function stateTrackingMode(config: PatchmillConfig): StateTrackingMode {
