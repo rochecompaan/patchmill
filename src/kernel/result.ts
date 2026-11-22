@@ -2,7 +2,13 @@ export type AgentStatus = "done" | "needs-input" | "failed";
 export type AgentResult = { status: AgentStatus; summary: string };
 export type ParsedResult =
   | { ok: true; result: AgentResult }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; missing?: true };
+
+export const RESULT_REMINDER =
+  "Your last message has no final result block. Do not do more work. Reply with only the final fenced `json` block, with the fields `status` and `summary`, as the run envelope describes.";
+export const MISSING_RESULT_REASON = "The worker ended without a result block.";
+export const REMINDED_RESULT_REASON =
+  "The worker ended without a result block, also after a reminder.";
 
 export function lastJsonBlock(text: string): string | undefined {
   const lines = text.replace(/\r\n?|\n/g, "\n").split("\n");
@@ -24,6 +30,10 @@ export function lastJsonBlock(text: string): string | undefined {
   }
 
   return last;
+}
+
+export function hasResultBlock(text: string): boolean {
+  return lastJsonBlock(text) !== undefined;
 }
 
 export function parseJsonBlock<T>(
@@ -74,6 +84,9 @@ function validateAgentResult(value: unknown): AgentResult | string {
 }
 
 export function parseAgentResult(stdout: string): ParsedResult {
+  if (!hasResultBlock(stdout)) {
+    return { ok: false, reason: MISSING_RESULT_REASON, missing: true };
+  }
   const parsed = parseJsonBlock(stdout, validateAgentResult);
   return parsed.ok ? { ok: true, result: parsed.value } : parsed;
 }

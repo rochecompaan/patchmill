@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { lastJsonBlock, parseAgentResult, parseJsonBlock } from "./result.ts";
+import {
+  hasResultBlock,
+  lastJsonBlock,
+  parseAgentResult,
+  parseJsonBlock,
+} from "./result.ts";
 
 test("lastJsonBlock returns undefined without a result fence", () => {
   assert.equal(lastJsonBlock("no fence here"), undefined);
@@ -9,8 +14,15 @@ test("lastJsonBlock returns undefined without a result fence", () => {
 test("parseAgentResult reports no result without a fence", () => {
   assert.deepEqual(parseAgentResult("no fence here"), {
     ok: false,
-    reason: "no result",
+    reason: "The worker ended without a result block.",
+    missing: true,
   });
+});
+
+test("hasResultBlock finds only a closed json fence", () => {
+  assert.equal(hasResultBlock("```json\n{}\n```"), true);
+  assert.equal(hasResultBlock("plain"), false);
+  assert.equal(hasResultBlock("```json\n{}"), false);
 });
 
 test("parseAgentResult accepts upper-case JSON fences with CRLF endings", () => {
@@ -55,6 +67,7 @@ test("parseAgentResult reports invalid JSON", () => {
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.match(result.reason, /invalid JSON/);
+  assert.equal("missing" in result, false);
 });
 
 test("parseAgentResult rejects arrays", () => {

@@ -76,7 +76,7 @@ for (const mode of [
       mode === "timeout"
         ? /timed out.*|Log:/
         : mode === "invalid"
-          ? /no result/
+          ? /without a result block/
           : mode === "no plan"
             ? new RegExp(plan.replaceAll(".", "\\."))
             : /not verified/,

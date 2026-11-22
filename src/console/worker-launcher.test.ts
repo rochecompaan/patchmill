@@ -10,7 +10,7 @@ import {
   type Script,
 } from "../../test-support/fake-subagents.ts";
 import { rpcModeLauncher, type PhaseLaunch } from "../kernel/launch.ts";
-import { parseAgentResult } from "../kernel/result.ts";
+import { MISSING_RESULT_REASON, parseAgentResult } from "../kernel/result.ts";
 import { SubagentsClient } from "./subagents-client.ts";
 import { createWorkerLauncher } from "./worker-launcher.ts";
 import { ConsoleController } from "./controller.ts";
@@ -100,7 +100,11 @@ test("missing JSON matches rpcModeLauncher parsing and uses completion fallback"
   })(f.launch);
   assert.deepEqual(run.result, parseAgentResult("plain text"));
   assert.deepEqual(run.result, launched.result);
-  assert.deepEqual(run.result, { ok: false, reason: "no result" });
+  assert.deepEqual(run.result, {
+    ok: false,
+    reason: MISSING_RESULT_REASON,
+    missing: true,
+  });
   assert.deepEqual(run.session, {
     exitCode: 1,
     timedOut: true,

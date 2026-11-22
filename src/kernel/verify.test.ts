@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Facts } from "./facts.ts";
+import { MISSING_RESULT_REASON, REMINDED_RESULT_REASON } from "./result.ts";
 import { closesIssue, verifyOutcome, type VerifyInput } from "./verify.ts";
 
 const facts: Facts = {
@@ -90,9 +91,9 @@ for (const [name, result, session, reasons] of [
   ],
   [
     "all failures remain visible",
-    { ok: false, reason: "no result" },
+    { ok: false, reason: MISSING_RESULT_REASON, missing: true },
     { exitCode: 2, timedOut: true, aborted: true },
-    [/no result/, /timed out/i, /abort/i],
+    [/without a result block/, /timed out/i, /abort/i],
   ],
 ] satisfies [
   string,
@@ -284,7 +285,7 @@ for (const [uncommitted, unpushed, warnings] of [
 test("warnings remain available on a parser failure", () => {
   const outcome = verifyOutcome({
     ...input,
-    result: { ok: false, reason: "no result" },
+    result: { ok: false, reason: "invalid JSON" },
     uncommitted: true,
     unpushed: "no-remote-branch",
   });
@@ -313,3 +314,104 @@ for (const body of [
     if (result.kind === "stop") assert.equal(result.label, "needsInfo");
   });
 }
+
+const FALLBACK_WARNING =
+  "the worker ended without a result block, so Patchmill verified the ready pull request";
+const missingResult: VerifyInput["result"] = {
+  ok: false,
+  reason: REMINDED_RESULT_REASON,
+  missing: true,
+};
+
+test("a missing block with a ready closing PR is done with a warning", () => {
+  const outcome = verifyOutcome({ ...input, result: missingResult });
+  assert.equal(outcome.kind, "stop");
+  if (outcome.kind !== "stop") return;
+  assert.equal(outcome.label, "done");
+  assert.match(outcome.comment, /The pull request was verified\./);
+  assert.match(outcome.comment, /Exit code: 0/);
+  assert.deepEqual(outcome.warnings, [FALLBACK_WARNING]);
+});
+
+test("a missing block keeps the worktree warnings after the fallback warning", () => {
+  const outcome = verifyOutcome({
+    ...input,
+    result: missingResult,
+    uncommitted: true,
+    unpushed: 2,
+  });
+  assert.equal(outcome.kind, "stop");
+  if (outcome.kind !== "stop") return;
+  assert.deepEqual(outcome.warnings, [
+    FALLBACK_WARNING,
+    "uncommitted changes in the worktree",
+    "unpushed commits",
+  ]);
+});
+
+test("a missing block with a draft PR names both causes", () => {
+  const outcome = verifyOutcome({
+    ...input,
+    result: missingResult,
+    facts: { ...facts, pullRequest: { ...facts.pullRequest!, draft: true } },
+  });
+  assert.equal(outcome.kind, "stop");
+  if (outcome.kind !== "stop") return;
+  assert.equal(outcome.label, "needsInfo");
+  assert.ok(
+    outcome.comment.startsWith(
+      `${REMINDED_RESULT_REASON} The repository does not prove completion. The pull request is a draft. Log: ${input.logPath}`,
+    ),
+    outcome.comment,
+  );
+  assert.match(outcome.comment, /Exit code: 0/);
+  assert.ok(!outcome.warnings.includes(FALLBACK_WARNING));
+});
+
+test("a missing block without a PR says no pull request exists", () => {
+  const outcome = verifyOutcome({
+    ...input,
+    result: missingResult,
+    facts: { ...facts, pullRequest: undefined },
+  });
+  assert.equal(outcome.kind, "stop");
+  if (outcome.kind !== "stop") return;
+  assert.equal(outcome.label, "needsInfo");
+  assert.ok(
+    outcome.comment.includes(
+      `${REMINDED_RESULT_REASON} The repository does not prove completion. No pull request exists for the branch.`,
+    ),
+    outcome.comment,
+  );
+});
+
+for (const [kind, session] of [
+  ["exit code 1", { exitCode: 1, timedOut: false, aborted: false }],
+  ["exit code null", { exitCode: null, timedOut: false, aborted: false }],
+  ["timeout", { exitCode: 0, timedOut: true, aborted: false }],
+  ["abort", { exitCode: 0, timedOut: false, aborted: true }],
+] satisfies [string, VerifyInput["session"]][]) {
+  test(`a missing block after an abnormal end gets no fallback: ${kind}`, () => {
+    const outcome = verifyOutcome({ ...input, result: missingResult, session });
+    assert.equal(outcome.kind, "stop");
+    if (outcome.kind !== "stop") return;
+    assert.equal(outcome.label, "needsInfo");
+    assert.ok(outcome.comment.includes(REMINDED_RESULT_REASON));
+    assert.ok(outcome.comment.includes(input.logPath));
+    assert.ok(!outcome.warnings.includes(FALLBACK_WARNING));
+  });
+}
+
+test("a missing block in planning gets no fallback", () => {
+  const outcome = verifyOutcome({
+    ...input,
+    phase: "planning",
+    result: missingResult,
+    facts: { ...facts, pullRequest: undefined },
+  });
+  assert.equal(outcome.kind, "stop");
+  if (outcome.kind !== "stop") return;
+  assert.equal(outcome.label, "needsInfo");
+  assert.ok(outcome.comment.includes(REMINDED_RESULT_REASON));
+  assert.ok(!outcome.warnings.includes(FALLBACK_WARNING));
+});
