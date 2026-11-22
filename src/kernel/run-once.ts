@@ -41,6 +41,7 @@ import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue } from "./merged-cleanup.ts";
 import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
+import { explainMissingResult } from "./unfinished-runs.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
 export type RunOnceOptions = {
@@ -347,13 +348,23 @@ export async function runOneIssue(
           stage: facts.stage,
         });
         await progressOutput("stderr", formatPhaseStart(phase, sessionNumber));
-        const run = await launchPhase(
+        const launched = await launchPhase(
           launch,
           launcher,
           deps.human,
           feedback,
           resume?.text,
         );
+        const run =
+          launched.session.timedOut || launched.session.aborted
+            ? launched
+            : {
+                ...launched,
+                result: await explainMissingResult(
+                  launched.result,
+                  launch.sessionDir,
+                ),
+              };
         resume = undefined;
         const { session, result } = run;
         if (deps.human && phase === "planning" && !session.aborted)

@@ -21,7 +21,7 @@ Separate blockers from optional suggestions. State any limits in the evidence.
 export const IMPLEMENTATION_AGENT = `---
 name: patchmill-implementation
 description: Patchmill implementation worker for one issue
-tools: read, grep, find, ls, bash, edit, write, subagent
+tools: read, grep, find, ls, bash, edit, write, subagent, bg_wait, subagent_supervisor
 ---
 
 Follow the Patchmill envelope in your task. It defines the work, the rules, and

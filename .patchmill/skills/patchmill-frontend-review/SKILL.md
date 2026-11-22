@@ -72,13 +72,16 @@ keyboard finding needs observed user impact, not handler absence alone.
 
 Dispatch a fresh-context canonical `reviewer` with the inputs above and this
 skill's rules. Kernel runs load the `pi-subagents` extension. Pass explicitly
-resolved model and thinking values. Run it in the foreground (`async: false`)
-and read its whole result before you continue. Keep the reviewer read-only, and
-do not let it start subagents. Never use the disabled `code-reviewer` role. If
-the reviewer asks for command output, run the commands and supply the results.
-Run file-writing commands in a disposable copy of the reviewed state. If no
-`reviewer` agent or subagent tool is available, stop with `needs-input`. Do not
-replace the review with a self-review.
+resolved model and thinking values. Launch it with `async: true`, wait for it
+with `bg_wait` as the implementation skill's "Wait for your own subagents"
+section says, and read its whole result before you continue. Do not run it with
+`async: false`: a blocked foreground call cannot answer the reviewer's
+supervisor requests. Keep the reviewer read-only, and do not let it start
+subagents. Never use the disabled `code-reviewer` role. If the reviewer asks for
+command output, run the commands and supply the results. Run file-writing
+commands in a disposable copy of the reviewed state. If no `reviewer` agent or
+subagent tool is available, stop with `needs-input`. Do not replace the review
+with a self-review.
 
 ## Result and repair contract
 

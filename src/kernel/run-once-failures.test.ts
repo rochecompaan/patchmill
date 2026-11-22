@@ -118,6 +118,61 @@ for (const mode of [
     await lock.release();
   });
 }
+test("a worker that ends with a running reviewer names the cause", async (t) => {
+  const run = "c4856e0b-4247-4f52-9a9b-cf0f9b326737";
+  const at = new Date().toISOString();
+  const c = await setupRun(t, [
+    {
+      stdout: "Awaiting the retained reviewer's completion.",
+      sessionEntries: [
+        {
+          type: "message",
+          timestamp: at,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "c1",
+                name: "subagent",
+                arguments: { action: "resume", id: "7afc4d89", async: false },
+              },
+            ],
+          },
+        },
+        {
+          type: "message",
+          timestamp: at,
+          message: {
+            role: "toolResult",
+            toolCallId: "c1",
+            toolName: "subagent",
+            content: [
+              {
+                type: "text",
+                text: "Revived foreground subagent from 7afc4d89.\nAgent: reviewer\n",
+              },
+            ],
+            details: { asyncId: run },
+            isError: false,
+          },
+        },
+      ],
+    },
+  ]);
+  await c.seed({ [spec]: "spec", [plan]: "plan" });
+  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
+  await c.run();
+  const issue = c.host.state().issues[0]!;
+  assert.ok(issue.labels.includes("needs-info"));
+  assert.match(
+    issue.comments[0]!.body,
+    new RegExp(
+      `no result: the worker ended its turn while its reviewer run ${run} was still running`,
+    ),
+  );
+  assert.equal((await c.records()).result.sessions[0].status, "invalid");
+});
 for (const pid of [999999, process.pid]) {
   test(`unlocked pid ${pid} diagnostics do not block`, async (t) => {
     const c = await setupRun(t, [{ stdout: "no result" }]);
