@@ -150,6 +150,16 @@ Typing event
 **Review wait**: The part of an Interactive Issue run after the implementation
 pull request is verified and labeled `agent-done`, and before it is merged.
 
+**Result block**: The final fenced `json` block, with `status` and `summary`,
+that ends the last message of a phase session. It gives the phase result.
+Without it, only repository facts can show that implementation is done.
+Interactive planning ends with a submission instead. _Avoid_: Result JSON, final
+answer
+
+**Result reminder**: The one message that Patchmill sends in the same
+conversation when a phase session ends normally without a Result block. It is
+not sent after a crash, a timeout, or an abort. _Avoid_: Retry, re-run
+
 **Normalized run outcome**: The small runner-facing result of one Run attempt —
 completed, no work, deferred, cancelled, or failed — produced from a rich
 Run-once workflow result. _Avoid_: Pipeline status
