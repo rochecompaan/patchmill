@@ -5,7 +5,6 @@ import { assistantText, type RpcMessage } from "../kernel/pi-rpc-protocol.ts";
 import {
   hasResultBlock,
   parseAgentResult,
-  REMINDED_RESULT_REASON,
   RESULT_REMINDER,
 } from "../kernel/result.ts";
 import {
@@ -162,12 +161,8 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
       text: string,
       reminded: boolean,
     ): PhaseRun => {
-      const parsed = parseAgentResult(text);
       return {
-        result:
-          reminded && !parsed.ok && parsed.missing
-            ? { ok: false, reason: REMINDED_RESULT_REASON, missing: true }
-            : parsed,
+        result: parseAgentResult(text, { reminded }),
         session: {
           exitCode: completion.state === "complete" ? 0 : 1,
           timedOut: timedOut || completion.timedOut,

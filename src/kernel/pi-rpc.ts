@@ -45,6 +45,21 @@ type Pending = {
   reject: (e: Error) => void;
 };
 
+/** How Pi answered a `prompt` command. A failure carries Pi's error text. */
+function promptOutcome(
+  response: RpcRecord,
+): { kind: "failed"; error: string } | { kind: "handled" | "started" } {
+  if ("success" in response && !response.success)
+    return { kind: "failed", error: String(response.error ?? "Prompt failed") };
+  return {
+    kind:
+      (response as { data?: { disposition?: string } }).data?.disposition ===
+      "handled"
+        ? "handled"
+        : "started",
+  };
+}
+
 export function piRpcArgs(options: PiSessionOptions): string[] {
   return [
     "--mode",
@@ -194,15 +209,10 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     reminderSettle = settles;
     send("prompt", { message }).then(
       (response) => {
-        if (
-          ("success" in response && !response.success) ||
-          (response as { data?: { disposition?: string } }).data
-            ?.disposition === "handled"
-        ) {
-          if ("success" in response && !response.success)
-            log(`${String(response.error ?? "Reminder failed")}\n`);
-          finish();
-        }
+        const outcome = promptOutcome(response);
+        if (outcome.kind === "failed") log(`${outcome.error}\n`);
+        // The reminder never sets failedPrompt: finish with the first text.
+        if (outcome.kind !== "started") finish();
       },
       () => finish(),
     );
@@ -336,15 +346,12 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
       later(options.timeoutMs, () => void interrupt("timedOut"));
       void send("prompt", { message: prompt }).then(
         (response) => {
-          if ("success" in response && !response.success) {
-            log(`${String(response.error ?? "Prompt failed")}\n`);
+          const outcome = promptOutcome(response);
+          if (outcome.kind === "failed") {
+            log(`${outcome.error}\n`);
             failedPrompt = true;
-            finish();
-          } else if (
-            (response as { data?: { disposition?: string } }).data
-              ?.disposition === "handled"
-          )
-            finish();
+          }
+          if (outcome.kind !== "started") finish();
         },
         () => undefined,
       );

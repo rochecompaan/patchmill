@@ -83,9 +83,20 @@ function validateAgentResult(value: unknown): AgentResult | string {
   return { status: result.status, summary: result.summary };
 }
 
-export function parseAgentResult(stdout: string): ParsedResult {
+/**
+ * Parse the final result block. `reminded` says that the worker already got
+ * the Result reminder, so a missing block gets the reminded reason.
+ */
+export function parseAgentResult(
+  stdout: string,
+  options: { reminded?: boolean } = {},
+): ParsedResult {
   if (!hasResultBlock(stdout)) {
-    return { ok: false, reason: MISSING_RESULT_REASON, missing: true };
+    return {
+      ok: false,
+      reason: options.reminded ? REMINDED_RESULT_REASON : MISSING_RESULT_REASON,
+      missing: true,
+    };
   }
   const parsed = parseJsonBlock(stdout, validateAgentResult);
   return parsed.ok ? { ok: true, result: parsed.value } : parsed;

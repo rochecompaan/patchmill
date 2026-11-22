@@ -7,7 +7,6 @@ import type { PiSession } from "./pi-supervisor.ts";
 import {
   hasResultBlock,
   parseAgentResult,
-  REMINDED_RESULT_REASON,
   RESULT_REMINDER,
   type ParsedResult,
 } from "./result.ts";
@@ -84,11 +83,7 @@ export function rpcModeLauncher(options: {
       },
       ...(launch.signal ? { signal: launch.signal } : {}),
     });
-    const parsed = parseAgentResult(session.stdout);
-    const result: ParsedResult =
-      reminded && !parsed.ok && parsed.missing
-        ? { ok: false, reason: REMINDED_RESULT_REASON, missing: true }
-        : parsed;
+    const result = parseAgentResult(session.stdout, { reminded });
     return { result, session };
   };
 }

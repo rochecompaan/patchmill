@@ -34,14 +34,25 @@ export async function runRpc({ step, script, sideEffects }) {
       return;
     }
     if (command.type === "prompt" && prompts > 0) {
+      const reminder = step.reminder ?? {};
+      if (reminder.promptError) {
+        out({
+          id: command.id,
+          type: "response",
+          command: "prompt",
+          success: false,
+          error: reminder.promptError,
+        });
+        return;
+      }
       out({
         id: command.id,
         type: "response",
         command: "prompt",
         success: true,
-        data: { disposition: "started" },
+        data: { disposition: reminder.handled ? "handled" : "started" },
       });
-      void reminderTurn();
+      if (!reminder.handled) void reminderTurn();
       return;
     }
     if (command.type === "prompt") {

@@ -19,6 +19,20 @@ test("parseAgentResult reports no result without a fence", () => {
   });
 });
 
+test("parseAgentResult gives the reminded reason after a reminder", () => {
+  assert.deepEqual(parseAgentResult("prose", { reminded: true }), {
+    ok: false,
+    reason: "The worker ended without a result block, also after a reminder.",
+    missing: true,
+  });
+  assert.deepEqual(
+    parseAgentResult('```json\n{"status":"done","summary":"s"}\n```', {
+      reminded: true,
+    }),
+    { ok: true, result: { status: "done", summary: "s" } },
+  );
+});
+
 test("hasResultBlock finds only a closed json fence", () => {
   assert.equal(hasResultBlock("```json\n{}\n```"), true);
   assert.equal(hasResultBlock("plain"), false);

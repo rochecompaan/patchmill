@@ -444,3 +444,22 @@ for (const [kind, step] of [
     assert.equal(calls, 0);
   });
 }
+
+for (const [kind, answer] of [
+  ["failed", { promptError: "Reminder rejected" }],
+  ["handled", { handled: true }],
+] as const) {
+  test(`a ${kind} reminder prompt finishes with the first text`, async (t) => {
+    const f = await fake(t, [{ stdout: "work done", reminder: answer }]);
+    const result = await runPiRpc({
+      ...f.options,
+      reportWaitMs: 60_000,
+      remind: reminder().remind,
+    });
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.timedOut, false);
+    assert.equal(result.stdout, "work done\n");
+    assert.equal(prompts(await f.commands()).length, 2);
+    if (kind === "failed") assert.match(await f.log(), /Reminder rejected/);
+  });
+}
