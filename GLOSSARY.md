@@ -121,7 +121,9 @@ event
 one or more Interactive Issue runs. It never decides a phase.
 
 **Console agent**: The agent in the Console session. It plans with the
-maintainer and calls Patchmill tools, but never chooses a phase.
+maintainer, calls Patchmill tools, and makes the pull request changes that the
+maintainer asks for during a Review wait. After a run ends, it explains a stop
+and resolves the problem when the maintainer agrees. It never chooses a phase.
 
 **Web session**: One Pi RPC process, started by `patchmill serve`, that drives a
 Run attempt of an Interactive Issue run from the issue's web page. Every browser
