@@ -168,8 +168,8 @@ Run-once workflow result. _Avoid_: Pipeline status
 
 **Provider failure**: An assistant message that Pi recorded with
 `stopReason: "error"`, because the model provider refused or failed the request.
-Its text is the provider's error message. An aborted reply is not a Provider
-failure. _Avoid_: auth error, Pi crash
+Its text is the provider's error message, or a fixed text when that is empty. An
+aborted reply is not a Provider failure. _Avoid_: auth error, Pi crash
 
 **Pi session log**: A raw, potentially sensitive Pi execution transcript used as
 evidence and as input when normalizing usage. It is not a runner policy or audit
