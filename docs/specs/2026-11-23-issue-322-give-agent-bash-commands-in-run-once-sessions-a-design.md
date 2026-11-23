@@ -355,3 +355,88 @@ on tool_call(bash, input)
     if default is on          -> input.timeout = default
   else                        -> keep t (Pi rejects it)
 ```
+
+## Planning review
+
+Reviewer for every pass: agent `reviewer`, model
+`claude-bridge/claude-opus-5-5`, thinking `high`, base revision `9e93b60`
+(`main`).
+
+### Review 1, pass 1: initial review
+
+- **Scope:** combined. The specification and the implementation plan, with
+  `GLOSSARY.md` (Command timeout) as a companion.
+- **Reviewed body SHA-256:** spec
+  `1eb846faab3f17e6401cd0c3f72357c4cd28027817acfe1d841fad8ab8070531`, plan
+  `3142ec25354c83e8a207c0c98c55c4eb24a3ecc7ede3ec00ca20195a3ec8d6db`.
+- **Survey:** the reviewer confirmed the three Pi starts, the interactive worker
+  as a pi-subagents background child, the session-ID key of the pi-subagents
+  registry, the inherited runner environment, and the Pi `bash` timeout
+  behavior.
+- **Findings:**
+  - B1 (blocker): the step that carries config values to the phase session and
+    the Console was untested, and the built-in fallback hid it. Accepted: `env`
+    is required, a run-once test uses non-default limits, and
+    `prepareConsoleExtensions()` gets a unit test.
+  - S1: read the environment on load, not on import. Accepted.
+  - S2: catch only the duplicate-registration error. Accepted, with tests.
+  - S3: automate a child-coverage check. Accepted: a real-registry test.
+  - S4: isolate the faux-provider test. Accepted.
+  - S5: clamp the default to the cap, bound the environment values. Accepted.
+  - S6: pi-coding-agent 1.6.0, site config docs. Accepted.
+  - S7: glossary scope in existing terms. Accepted.
+  - S8: other extensions that set a `bash` timeout. Accepted as a non-goal.
+- **Limits:** the installed pi-coding-agent is 1.5.2, the pin is 1.6.0. No tests
+  ran.
+
+### Review 1, pass 2: scoped confirmation
+
+- **Reviewed body SHA-256:** spec
+  `9faa71b80ccb44d1e7bb7b1c889fa5bc1c3a9e49af073348bc72617c50a67f13`, plan
+  `9fd5508b266fca5463b2a0a47fb479b4ba9111f31393ea454f22db95ce6c16b0` (after the
+  fix of N1 below).
+- **Result:** B1 and S1 to S8 resolved. New blocker N1: the required `env` broke
+  two `rpcModeLauncher` callers that the plan did not list. Accepted: Task 3
+  lists `test-support/fake-human.ts` and `src/console/worker-launcher.test.ts`.
+  Also accepted: a test-name filter for the re-run, the fake-API file in Task 2,
+  and the S8 wording.
+- **Outcome:** `blocked`, because N1 came from the confirmation. The maintainer
+  asked for a new Planning review.
+
+### Review 2, pass 1: maintainer-requested review
+
+- **Scope:** combined, as in review 1.
+- **Reviewed body SHA-256:** spec
+  `9faa71b80ccb44d1e7bb7b1c889fa5bc1c3a9e49af073348bc72617c50a67f13`, plan
+  `9fd5508b266fca5463b2a0a47fb479b4ba9111f31393ea454f22db95ce6c16b0`.
+- **Findings:** no blockers.
+  - S1: the `launch.test.ts` check used the default `1200`, which a Patchmill
+    phase session already has. Accepted: `"77"`.
+  - S2: a duplicate registration can come from another extension. Accepted: the
+    spec records this as a known limitation.
+  - S3: only the helper tests the Console start. Accepted: the manual check
+    covers the `openConsole()` line and prefers the interactive run path.
+  - S4: the module exports helpers that only tests use. Rejected: they are small
+    pure functions, the table tests are the clearest test surface, and the
+    variable names are shared with the launcher tests.
+  - S5: no envelope line when both limits are off. Rejected: with no limit,
+    there is nothing to state. The spec records this copy as a decision.
+  - Wording nits on the runner environment and the Depth bullet. Accepted.
+- **Limits:** pi-coding-agent 1.5.2 was inspected, not 1.6.0. `pi-claude-bridge`
+  was not installed where the reviewer looked. No tests ran.
+
+### Review 2, pass 2: scoped confirmation
+
+- **Result:** all accepted corrections confirmed. No new blocker. One wording
+  suggestion ("Its" in the registration paragraph means this extension) was not
+  applied; the meaning is clear from the list item.
+- **Final body SHA-256:** spec
+  `132d59ae9c3ca98901e10e82a3d81c11b8f2d5107eae519c481c6030430226af`, plan
+  `b75d0ebf1b3b3d3f34d1d2fa0e684c00203d1c2d1e3c8a6a5a2e8b2d45441b1f`.
+- **Compared specification SHA-256 for the plan:**
+  `132d59ae9c3ca98901e10e82a3d81c11b8f2d5107eae519c481c6030430226af`.
+- **Hash note:** the earlier hashes were computed before this record existed.
+  The helper includes the blank line before the record heading, so these final
+  values differ only by that line. The reviewed text at commit `422cde8` is
+  unchanged.
+- **Outcome:** `ready`.
