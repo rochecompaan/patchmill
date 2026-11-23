@@ -109,8 +109,9 @@ spec has no mockup and no HTML companion.
       `skills/patchmill-planning/planning-review.md` and the "Reviewer" section
       of `skills/patchmill-frontend-review/SKILL.md`. Make sure that each row of
       the spec's agreement table holds, and that the prompt has no method or
-      report rule of its own except the fallback. Record the result in the
-      commit message body. (Direct inspection; no prompt-text test.)
+      report rule of its own except the three small rules and the fallback that
+      the spec names. Record the result in the commit message body. (Direct
+      inspection; no prompt-text test.)
 - [ ] **Step 6: Commit**
       `feat(init): let the managed reviewer run validation commands (#229)`.
 

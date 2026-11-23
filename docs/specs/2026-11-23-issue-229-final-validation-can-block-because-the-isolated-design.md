@@ -65,7 +65,8 @@ is already in `main`:
    inspection. It forbids fixers, installs, authentication, edits, and Git or
    hosting changes.
 2. The managed `reviewer` prompt defers to the review brief in its task for the
-   method and the report format. It adds only tool and safety limits.
+   method and the report format. It adds tool and safety limits and the three
+   small rules in "Reviewer prompt and the review brief".
 3. `patchmill doctor` fails when the resolved `reviewer` in the isolated runtime
    is not the managed, current definition with `bash`.
 4. `patchmill doctor --fix` writes a missing or stale managed `reviewer.md`. It
@@ -119,12 +120,15 @@ is already in `main`:
 ### Reviewer prompt and the review brief
 
 pi-subagents launches `reviewer` with `systemPromptMode: replace`,
-`inheritProjectContext: false` and `inheritSkills: false` (the defaults for a
-role named `reviewer` in `defaultSystemPromptMode` and
-`defaultInheritProjectContext`, `pi-subagents/src/agents/agents.js`). A test on
-the base revision showed these values in the launch contract. So the role prompt
-is the reviewer's whole system prompt. The review brief arrives only in the
-task:
+`inheritProjectContext: false` and `inheritSkills: false`. These are the
+defaults for each role not named `delegate` (`defaultSystemPromptMode`,
+`defaultInheritProjectContext`, `defaultInheritSkills` in
+`pi-subagents/src/agents/agents.js`). A test on the base revision showed these
+values in the launch contract. So the role prompt replaces the agent prompt.
+pi-subagents still adds runtime text: the Pi base prompt, the child boundary,
+the intercom bridge, and the default `attested` acceptance contract ("End with a
+structured acceptance report"). No project context and no skills are added. The
+review brief arrives only in the task:
 
 - Final review: `requesting-code-review/code-reviewer.md` with
   `patchmill-implementation/review-appendix.md` and the review package.
@@ -140,9 +144,13 @@ can compete with the brief. A reviewer could then drop brief sections such as
 because it comes from an installed skill.
 
 Decision: the role prompt is a thin boundary layer. The brief owns the method
-and the report format. The role prompt owns only the tool and safety limits.
-When the brief is stricter than a limit, the brief wins. When no brief format
-exists, a short fallback format applies.
+and the report format. The role prompt owns the tool and safety limits, and
+three small rules: read the source independently, report the `git status`
+changes with the brief's command evidence, and put a runtime acceptance report
+after the brief's report. When the brief is stricter than a limit, the brief
+wins. The prompt defines "read-only" for all briefs, so a strict brief cannot
+cancel the permission to run validation commands (maintainer decision Q3). When
+no brief format exists, a short fallback format applies.
 
 `REVIEWER_AGENT` keeps its frontmatter (name, description,
 `tools: read, grep, find, ls, bash`). Its body becomes this text, verbatim:
@@ -150,7 +158,9 @@ exists, a short fallback format applies.
 ```text
 You are a fresh-context reviewer. Your task contains the review brief: a template or brief, any appendix, the scope, and the inputs.
 Follow the brief completely. It defines what to check, how to judge, and the report format with every required section.
-This role adds only the tool and safety limits below. When the brief is stricter than a limit, obey the brief.
+Steps in the brief that are addressed to the parent or the implementer are not yours.
+This role adds the tool and safety limits below. When the brief is stricter than a limit, obey the brief.
+In a brief, "read-only" means: no edits to tracked files and no Git or hosting changes. Ignored build output and caches from validation commands are not changes.
 Do not trust summaries from the implementer or the planner. Read the scope, the diff or documents, and the relevant source yourself.
 
 Tool and safety limits:
@@ -159,27 +169,29 @@ Tool and safety limits:
 - These commands can write ignored build output or caches. That is permitted.
 - If the brief permits a disposable worktree in a temporary directory, you may create it. Remove it before you finish.
 - Do not run commands that fix or rewrite files, such as --fix, --write, or a formatter in write mode.
-- Do not edit files, install packages, authenticate, or change Git or hosting state of the reviewed checkout.
+- Do not edit files, install packages, or authenticate.
+- Do not change Git or hosting state, except a disposable worktree that the brief permits.
 - Do not launch agents. Read installed skill files when the brief tells you to. Do not start their workflows.
-- Run git status --short before and after your commands. Report each change that your commands caused.
+- Run git status --short before and after your commands. Report each change that your commands caused, with the brief's command evidence or in the fallback report.
 
 If the brief gives no report format, report concrete findings with file paths, line numbers, impact, and evidence.
 Separate blockers from optional suggestions, and state the limits of your evidence.
+If the runtime also asks for an acceptance report, put it after the complete report that the brief requires.
 ```
 
 Agreement with each brief:
 
-| Brief rule                                                                             | Role prompt                                                         |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `code-reviewer.md` output: Strengths, Issues by severity, Recommendations, Assessment  | "Follow the brief completely … report format with every section"    |
-| `code-reviewer.md` "Declined to judge" list                                            | Same                                                                |
-| `code-reviewer.md` "Read-Only Review": no change to the tree, index, HEAD or branch    | No edits, no Git changes of the reviewed checkout                   |
-| `code-reviewer.md` permits `git worktree add /tmp/review-<SHA>`                        | Disposable worktree permitted when the brief permits it             |
-| `code-reviewer.md` "You Do Not Dispatch Subagents"                                     | "Do not launch agents"                                              |
-| Appendix: Structure results, command evidence, final "Human Reviewer Callouts" section | Report format from the brief; validation commands permitted         |
-| Appendix: does not override tool restrictions or read-only and no-child boundaries     | The role prompt states those limits                                 |
-| `planning-review.md`: stay read-only, start no agents, report missing evidence         | Same limits; the stricter brief wins                                |
-| Frontend review: read-only, no subagents, file-writing commands in a disposable copy   | Same limits; ignored output only, otherwise the stricter brief wins |
+| Brief rule                                                                             | Role prompt                                                                                                                        |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `code-reviewer.md` output: Strengths, Issues by severity, Recommendations, Assessment  | "Follow the brief completely … report format with every section"                                                                   |
+| `code-reviewer.md` "Declined to judge" list                                            | Same                                                                                                                               |
+| `code-reviewer.md` "Read-Only Review": no change to the tree, index, HEAD or branch    | "Read-only" means no tracked-file edits and no Git or hosting changes; ignored output is not a change                              |
+| `code-reviewer.md` permits `git worktree add /tmp/review-<SHA>`                        | Disposable worktree permitted when the brief permits it                                                                            |
+| `code-reviewer.md` "You Do Not Dispatch Subagents"                                     | "Do not launch agents"                                                                                                             |
+| Appendix: Structure results, command evidence, final "Human Reviewer Callouts" section | Report format from the brief; `git status` changes go in the command evidence; an acceptance report comes after the brief's report |
+| Appendix: does not override tool restrictions or read-only and no-child boundaries     | The role prompt states those limits                                                                                                |
+| `planning-review.md`: stay read-only, start no agents, report missing evidence         | Same limits; the stricter brief wins                                                                                               |
+| Frontend review: read-only, no subagents, file-writing commands in a disposable copy   | Same limits. Ignored output is not a change. Parent steps are not the reviewer's                                                   |
 
 The role stays review-only: no `edit`, no `write`, no `subagent`. The command
 rules are the maintainer decision for Q3. The precedence rule is the maintainer
