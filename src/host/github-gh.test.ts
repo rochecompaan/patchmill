@@ -494,26 +494,24 @@ test("viewIssue maps labels, authors, comments, and state", async () => {
   ]);
 });
 
-test("checkCli reports auth failure and stops before user lookup", async () => {
+const APP_TOKEN_MESSAGE =
+  "gh authenticated with a GitHub App installation token; trusted comment authors come from host.login and host.trustedAuthors";
+
+test("checkCli stops when gh --version fails", async () => {
   const runner = recordingRunner([
-    { match: /gh --version/, result: {} },
-    { match: /gh auth status/, result: { code: 1, stderr: "not logged in\n" } },
+    { match: /gh --version/, result: { code: 1, stderr: "not installed\n" } },
   ]);
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
   assert.deepEqual(await host.checkCli(), {
     ok: false,
-    message: "gh auth status failed: not logged in",
+    message: "gh --version failed: not installed",
   });
-  assert.deepEqual(runner.calls, [
-    ["gh", "--version"],
-    ["gh", "auth", "status"],
-  ]);
+  assert.deepEqual(runner.calls, [["gh", "--version"]]);
 });
 
 test("checkCli reports the trimmed authenticated login", async () => {
   const runner = recordingRunner([
     { match: /gh --version/, result: {} },
-    { match: /gh auth status/, result: {} },
     { match: /gh api user --jq .login/, result: { stdout: "octocat\n" } },
   ]);
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
@@ -524,9 +522,56 @@ test("checkCli reports the trimmed authenticated login", async () => {
   });
   assert.deepEqual(runner.calls, [
     ["gh", "--version"],
-    ["gh", "auth", "status"],
     ["gh", "api", "user", "--jq", ".login"],
   ]);
+});
+
+test("checkCli accepts a GitHub App installation token", async () => {
+  const runner = recordingRunner([
+    { match: /gh --version/, result: {} },
+    {
+      match: /gh api user --jq .login/,
+      result: {
+        code: 1,
+        stderr: "HTTP 403: Resource not accessible by integration\n",
+      },
+    },
+    {
+      match: /gh api installation\/repositories --jq .total_count/,
+      result: { stdout: "1\n" },
+    },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.checkCli(), {
+    ok: true,
+    message: APP_TOKEN_MESSAGE,
+  });
+  assert.deepEqual(runner.calls, [
+    ["gh", "--version"],
+    ["gh", "api", "user", "--jq", ".login"],
+    ["gh", "api", "installation/repositories", "--jq", ".total_count"],
+  ]);
+});
+
+test("checkCli names host.trustedAuthors when no token works", async () => {
+  const runner = recordingRunner([
+    { match: /gh --version/, result: {} },
+    {
+      match: /gh api user --jq .login/,
+      result: { code: 1, stderr: "no token\n" },
+    },
+    {
+      match: /gh api installation\/repositories/,
+      result: { code: 1, stderr: "bad credentials\n" },
+    },
+  ]);
+  const host = new GitHubHost({ runner, repoRoot: "/repo" });
+  assert.deepEqual(await host.checkCli(), {
+    ok: false,
+    message:
+      "No usable GitHub token: gh api user failed: no token; gh api installation/repositories failed: bad credentials. With a GitHub App installation token, trusted comment authors come only from host.login and host.trustedAuthors.",
+  });
+  assert.ok(!runner.calls.some((call) => call[1] === "auth"));
 });
 
 test("github commentIssue returns the comment url", async () => {
