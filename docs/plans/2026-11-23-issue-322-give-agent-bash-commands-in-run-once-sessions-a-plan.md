@@ -12,9 +12,9 @@ extension. Patchmill passes the configured limits to each Pi process in two
 environment variables, and loads the extension at the three Pi starts.
 
 **Tech Stack:** TypeScript, Node.js test runner, Pi extension API
-(`@earendil-works/pi-coding-agent` 1.5.2), `pi-subagents` 0.80.0
-(`pi-subagents/required-child-extensions`), faux provider of
-`@earendil-works/pi-ai`.
+(`@earendil-works/pi-coding-agent` 1.6.0 as pinned in `package.json`),
+`pi-subagents` 0.80.0 (`pi-subagents/required-child-extensions`), faux provider
+of `@earendil-works/pi-ai`.
 
 **Spec:**
 [`docs/specs/2026-11-23-issue-322-give-agent-bash-commands-in-run-once-sessions-a-design.md`](../specs/2026-11-23-issue-322-give-agent-bash-commands-in-run-once-sessions-a-design.md)
@@ -42,7 +42,13 @@ environment variables, and loads the extension at the three Pi starts.
 - Envelope copy: the exact lines in the spec's "Implementation envelope" table.
   Implementation phase only.
 - No test waits more than a few seconds.
-- npm dependencies do not change, so a Nix build rerun is not required.
+- npm dependencies do not change, so a Nix build rerun is not required. The faux
+  provider comes from `@earendil-works/pi-ai`, a dependency of the pinned
+  pi-coding-agent.
+- The extension module has no import-time side effects.
+- Run single test files with `node --test --test-force-exit <file>`.
+- The worktree needs `node_modules` before `npm test` (its `pretest` runs
+  `npm ls`). Run `npm ci` first if it is missing.
 
 ## Review Focus
 
@@ -69,6 +75,9 @@ environment variables, and loads the extension at the three Pi starts.
   `schema`, `parseConfig()`)
 - Modify: `patchmill.config.json` (`pi` section)
 - Modify: `README.md` (config example near line 411, key list near line 431)
+- Modify: `site/src/content/docs/getting-started/configuration.md` (near lines
+  107 and 137), `site/src/content/docs/reference/configuration-example.md` (near
+  line 31)
 - Test: `src/config/config.test.ts`
 
 **Interfaces:**
@@ -102,8 +111,9 @@ environment variables, and loads the extension at the three Pi starts.
       writes `DEFAULT_CONFIG`. Update its expected config if it compares the
       whole object.
 - [ ] **Step 5: Docs.** Add both keys with defaults to `patchmill.config.json`
-      and to the README example. Add one README line for each key next to
-      `pi.timeoutMinutes`, with the `0` rule and the default-not-above-cap rule.
+      and to the README and site config examples. Add one line for each key next
+      to `pi.timeoutMinutes` in the README and the site configuration page, with
+      the `0` rule and the default-not-above-cap rule.
 - [ ] **Step 6: Commit**
       `feat(config): add command timeout limits for agent bash calls (#322)`.
 
@@ -122,7 +132,8 @@ environment variables, and loads the extension at the three Pi starts.
   `MAX_COMMAND_TIMEOUT_ENV`, `commandLimits(pi)`, `commandLimitsEnv(limits)`,
   `readCommandLimits(env)`, `limitCommandTimeout(timeout, limits)`,
   `createCommandTimeoutExtension({ limits, register? })`, and a default export
-  built from `readCommandLimits(process.env)`.
+  `(pi) => createCommandTimeoutExtension({ limits: readCommandLimits(process.env) })(pi)`,
+  which reads the environment only when Pi calls it.
 - `COMMAND_TIMEOUT_EXTENSION_PATH` uses the same `extname(fileURLToPath(...))`
   pattern as `BACKGROUND_WORK_EXTENSION_PATH` in `src/kernel/launch.ts`.
 
@@ -131,7 +142,8 @@ environment variables, and loads the extension at the three Pi starts.
     `limits = { defaultSeconds: 1200, maxSeconds: 1500 }` and each disabled
     variant. Cases: `undefined → 1200`; `600 → 600`; `1500 → 1500`;
     `1501 → 1500`; `undefined` with default `0` → `undefined`; `9999` with cap
-    `0` → `9999`; `0`, `-5`, `NaN`, `Infinity` → unchanged in every column.
+    `0` → `9999`; `0`, `-5`, `NaN`, `Infinity` → unchanged in every column;
+    `undefined` with `{ defaultSeconds: 2000, maxSeconds: 1500 }` → `1500`.
   - `"commandLimits converts minutes to seconds"`:
     `commandLimits({ ..., commandTimeoutMinutes: 20, maxCommandTimeoutMinutes: 0.5 })`
     → `{ defaultSeconds: 1200, maxSeconds: 30 }`.
@@ -140,8 +152,15 @@ environment variables, and loads the extension at the three Pi starts.
     `{0,1500}`, `{1,0}`.
   - `"missing variables give the built-in defaults"`: `readCommandLimits({})` →
     `{ defaultSeconds: 1200, maxSeconds: 1500 }`.
-  - `"an invalid variable throws"`: `"abc"`, `"-1"`, and `""` in either variable
-    throw an `Error` that names the variable.
+  - `"an invalid variable throws"`: `"abc"`, `"-1"`, `""`, and `"2147484"` in
+    either variable throw an `Error` that names the variable.
+  - `"importing the module with an invalid variable does not throw"`: in a child
+    process with `PATCHMILL_COMMAND_TIMEOUT_SECONDS=abc`, a dynamic `import()`
+    of the module succeeds, and a call of the default export with a fake API
+    throws.
+  - `"the extension path is a file"`:
+    `existsSync(COMMAND_TIMEOUT_EXTENSION_PATH)`, as `launch.test.ts` does for
+    the background-work path.
   - `"tool_call sets and caps bash timeouts and ignores other tools"`: use
     `fakeExtensionApi()` from `test-support/fake-extension-api.ts` (add a
     `tool_call` emitter there if it lacks one). Emit
@@ -155,14 +174,28 @@ environment variables, and loads the extension at the three Pi starts.
   - `"session_shutdown disposes and a new session registers again"`: start `s1`,
     shutdown, start `s2`. The `s1` registration's `dispose` ran once, and `s2`
     was registered.
-  - `"a duplicate registration does not fail the session"`: `register` throws.
+  - `"a duplicate registration does not fail the session"`: `register` throws
+    `Required child extensions are already registered for session 's1'; dispose them first.`
     `session_start` resolves, stderr gets one line, and `tool_call` still sets
     the timeout.
+  - `"other registration errors are raised"`: `register` throws
+    `Error("not an importable file")`. `session_start` rejects with it.
+  - `"the real registry holds the entry under the session ID"`: use the real
+    `registerRequiredChildExtensions`. After `session_start` for a session with
+    ID `id`, a direct `registerRequiredChildExtensions` call for `id` throws
+    `already registered`. After `session_shutdown`, the same call succeeds;
+    dispose it in `t.after`. (`fakeExtensionApi().fire()` uses a fresh in-memory
+    `SessionManager`; read its ID from the ctx, or extend the fake to accept
+    one.)
 - [ ] **Step 2: Write the failing end-to-end test**
       `"a command that never ends times out, its children die, and the agent continues"`.
-      Run a Pi agent session in process (SDK `createAgentSessionServices` /
-      `createAgentSessionFromServices`, as in `src/console/start.ts`) with the
-      faux provider from `@earendil-works/pi-ai`, the built-in tools, and
+      Run a Pi agent session (SDK `createAgentSessionServices` /
+      `createAgentSessionFromServices`, as in `src/console/start.ts`) in a child
+      process. Copy the isolation pattern of
+      `src/console/session-switch-lifecycle.test.ts`: re-run the file with
+      `--test --test-force-exit` and a marker variable, and clear
+      `PI_SUBAGENT_*` and `PI_SESSION_*`. Use the faux provider from
+      `@earendil-works/pi-ai`, the built-in tools, and
       `extensionFactories: [createCommandTimeoutExtension({ limits: { defaultSeconds: 1, maxSeconds: 2 }, register: recorder })]`.
       Use a temp `agentDir` and `cwd`. Script the faux model: turn 1 calls
       `bash` with `{ command: "sleep 30 & echo $! > <tmp>/pid; wait" }` and no
@@ -180,7 +213,8 @@ environment variables, and loads the extension at the three Pi starts.
   `tool_call` handler to the input, run the tool, and assert the same error and
   PID. Record the reason in a test comment.
 
-- [ ] **Step 3: Run** `node --test src/pi/command-timeout-extension.test.ts`.
+- [ ] **Step 3: Run**
+      `node --test --test-force-exit src/pi/command-timeout-extension.test.ts`.
       Expected: FAIL (module missing).
 - [ ] **Step 4: Implement** `src/pi/command-timeout-extension.ts` as the spec's
       "The Command timeout extension" section describes. Import
@@ -188,7 +222,10 @@ environment variables, and loads the extension at the three Pi starts.
       `pi-subagents/required-child-extensions` as the default `register`. Import
       `isToolCallEventType` from `@earendil-works/pi-coding-agent`. Seconds from
       minutes: `minutes * 60`. In `commandLimitsEnv`, use `String(seconds)`.
-- [ ] **Step 5: Run** `node --test src/pi/command-timeout-extension.test.ts`.
+      Catch only errors whose message contains
+      `are already registered for session`.
+- [ ] **Step 5: Run**
+      `node --test --test-force-exit src/pi/command-timeout-extension.test.ts`.
       Expected: PASS.
 - [ ] **Step 6: Commit**
       `feat(pi): add a command timeout extension for agent bash calls (#322)`.
@@ -200,19 +237,28 @@ environment variables, and loads the extension at the three Pi starts.
 - Modify: `src/kernel/launch.ts` (`rpcModeLauncher` options and
   `extensionPaths`)
 - Modify: `src/kernel/interactive-loop.ts` (`preparePhasePrompt()`)
-- Modify: `src/console/start.ts` (`openConsole()`)
+- Modify: `src/console/start.ts` (new `prepareConsoleExtensions()`,
+  `openConsole()`)
 - Modify: `src/cli/commands/serve/session-launcher.ts`
   (`createSessionLauncher()`)
+- Modify: `test-support/run-once-fixture.ts` (the fake Pi wrapper records the
+  two variables)
 - Test: `src/kernel/launch.test.ts`,
-  `src/cli/commands/serve/session-launcher.test.ts`
+  `src/cli/commands/serve/session-launcher.test.ts`,
+  `src/kernel/run-once-output.test.ts` (it uses `setupRun`),
+  `src/console/start.test.ts`
 
 **Interfaces:**
 
 - Consumes: `COMMAND_TIMEOUT_EXTENSION_PATH`, `commandLimits()`,
   `commandLimitsEnv()` from Task 2.
 - Produces:
-  `rpcModeLauncher(options: { command; agentDir; extensionPaths; env?: Record<string, string> })`.
-  `env` goes to `runPiRpc()` unchanged.
+  `rpcModeLauncher(options: { command; agentDir; extensionPaths; env: Record<string, string> })`.
+  `env` is required, so TypeScript flags a caller without it. It goes to
+  `runPiRpc()` unchanged.
+- Produces:
+  `prepareConsoleExtensions(config: PatchmillConfig, env?: NodeJS.ProcessEnv): string[]`
+  in `src/console/start.ts`. `env` defaults to `process.env`.
 
 - [ ] **Step 1: Extend the failing tests**:
   - In `launch.test.ts`, extend
@@ -226,20 +272,34 @@ environment variables, and loads the extension at the three Pi starts.
     `"a ready start passes the console session file, skills, extensions and env"`:
     `extensionPaths` contains `COMMAND_TIMEOUT_EXTENSION_PATH`, and `env` has
     both variables from the test config.
-- [ ] **Step 2: Run** both test files. Expected: FAIL.
+  - New run-once test `"a phase session gets the configured command limits"`:
+    `setupRun()` with `config.pi.commandTimeoutMinutes = 2` and
+    `config.pi.maxCommandTimeoutMinutes = 0`. The fake Pi wrapper writes
+    `PATCHMILL_COMMAND_TIMEOUT_SECONDS` and
+    `PATCHMILL_MAX_COMMAND_TIMEOUT_SECONDS` to a file. Assert `"120"` and `"0"`.
+    Non-default values make sure the built-in fallback cannot hide a missing
+    step.
+  - New `start.test.ts` test
+    `"prepareConsoleExtensions sets the configured limits and lists the extension"`:
+    with a config of `2` and `0` minutes and an empty object as `env`, the
+    result is
+    `[resolvePiSubagentsPackageRoot(), COMMAND_TIMEOUT_EXTENSION_PATH]`, and
+    `env` has `"120"` and `"0"`.
+- [ ] **Step 2: Run** the four test files. Expected: FAIL.
 - [ ] **Step 3: Implement.**
   - `rpcModeLauncher`: insert the path after `BACKGROUND_WORK_EXTENSION_PATH`;
     pass `options.env` to `runPiRpc`. Keep the existing ordering comment.
   - `preparePhasePrompt()`: pass
     `env: commandLimitsEnv(commandLimits(config.pi))`.
-  - `openConsole()`: before `createAgentSessionRuntime`, copy
-    `commandLimitsEnv(commandLimits(config.pi))` into `process.env`. Add the
-    path to `additionalExtensionPaths` after `resolvePiSubagentsPackageRoot()`.
+  - `prepareConsoleExtensions()`: copy
+    `commandLimitsEnv(commandLimits(config.pi))` into `env`, and return
+    `[resolvePiSubagentsPackageRoot(), COMMAND_TIMEOUT_EXTENSION_PATH]`.
+    `openConsole()` calls it next to the `PI_CODING_AGENT_DIR` line, and passes
+    the result as `additionalExtensionPaths`.
   - `createSessionLauncher()`: add the path to `extensionPaths` and spread the
     variables into `env`.
-- [ ] **Step 4: Run** both test files, then `npm run check:types`. Expected:
-      PASS. `openConsole()` has no unit test; check the change by inspection and
-      in Task 4's manual check.
+- [ ] **Step 4: Run** the four test files, then `npm run check:types`. Expected:
+      PASS.
 - [ ] **Step 5: Commit**
       `feat(kernel): load the command timeout extension in Issue run sessions (#322)`.
 

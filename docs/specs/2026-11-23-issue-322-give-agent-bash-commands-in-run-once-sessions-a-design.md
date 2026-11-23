@@ -54,6 +54,16 @@ with it.
   Patchmill does not configure them. pi-subagents excludes them from required
   child extensions by default.
 - A change to Pi's timeout message.
+- Control over other extensions that set a `bash` timeout. For example,
+  `pi-claude-bridge` sets `timeout = 120` on a `bash` call without one when its
+  provider runs the session. Pi runs `tool_call` handlers in load order, and Pi
+  loads CLI and SDK `additionalExtensionPaths` extensions before
+  settings-discovered ones
+  (`mergePaths(cliEnabledExtensions, enabledExtensions)` in
+  `dist/core/resource-loader.js`). So in the three Pi starts, the Patchmill
+  default comes first. Where another handler runs first, its default stays,
+  because it is at or below the cap. The cap applies in every case, unless a
+  later handler raises the value.
 
 ## Anti-goals
 
@@ -123,7 +133,9 @@ Rules for `parseConfig()`:
 
 `patchmill init` writes `DEFAULT_CONFIG`, so new configs show both keys. Add
 both keys with their defaults to this repository's `patchmill.config.json`.
-Document them in `README.md` next to `pi.timeoutMinutes`.
+Document them next to `pi.timeoutMinutes` in `README.md`,
+`site/src/content/docs/getting-started/configuration.md`, and
+`site/src/content/docs/reference/configuration-example.md`.
 
 ### The Command timeout extension
 
@@ -149,7 +161,8 @@ export function createCommandTimeoutExtension(options: {
   limits: CommandLimits;
   register?: typeof registerRequiredChildExtensions;
 }): ExtensionFactory;
-export default ExtensionFactory; // createCommandTimeoutExtension({ limits: readCommandLimits(process.env) })
+// Reads the environment when Pi calls the factory, not on import.
+export default ExtensionFactory; // (pi) => createCommandTimeoutExtension({ limits: readCommandLimits(process.env) })(pi)
 ```
 
 `limitCommandTimeout()` is the whole policy:
@@ -162,17 +175,24 @@ export default ExtensionFactory; // createCommandTimeoutExtension({ limits: read
 | not finite, or `≤ 0` | unchanged          | unchanged           | unchanged           | unchanged |
 
 An invalid value stays unchanged, so Pi rejects it with its own message, as it
-does today.
+does today. When both limits are on and the default is above the cap, the
+default is reduced to the cap. Config prevents this case, but the environment
+can bypass config.
+
+The module has no import-time side effects. Kernel, console and serve code
+import it for the path and the helpers. A stray invalid variable in the
+operator's shell must not break those imports. It fails only the Pi session that
+loads the extension.
 
 `readCommandLimits()` behavior:
 
 - A missing variable gives the built-in default for that limit: 1200 seconds or
   1500 seconds. A Pi process that loads the file without the variables, for
   example after a future change strips them, still gets limits.
-- A variable that is not a finite number of `0` or more throws. Pi then fails to
-  load the extension. A required child extension that fails to load rejects the
-  child launch before its first prompt. An invalid value never runs without
-  limits silently.
+- A variable that is not a finite number from `0` to `2_147_483` (seconds)
+  throws. Pi then fails to load the extension. A required child extension that
+  fails to load rejects the child launch before its first prompt. An invalid
+  value never runs without limits silently.
 
 The extension factory:
 
@@ -186,10 +206,13 @@ The extension factory:
   (for example after `/patchmill-issue` switches the Console session) registers
   again for the new session ID.
 - pi-subagents allows one registration per session ID. If a registration for the
-  same session already exists, the extension logs the error to stderr and
-  continues. The existing registration still covers the children. Its
+  same session already exists (the error message contains
+  `are already registered for session`), the extension logs one line to stderr
+  and continues. The existing registration still covers the children. Its
   `tool_call` handler still applies the limits, so a second load of the file in
-  one session changes nothing.
+  one session changes nothing. Any other registration error, for example a path
+  that is not a file, is raised. Pi then reports the extension error, so
+  children never run without limits silently.
 - It does not pass `requireForAllRunners`. External runners stay excluded, as in
   the non-goals.
 
@@ -201,11 +224,11 @@ is harmless, and it keeps one rule for every session.
 
 ### Where Patchmill loads the extension
 
-| Pi start                 | Change                                                                                                                                                                                                                                                              |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unattended phase session | `rpcModeLauncher()` adds `COMMAND_TIMEOUT_EXTENSION_PATH` after `BACKGROUND_WORK_EXTENSION_PATH`. It gets a new option `env`, and passes it to `runPiRpc()`. `preparePhasePrompt()` passes `commandLimitsEnv(commandLimits(config.pi))`.                            |
-| Terminal Console session | `openConsole()` adds `COMMAND_TIMEOUT_EXTENSION_PATH` to `additionalExtensionPaths`. Before it creates the runtime, it sets both variables on `process.env`, as it already does for `PI_CODING_AGENT_DIR`. Background runners that the session starts inherit them. |
-| Web session              | `createSessionLauncher()` adds `COMMAND_TIMEOUT_EXTENSION_PATH` to `extensionPaths` and the two variables to `env`.                                                                                                                                                 |
+| Pi start                 | Change                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unattended phase session | `rpcModeLauncher()` adds `COMMAND_TIMEOUT_EXTENSION_PATH` after `BACKGROUND_WORK_EXTENSION_PATH`. It gets a new required option `env`, and passes it to `runPiRpc()`. `preparePhasePrompt()` passes `commandLimitsEnv(commandLimits(config.pi))`.                                                                                                                                                             |
+| Terminal Console session | A new helper in `src/console/start.ts`, `prepareConsoleExtensions(config, env = process.env): string[]`, sets both variables on `env` and returns the `additionalExtensionPaths` list: pi-subagents, then `COMMAND_TIMEOUT_EXTENSION_PATH`. `openConsole()` calls it before it creates the runtime, next to the `PI_CODING_AGENT_DIR` line. Background runners that the session starts inherit the variables. |
+| Web session              | `createSessionLauncher()` adds `COMMAND_TIMEOUT_EXTENSION_PATH` to `extensionPaths` and the two variables to `env`.                                                                                                                                                                                                                                                                                           |
 
 The Console session gets the limits because interactive planning and review wait
 revisions run in it. The maintainer's other `bash` calls in the Console session
@@ -266,17 +289,17 @@ Not applicable. The change has no browser-visible part.
 
 ## Acceptance criteria and verification
 
-| Criterion                                                                                                    | Verification                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A call without `timeout` runs with the default.                                                              | Unit tests of `limitCommandTimeout()` and of the `tool_call` handler.                                                                                                                                                                                                                                                                                                      |
-| A call above the cap runs with the cap. A call at or below the cap keeps its value.                          | The same tests, with values at, below and above the cap.                                                                                                                                                                                                                                                                                                                   |
-| A limit of `0` is not applied.                                                                               | The same tests, for each column of the policy table.                                                                                                                                                                                                                                                                                                                       |
-| A command that never ends stops at the timeout, its children die, and the agent gets an error and continues. | A test runs a Pi agent session in process with the faux provider of `@earendil-works/pi-ai` and the extension, with a 1-second default from the environment. The command starts a background `sleep` and waits. The test checks the error text `Command timed out after 1 seconds`, that the `sleep` process no longer exists, and that the faux model gets the next turn. |
-| Subagent sessions get the same limits.                                                                       | A unit test checks the registration on `session_start`, its disposal, and the duplicate case, with a recording `register`. pi-subagents documents and implements the loading of registered extensions in children. A manual check in the plan confirms it in one real child, when model access is available.                                                               |
-| Config rejects a default longer than the cap.                                                                | `src/config/config.test.ts`.                                                                                                                                                                                                                                                                                                                                               |
-| The implementation envelope states the configured limits.                                                    | Envelope tests for the four rows, and the implementation fixture.                                                                                                                                                                                                                                                                                                          |
-| Each Pi start loads the extension with the variables.                                                        | Existing launcher tests extended: `rpcModeLauncher` arguments and environment, the Web session launcher `start` input.                                                                                                                                                                                                                                                     |
-| Tests use short timeouts.                                                                                    | Review of the new tests: no test waits more than a few seconds.                                                                                                                                                                                                                                                                                                            |
+| Criterion                                                                                                    | Verification                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A call without `timeout` runs with the default.                                                              | Unit tests of `limitCommandTimeout()` and of the `tool_call` handler.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| A call above the cap runs with the cap. A call at or below the cap keeps its value.                          | The same tests, with values at, below and above the cap.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| A limit of `0` is not applied.                                                                               | The same tests, for each column of the policy table.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| A command that never ends stops at the timeout, its children die, and the agent gets an error and continues. | A test runs a Pi agent session with the faux provider of `@earendil-works/pi-ai` and the extension, with a 1-second default. It runs in a child process, as `src/console/session-switch-lifecycle.test.ts` does. The command starts a background `sleep` and waits. The test checks the error text `Command timed out after 1 seconds`, that the `sleep` process no longer exists, and that the faux model gets the next turn.                                                                                              |
+| Subagent sessions get the same limits.                                                                       | Unit tests with a recording `register` check the registration on `session_start`, its disposal, the duplicate case, and that other errors are raised. One test uses the real `registerRequiredChildExtensions`: after `session_start`, a second registration for the same session ID throws, which proves that the entry sits under the key that pi-subagents reads. A manual check in the plan confirms the limit in one real child when model access is available. Otherwise the pull request records why it did not run. |
+| Config rejects a default longer than the cap.                                                                | `src/config/config.test.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| The implementation envelope states the configured limits.                                                    | Envelope tests for the four rows, and the implementation fixture.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Each Pi start loads the extension with the configured variables.                                             | Existing launcher tests extended: `rpcModeLauncher` arguments and environment, the Web session launcher `start` input. A run-once test with non-default limits (`2` and `0` minutes) checks that the fake Pi process sees `120` and `0`. A unit test of `prepareConsoleExtensions()` checks the Console path. Non-default values make sure that the built-in fallback cannot hide a missing step.                                                                                                                           |
+| Tests use short timeouts.                                                                                    | Review of the new tests: no test waits more than a few seconds.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ## Open assumptions
 
@@ -287,9 +310,12 @@ variable, the Console session coverage, and the envelope copy.
 
 ## Left to the builder
 
-- The exact SDK setup of the in-process faux-provider test. If that setup cannot
-  run Pi's real `bash` tool with extensions, the builder can run the `bash` tool
-  definition from `createBashTool()` with the changed arguments and record why.
+- The exact SDK setup of the faux-provider test. `@earendil-works/pi-ai` is a
+  dependency of the pinned `@earendil-works/pi-coding-agent`, not of Patchmill.
+  The test can import it without a new dependency. If the import does not
+  resolve, or the SDK cannot run Pi's real `bash` tool with extensions, the
+  builder can run the `bash` tool definition from `createBashTool()` with the
+  changed arguments and record why in the test.
 - The stderr wording for a duplicate registration.
 
 ## Companion artifacts

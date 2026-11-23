@@ -171,10 +171,11 @@ evidence and as input when normalizing usage. It is not a runner policy or audit
 source after ingestion. _Avoid_: Event ledger
 
 **Command timeout**: The time limit that Patchmill gives one agent `bash` call
-in an Issue run session or in a subagent session that it starts. A call without
-a timeout gets the configured default, and a longer request gets the configured
-cap. When it fires, Pi stops that command, and the agent continues. _Avoid_:
-Session timeout, stall stop
+in a phase session, Console session, or Web session of an Issue run, or in a
+subagent session that one of them starts. A call without a timeout gets the
+configured default, and a longer request gets the configured cap. When it fires,
+Pi stops that command, and the agent continues. _Avoid_: Session timeout, stall
+stop
 
 **Budget window**: A daily or weekly period in the configured timezone. All
 committed model usage that occurred in the period counts toward its selection
