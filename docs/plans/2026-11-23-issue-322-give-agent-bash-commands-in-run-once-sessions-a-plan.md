@@ -270,9 +270,11 @@ of `@earendil-works/pi-ai`.
     `"rpcModeLauncher runs Pi in RPC mode with the background-work extension first"`:
     the `-e` list is
     `[BACKGROUND_WORK_EXTENSION_PATH, COMMAND_TIMEOUT_EXTENSION_PATH, ...extensionPaths]`,
-    and Pi gets the `env` passed to `rpcModeLauncher`
-    (`PATCHMILL_COMMAND_TIMEOUT_SECONDS=1200`). Use the test's existing fake Pi
-    to observe the environment, for example by having it record `process.env`.
+    and Pi gets the `env` passed to `rpcModeLauncher`. Use a non-default value,
+    `{ PATCHMILL_COMMAND_TIMEOUT_SECONDS: "77" }`, because a Patchmill phase
+    session that runs this test already has `1200` in its environment. Use the
+    test's existing fake Pi to observe the environment, for example by having it
+    record `process.env`.
   - In `session-launcher.test.ts`, extend
     `"a ready start passes the console session file, skills, extensions and env"`:
     `extensionPaths` contains `COMMAND_TIMEOUT_EXTENSION_PATH`, and `env` has
@@ -345,9 +347,11 @@ of `@earendil-works/pi-ai`.
 - [ ] **Step 4: Run** `node --test src/kernel/envelope.test.ts`. Expected: PASS.
 - [ ] **Step 5: Full checks.** Run `npm run lint` and `npm test`. Expected: both
       exit 0.
-- [ ] **Step 6: Manual child check.** When model access is available, start
+- [ ] **Step 6: Manual child check.** This also checks the one `openConsole()`
+      line that unit tests do not reach. When model access is available, start
       `npm run patchmill -- run-once --interactive --issue <test issue>` in a
-      test repository, or a plain `pi` session with
+      test repository (preferred, because it goes through `openConsole()`), or a
+      plain `pi` session with
       `-e $(npm root)/pi-subagents -e src/pi/command-timeout-extension.ts` and
       `PATCHMILL_COMMAND_TIMEOUT_SECONDS=3`. Ask it to start a `reviewer`
       subagent that runs `sleep 30` without a timeout. Expected: the child's

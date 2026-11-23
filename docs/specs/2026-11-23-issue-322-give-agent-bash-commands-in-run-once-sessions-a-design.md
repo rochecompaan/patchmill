@@ -101,9 +101,9 @@ The extension loads from a file path in each session, so its configuration
 cannot be a function argument. Patchmill puts the limits into two environment
 variables of each Pi process that it starts. A background child of pi-subagents
 runs in a runner process that inherits the parent environment
-(`async-execution.js` copies `process.env`, without two unrelated variables). A
-foreground child runs in the parent process. So every child sees the same
-values.
+(`async-execution.js` copies `process.env`, without the Git routing variables
+and the pi-subagents extension-bindings variable). A foreground child runs in
+the parent process. So every child sees the same values.
 
 Other options are worse. A config file read from the session's working directory
 can differ from the repository config, because a worktree has its own copy of
@@ -208,11 +208,15 @@ The extension factory:
 - pi-subagents allows one registration per session ID. If a registration for the
   same session already exists (the error message contains
   `are already registered for session`), the extension logs one line to stderr
-  and continues. The existing registration still covers the children. Its
-  `tool_call` handler still applies the limits, so a second load of the file in
-  one session changes nothing. Any other registration error, for example a path
-  that is not a file, is raised. Pi then reports the extension error, so
-  children never run without limits silently.
+  and continues. When the existing entry is this extension's, for example from a
+  second load of the file, it still covers the children. The error does not say
+  who registered. If another extension registered first for the same session,
+  children run with its list, not with this extension. Nothing in Patchmill's
+  three Pi starts does that, so this is a known limitation. Its `tool_call`
+  handler still applies the limits, so a second load of the file in one session
+  changes nothing. Any other registration error, for example a path that is not
+  a file, is raised. Pi then reports the extension error, so children never run
+  without limits silently.
 - It does not pass `requireForAllRunners`. External runners stay excluded, as in
   the non-goals.
 
@@ -269,7 +273,7 @@ no ADRs. The change is easy to reverse, so it needs no ADR.
 - **Module ownership.** `src/pi/command-timeout-extension.ts` owns the whole
   policy: the table above, the environment format, and child coverage. Config
   parsing owns validation. The launch sites only pass a path and variables.
-- **Depth.** Callers know a path, two variable names, and
+- **Depth.** Callers know a path and
   `commandLimitsEnv(commandLimits(config.pi))`. The rules for `0`, the cap, the
   invalid values, and the pi-subagents registration stay inside the module.
 - **Seams.** The `tool_call` event and `registerRequiredChildExtensions()` are
