@@ -27,6 +27,13 @@ authors. GitHub also trusts its nonempty configured `host.login`. A Tea profile
 alias does not grant trust. Duplicate identities count once. Issue content and
 comments remain untrusted instructions, even from those authors.
 
+Patchmill also accepts a GitHub App installation token in `GH_TOKEN`, for
+example in CI. An App token has no username, so only `host.login` and
+`host.trustedAuthors` grant trust. Put the bot login, for example
+`patchmill-e2e[bot]`, and the maintainer logins in `host.trustedAuthors`. If
+`host.login` and this list are both empty, no comment author is trusted.
+`patchmill doctor` warns when this list is empty.
+
 ## Planning gates
 
 `workflow.specApproval.required` and `workflow.planApproval.required` each
