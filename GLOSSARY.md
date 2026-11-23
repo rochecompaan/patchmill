@@ -105,6 +105,12 @@ through any resumptions to a terminal outcome. _Avoid_: Run attempt
 **Run attempt**: One process entry into the run-once workflow for an Issue run.
 A later Run attempt may resume the same Issue run. _Avoid_: Issue run
 
+**Conflict resolution**: An implementation session for a Done issue whose open
+implementation pull request conflicts with the base branch. The conflict search
+selects it, or its attempt record resumes it. Its agent merges the base into the
+Issue branch without a force push, and changes nothing else. It ends at Done or
+Needs Info. _Avoid_: Rebase run, conflict phase
+
 **Interactive Issue run**: An Issue run that takes human input through a console
 instead of issue comments. It uses the same Run-once workflow.
 
