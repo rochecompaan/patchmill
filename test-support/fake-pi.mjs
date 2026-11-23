@@ -32,6 +32,13 @@ await fs.writeFile(
       .join(""),
 );
 async function sideEffects() {
+  for (const { args, allowFailure } of step.git ?? []) {
+    try {
+      await promisify(execFile)("git", args);
+    } catch (error) {
+      if (!allowFailure) throw error;
+    }
+  }
   for (const [path, content] of Object.entries(step.writeFiles ?? {})) {
     await fs.mkdir(dirname(path), { recursive: true });
     await fs.writeFile(path, content);
