@@ -51,8 +51,12 @@ scripts, retry rules, and inspected manual recovery.
 Patchmill sets `PI_CODING_AGENT_DIR` to the configured agent directory for Pi
 processes. Other provider environment comes from the shell and host CLIs.
 Patchmill has no host-login environment override. GitHub uses active `gh`
-authentication. Forgejo uses Tea's default profile when `host.login` is empty,
-or the explicit profile alias when set.
+authentication. GitHub also accepts a GitHub App installation token in
+`GH_TOKEN`. With that token, trust comes only from `host.login` and
+`host.trustedAuthors`. See
+[Host and trust](/getting-started/configuration/#host-and-trust). Forgejo uses
+Tea's default profile when `host.login` is empty, or the explicit profile alias
+when set.
 
 `patchmill auth` presents standalone authentication and model pickers. Pi's SDK
 saves credentials in the configured agent directory's `auth.json`. Patchmill
