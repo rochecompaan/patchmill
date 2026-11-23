@@ -71,9 +71,12 @@ export async function runDoctorChecks(deps: {
   }
   await check("host CLI", "fail", async () => {
     const result = await host.checkCli();
-    return result.ok
-      ? { ok: true }
-      : { ok: false, message: result.message || "Host CLI check failed" };
+    // On success, show the message: App-token users need its trust guidance.
+    if (result.ok)
+      return result.message
+        ? { ok: true, message: result.message }
+        : { ok: true };
+    return { ok: false, message: result.message || "Host CLI check failed" };
   });
   const mode = stateTrackingMode(config);
   switch (mode.doctorWorkflowCheck) {

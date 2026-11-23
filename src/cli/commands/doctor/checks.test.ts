@@ -205,6 +205,18 @@ test("probe exceptions become diagnostics, smoke failures include the log path",
   assert.equal((await runDoctorChecks(f.deps))[6]!.status, "fail");
 });
 
+test("a passing host CLI check shows its message", async (t) => {
+  const f = await fixture(t);
+  f.host.checkCli = async () => ({ ok: true, message: "app token guidance" });
+  let checks = await runDoctorChecks(f.deps);
+  assert.equal(checks[0]!.status, "pass");
+  assert.equal(checks[0]!.message, "app token guidance");
+  f.host.checkCli = async () => ({ ok: true, message: "" });
+  checks = await runDoctorChecks(f.deps);
+  assert.equal(checks[0]!.status, "pass");
+  assert.equal(checks[0]!.message, "Ready");
+});
+
 test("a host CLI failure remains a failure even without a diagnostic message", async (t) => {
   const f = await fixture(t);
   f.host.checkCli = async () => ({ ok: false, message: "" });
