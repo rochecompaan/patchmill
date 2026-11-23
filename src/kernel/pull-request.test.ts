@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Host, PullRequest } from "../host/types.ts";
-import { findPullRequest } from "./pull-request.ts";
+import { findPullRequest, ownsPullRequest } from "./pull-request.ts";
 
 const pr = (fields: Partial<PullRequest>): PullRequest => ({
   number: 1,
@@ -79,4 +79,24 @@ test("findPullRequest prefers a replacement into the base within a state", async
     findPullRequest(host(prs).host, "agent/issue-9-x", "main");
   assert.equal(await find([mistargeted, replacement]), replacement);
   assert.equal(await find([mistargeted]), mistargeted);
+});
+
+test("ownsPullRequest matches the branch in the push repository", () => {
+  const branch = "agent/issue-9-x";
+  assert.equal(
+    ownsPullRequest(pr({ headRepository: "Me/Repo" }), branch, "me/repo"),
+    true,
+  );
+  assert.equal(
+    ownsPullRequest(pr({ headBranch: "agent/issue-9-y" }), branch, "me/repo"),
+    false,
+  );
+  assert.equal(
+    ownsPullRequest(pr({ headRepository: "other/repo" }), branch, "me/repo"),
+    false,
+  );
+  assert.equal(
+    ownsPullRequest(pr({ headRepository: null }), branch, "me/repo"),
+    false,
+  );
 });
