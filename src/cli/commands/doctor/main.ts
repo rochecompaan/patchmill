@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../../../config/config.ts";
 import { createHost } from "../../../host/factory.ts";
@@ -7,6 +7,7 @@ import { findPackageRoot } from "../../../package-root.ts";
 import { runCommand, type CommandRunner } from "../../../process/command.ts";
 import type { CliOutput } from "../../main.ts";
 import { resolveBundledPiCommand, type PiCommandSpec } from "../../pi-cli.ts";
+import { provisionReviewerAgent } from "../init/agent-dir.ts";
 import { runDoctorChecks } from "./checks.ts";
 
 export async function main(
@@ -25,15 +26,24 @@ export async function main(
   };
   if (args.length === 1 && ["--help", "-h", "help"].includes(args[0]!)) {
     output.stdout(
-      "Usage: patchmill doctor\nCheck readiness without repairing repository or host configuration.",
+      "Usage: patchmill doctor [--fix]\nCheck readiness. --fix restores the managed reviewer agent definition.",
     );
     return 0;
   }
   try {
-    if (args.length)
-      throw new Error(`Unknown argument: ${args[0]}. Use --help.`);
+    const unknown = args.find((arg, index) => arg !== "--fix" || index > 0);
+    if (unknown !== undefined)
+      throw new Error(`Unknown argument: ${unknown}. Use --help.`);
+    const fix = args.length === 1;
     const repoRoot = options.repoRoot ?? process.cwd();
     const config = await loadConfig(repoRoot);
+    if (
+      fix &&
+      (await provisionReviewerAgent(repoRoot, config.pi.agentDir)) === "written"
+    )
+      output.stdout(
+        `[fixed] reviewer: wrote ${join(resolve(repoRoot, config.pi.agentDir), "agents", "reviewer.md")}`,
+      );
     const runner = options.runner ?? runCommand;
     const checks = await runDoctorChecks({
       repoRoot,

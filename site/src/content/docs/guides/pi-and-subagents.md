@@ -45,5 +45,8 @@ model settings, read the upstream
 
 Run `patchmill doctor` after setup. Doctor checks the main Pi runtime with a
 real smoke prompt. It does not exercise every optional child model or provider.
-If a child cannot start, inspect its provider credentials and model settings
-before changing unrelated roles.
+Doctor also makes sure that the resolved `reviewer` is the managed definition
+with `bash`. `patchmill doctor --fix` restores a missing or stale definition. It
+does not remove another `reviewer` definition that overrides it. If a child
+cannot start, inspect its provider credentials and model settings before
+changing unrelated roles.

@@ -18,7 +18,7 @@ export const HELP_TEXT = `Usage:
 Commands:
   init        Create a minimal patchmill.config.json.
   auth        Configure or repair repo-local Pi provider authentication.
-  doctor      Perform read-only readiness checks.
+  doctor      Perform readiness checks (--fix restores the managed reviewer).
   labels      Manage repository labels.
   triage      Classify repository issues for agent readiness.
   run-once    Advance one issue.
