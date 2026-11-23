@@ -452,3 +452,12 @@ test("a missing block in planning gets no fallback", () => {
   assert.ok(outcome.comment.includes(REMINDED_RESULT_REASON));
   assert.ok(!outcome.warnings.includes(FALLBACK_WARNING));
 });
+
+test("conflict gaps make a verified pull request needsInfo", () => {
+  const verified = verifyOutcome({ ...input, conflictGaps: ["X."] });
+  assert.equal(verified.kind, "stop");
+  if (verified.kind !== "stop") return;
+  assert.equal(verified.label, "needsInfo");
+  assert.ok(verified.comment.startsWith("The claim was not verified."));
+  assert.match(verified.comment, /X\./);
+});
