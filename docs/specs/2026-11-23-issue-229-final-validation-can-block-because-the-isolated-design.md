@@ -65,8 +65,9 @@ is already in `main`:
    inspection. It forbids fixers, installs, authentication, edits, and Git or
    hosting changes.
 2. The managed `reviewer` prompt defers to the review brief in its task for the
-   method and the report format. It adds tool and safety limits and the three
-   small rules in "Reviewer prompt and the review brief".
+   method and the report format. It adds tool and safety limits, the meaning of
+   "read-only", and the four small rules in "Reviewer prompt and the review
+   brief".
 3. `patchmill doctor` fails when the resolved `reviewer` in the isolated runtime
    is not the managed, current definition with `bash`.
 4. `patchmill doctor --fix` writes a missing or stale managed `reviewer.md`. It
@@ -125,8 +126,8 @@ defaults for each role not named `delegate` (`defaultSystemPromptMode`,
 `defaultInheritProjectContext`, `defaultInheritSkills` in
 `pi-subagents/src/agents/agents.js`). A test on the base revision showed these
 values in the launch contract. So the role prompt replaces the agent prompt.
-pi-subagents still adds runtime text: the Pi base prompt, the child boundary,
-the intercom bridge, and the default `attested` acceptance contract ("End with a
+pi-subagents still adds runtime text: a `<cwd>` section, the child boundary, the
+intercom bridge, and the default `attested` acceptance contract ("End with a
 structured acceptance report"). No project context and no skills are added. The
 review brief arrives only in the task:
 
@@ -144,13 +145,20 @@ can compete with the brief. A reviewer could then drop brief sections such as
 because it comes from an installed skill.
 
 Decision: the role prompt is a thin boundary layer. The brief owns the method
-and the report format. The role prompt owns the tool and safety limits, and
-three small rules: read the source independently, report the `git status`
-changes with the brief's command evidence, and put a runtime acceptance report
-after the brief's report. When the brief is stricter than a limit, the brief
-wins. The prompt defines "read-only" for all briefs, so a strict brief cannot
-cancel the permission to run validation commands (maintainer decision Q3). When
-no brief format exists, a short fallback format applies.
+and the report format. The role prompt owns the tool and safety limits, the
+definition of "read-only", and four small rules:
+
+1. Steps in the brief that are addressed to the parent or the implementer are
+   not the reviewer's.
+2. Read the source independently of any summary.
+3. Report the `git status` changes with the brief's command evidence or
+   inspection limits, or in one line after the report.
+4. Put a runtime acceptance report after the brief's report.
+
+When the brief is stricter than a limit, the brief wins. The prompt defines
+"read-only" for all briefs, so a strict brief cannot cancel the permission to
+run validation commands (maintainer decision Q3). When no brief format exists, a
+short fallback format applies.
 
 `REVIEWER_AGENT` keeps its frontmatter (name, description,
 `tools: read, grep, find, ls, bash`). Its body becomes this text, verbatim:
@@ -160,7 +168,7 @@ You are a fresh-context reviewer. Your task contains the review brief: a templat
 Follow the brief completely. It defines what to check, how to judge, and the report format with every required section.
 Steps in the brief that are addressed to the parent or the implementer are not yours.
 This role adds the tool and safety limits below. When the brief is stricter than a limit, obey the brief.
-In a brief, "read-only" means: no edits to tracked files and no Git or hosting changes. Ignored build output and caches from validation commands are not changes.
+In a brief, "read-only" means: no edits to tracked files and no Git or hosting changes, except a disposable worktree that the brief permits. Ignored build output and caches from validation commands are not changes.
 Do not trust summaries from the implementer or the planner. Read the scope, the diff or documents, and the relevant source yourself.
 
 Tool and safety limits:
@@ -172,7 +180,7 @@ Tool and safety limits:
 - Do not edit files, install packages, or authenticate.
 - Do not change Git or hosting state, except a disposable worktree that the brief permits.
 - Do not launch agents. Read installed skill files when the brief tells you to. Do not start their workflows.
-- Run git status --short before and after your commands. Report each change that your commands caused, with the brief's command evidence or in the fallback report.
+- Run git status --short before and after your commands. Report each change that your commands caused, with the brief's command evidence or inspection limits. If the brief has neither, add one line after its report.
 
 If the brief gives no report format, report concrete findings with file paths, line numbers, impact, and evidence.
 Separate blockers from optional suggestions, and state the limits of your evidence.
@@ -338,6 +346,9 @@ reviewer system prompt (REVIEWER_AGENT, replace mode)
 │                                             └── frontend review rules
 │                                                 owns: method, judgement, report sections
 ├── owns: tool and safety limits (bash for validation, no edits, no agents)
+├── owns: meaning of "read-only" (ignored output is not a change)
+├── owns: four small rules (parent steps, independent reading,
+│         git status placement, acceptance report last)
 └── fallback report format (only when the brief has none)
 ```
 
@@ -403,4 +414,52 @@ flowchart TD
   `994761f866d6607518e2ca324cb620ffdd1a4f1593d30ea4f9fedb6d2279a47a` (initial).
 - **Final body SHA-256:**
   `bf505c36aac716d3aae77fb7e2e32ee1a299ec400ea1b7d46b5fa6014b153629`.
+- **Outcome:** `ready`.
+
+### Pass 2: combined with the plan
+
+- **Scope:** specification and implementation plan
+  (`docs/plans/2026-11-23-issue-229-final-validation-can-block-because-the-isolated-plan.md`).
+- **Trigger:** maintainer request. The maintainer asked to make sure that the
+  reviewer role does not override the superpowers review prompt
+  (`code-reviewer.md`) or the Patchmill review appendix. The spec edit made the
+  pass 1 records stale.
+- **Reviewer:** canonical `reviewer`, model `claude-bridge/claude-opus-5-5`,
+  thinking `high`. Fresh context for each pass.
+- **Base revision:** `360c592` (`main`).
+- **Survey:** the reviewer confirmed the pi-subagents defaults (`replace`, no
+  project context, no skills) in source and with a launch-contract probe. It
+  traced how the final, frontend and planning reviews carry the brief in the
+  task, and found the runtime-added acceptance contract.
+- **Findings and dispositions:**
+  - B1 (blocker, spec): "stricter brief wins" could cancel the permission to run
+    validation commands. **Accepted.** The prompt defines "read-only" for all
+    briefs; table rows corrected.
+  - S1 (plan, spec): Step 5 conflicted with the prompt's own rules.
+    **Accepted.** The Decision lists the small rules; Step 5 allows them.
+  - S2 (spec): "of the reviewed checkout" weakened the install and hosting
+    limits. **Accepted.** The limits are two separate lines.
+  - S3 (spec): no place for the `git status` report. **Accepted.** It goes with
+    the command evidence or inspection limits, or in one line after the report.
+  - S4 (spec): runtime-added prompt text and the acceptance contract.
+    **Accepted.** The spec lists the runtime text. The prompt puts an acceptance
+    report after the brief's report. Frontmatter unchanged.
+  - S5 (spec): parent-only steps in a whole-skill brief. **Accepted.** New
+    prompt line.
+  - Confirmation suggestions C1 to C4 (spec, plan): the `<cwd>` section instead
+    of "Pi base prompt", the `git status` placement for briefs without command
+    evidence, naming the parent-steps rule in the Decision, Step 5 and the
+    sketch, and the worktree exception in the "read-only" definition.
+    **Accepted** after the confirmation. These edits are wording only and do not
+    change the decision.
+- **Inspection limits:** pi-subagents 0.80.0 only. How a model weighs the system
+  prompt against the task is a judgement; no prompt-text test by design. No live
+  kernel-dispatched reviewer task inspected. No repository checks (no
+  implementation yet).
+- **Confirmation:** a fresh scoped confirmation verified B1 and S1 to S5. No
+  blockers remain.
+- **Reviewed body SHA-256:**
+  `005f333db216c0eb072670cb8f3a8e91c37f6981e161b443aba863c512d899ab` (initial).
+- **Final body SHA-256:**
+  `70c37beb5164441bf2dd5f4d7ec7d0f20e967c422cd53d2150f2d52b252b1ff9`.
 - **Outcome:** `ready`.

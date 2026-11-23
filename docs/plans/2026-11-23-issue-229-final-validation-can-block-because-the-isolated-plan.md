@@ -109,9 +109,9 @@ spec has no mockup and no HTML companion.
       `skills/patchmill-planning/planning-review.md` and the "Reviewer" section
       of `skills/patchmill-frontend-review/SKILL.md`. Make sure that each row of
       the spec's agreement table holds, and that the prompt has no method or
-      report rule of its own except the three small rules and the fallback that
-      the spec names. Record the result in the commit message body. (Direct
-      inspection; no prompt-text test.)
+      report rule of its own except the "read-only" definition, the four small
+      rules and the fallback that the spec's Decision names. Record the result
+      in the commit message body. (Direct inspection; no prompt-text test.)
 - [ ] **Step 6: Commit**
       `feat(init): let the managed reviewer run validation commands (#229)`.
 
@@ -327,4 +327,54 @@ Task 3  doctor/checks.ts       reviewer check: warn → fail
   `bf505c36aac716d3aae77fb7e2e32ee1a299ec400ea1b7d46b5fa6014b153629`.
 - **Final body SHA-256:**
   `54e649e23d437b29db5975422a34e5eeffc8aa6fff97c322aa75165e12321aea`.
+- **Outcome:** `ready`.
+
+### Pass 2: combined with the specification
+
+- **Scope:** implementation plan and specification
+  (`docs/specs/2026-11-23-issue-229-final-validation-can-block-because-the-isolated-design.md`).
+- **Trigger:** maintainer request. The maintainer asked to make sure that the
+  reviewer role does not override the superpowers review prompt
+  (`code-reviewer.md`) or the Patchmill review appendix. The spec edit made the
+  pass 1 records stale.
+- **Reviewer:** canonical `reviewer`, model `claude-bridge/claude-opus-5-5`,
+  thinking `high`. Fresh context for each pass.
+- **Base revision:** `360c592` (`main`).
+- **Survey:** the reviewer confirmed the pi-subagents defaults (`replace`, no
+  project context, no skills) in source and with a launch-contract probe. It
+  traced how the final, frontend and planning reviews carry the brief in the
+  task, and found the runtime-added acceptance contract.
+- **Findings and dispositions:**
+  - B1 (blocker, spec): "stricter brief wins" could cancel the permission to run
+    validation commands. **Accepted.** The prompt defines "read-only" for all
+    briefs; table rows corrected.
+  - S1 (plan, spec): Step 5 conflicted with the prompt's own rules.
+    **Accepted.** The Decision lists the small rules; Step 5 allows them.
+  - S2 (spec): "of the reviewed checkout" weakened the install and hosting
+    limits. **Accepted.** The limits are two separate lines.
+  - S3 (spec): no place for the `git status` report. **Accepted.** It goes with
+    the command evidence or inspection limits, or in one line after the report.
+  - S4 (spec): runtime-added prompt text and the acceptance contract.
+    **Accepted.** The spec lists the runtime text. The prompt puts an acceptance
+    report after the brief's report. Frontmatter unchanged.
+  - S5 (spec): parent-only steps in a whole-skill brief. **Accepted.** New
+    prompt line.
+  - Confirmation suggestions C1 to C4 (spec, plan): the `<cwd>` section instead
+    of "Pi base prompt", the `git status` placement for briefs without command
+    evidence, naming the parent-steps rule in the Decision, Step 5 and the
+    sketch, and the worktree exception in the "read-only" definition.
+    **Accepted** after the confirmation. These edits are wording only and do not
+    change the decision.
+- **Inspection limits:** pi-subagents 0.80.0 only. How a model weighs the system
+  prompt against the task is a judgement; no prompt-text test by design. No live
+  kernel-dispatched reviewer task inspected. No repository checks (no
+  implementation yet).
+- **Confirmation:** a fresh scoped confirmation verified B1 and S1 to S5. No
+  blockers remain.
+- **Reviewed body SHA-256:**
+  `ed4632d3a27c9fead366b41f363642b0015a1465682a43d4fecc1865322a6512` (initial).
+- **Compared specification body SHA-256:**
+  `70c37beb5164441bf2dd5f4d7ec7d0f20e967c422cd53d2150f2d52b252b1ff9`.
+- **Final body SHA-256:**
+  `d53079d1b36811f15c0d6377e2cf186ec33a907324110abcb284305cb12f837c`.
 - **Outcome:** `ready`.
