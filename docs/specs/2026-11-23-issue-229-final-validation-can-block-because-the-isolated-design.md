@@ -319,7 +319,7 @@ flowchart TD
 - **Confirmation:** a fresh scoped confirmation verified B1 and S1 to S5 against
   the real package. No blockers remain.
 - **Reviewed body SHA-256:**
-  `3089f06bbe040078623f55a3bc3c84ab1fc5293231ea920e175eb22487f5016e` (initial).
+  `994761f866d6607518e2ca324cb620ffdd1a4f1593d30ea4f9fedb6d2279a47a` (initial).
 - **Final body SHA-256:**
-  `9fe9ec65ec0a4992dfd9faffac444cbc71864e8aaf1d325e70b0f2b4650badc2`.
+  `bf505c36aac716d3aae77fb7e2e32ee1a299ec400ea1b7d46b5fa6014b153629`.
 - **Outcome:** `ready`.

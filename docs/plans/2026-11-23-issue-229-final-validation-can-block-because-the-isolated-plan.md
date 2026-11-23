@@ -308,9 +308,9 @@ Task 3  doctor/checks.ts       reviewer check: warn → fail
 - **Confirmation:** a fresh scoped confirmation verified B1 and S1 to S5 against
   the real package. No blockers remain.
 - **Reviewed body SHA-256:**
-  `5ef0e21477aac878e87045b50986a434b9b98b2542d63117f434fbeabcafa1cd` (initial).
+  `b7254baf6aa0928e410366596cea2d9e56faa08fbbb29324db8d7b598b9f4006` (initial).
 - **Compared specification body SHA-256:**
-  `9fe9ec65ec0a4992dfd9faffac444cbc71864e8aaf1d325e70b0f2b4650badc2`.
+  `bf505c36aac716d3aae77fb7e2e32ee1a299ec400ea1b7d46b5fa6014b153629`.
 - **Final body SHA-256:**
-  `b9e6030691b6e16e003656a4e6260d909364435bd641dbced602447012f5adce`.
+  `54e649e23d437b29db5975422a34e5eeffc8aa6fff97c322aa75165e12321aea`.
 - **Outcome:** `ready`.
