@@ -10,10 +10,18 @@ import {
 } from "../process/command.ts";
 import type { Facts } from "./facts.ts";
 import { createKernelGit, type MergeConflict } from "./git.ts";
-import { conflictResolutionGaps } from "./merge-conflicts.ts";
+import {
+  conflictResolutionGaps,
+  findConflictingPullRequests,
+  isRecordedAttempt,
+  recordConflictAttempt,
+} from "./merge-conflicts.ts";
+import { FakeHost, writeFakeHostState } from "../../test-support/fake-host.ts";
+import type { PullRequest } from "../host/types.ts";
+import type { TrackedIssue } from "./workflow-state.ts";
 
-/** Branch `b` and `main` both add `a.txt` with different text. */
-async function conflictRepo(t: TestContext) {
+/** Each branch (default `b`) and `main` add `a.txt` with different text. */
+async function conflictRepo(t: TestContext, branches = ["b"]) {
   const f = await createGitFixture();
   t.after(() => fs.rm(f.dir, { recursive: true, force: true }));
   const runner: CommandRunner = (command, args, options) =>
@@ -31,14 +39,19 @@ async function conflictRepo(t: TestContext) {
     await git(["add", "-A"]);
     await git(["commit", "-m", message]);
   };
-  await git(["checkout", "-b", "b"]);
-  await commit({ "a.txt": "branch\n" }, "branch");
+  for (const branch of branches) {
+    await git(["checkout", "-b", branch, "main"]);
+    await commit({ "a.txt": `${branch}\n` }, "branch");
+  }
   await git(["checkout", "main"]);
   await commit({ "a.txt": "main\n" }, "main");
-  await git(["push", "origin", "main", "b"]);
+  await git(["push", "origin", "main", ...branches]);
   const kernel = createKernelGit(runner, f.repoRoot);
   await kernel.fetch();
-  const before = (await kernel.mergeConflict("origin/main", "origin/b"))!;
+  const before = (await kernel.mergeConflict(
+    "origin/main",
+    `origin/${branches[0]}`,
+  ))!;
   assert.deepEqual(before.files, ["a.txt"]);
   return { ...f, git, commit, kernel, before };
 }
@@ -143,5 +156,235 @@ test("a deleted remote branch skips the ancestry checks", async (t) => {
       factsFor({ branch: "gone", remoteBranchExists: false }),
     ),
     [],
+  );
+});
+
+const NOW = new Date("2026-11-23T12:00:00.000Z");
+const minutesAgo = (minutes: number) =>
+  new Date(NOW.getTime() - minutes * 60_000).toISOString();
+
+const tracked = (number: number, createdAt: string): TrackedIssue => ({
+  number,
+  title: `Issue ${number}`,
+  body: "",
+  labels: [],
+  state: "open",
+  url: `https://example.invalid/${number}`,
+  author: "fixture",
+  createdAt,
+  comments: [],
+  status: "done",
+});
+
+const pull = (number: number, fields: Partial<PullRequest>): PullRequest => ({
+  number,
+  url: `https://example.invalid/pulls/${number}`,
+  state: "open",
+  draft: false,
+  body: "",
+  headRepository: "fixture/repo",
+  headBranch: "agent/issue-9-x",
+  baseBranch: "main",
+  ...fields,
+});
+
+async function searchSetup(
+  t: TestContext,
+  pullRequests: PullRequest[],
+  branches = ["agent/issue-9-x", "agent/issue-10-y"],
+) {
+  const c = await conflictRepo(t, branches);
+  const stateFile = join(c.dir, "host.json");
+  writeFakeHostState(stateFile, { pullRequests });
+  const host = new FakeHost(stateFile);
+  const reports: string[] = [];
+  const issueDir = (issue: number) => join(c.dir, "runs", `issue-${issue}`);
+  const search = (candidates: TrackedIssue[]) =>
+    findConflictingPullRequests({
+      host,
+      git: c.kernel,
+      candidates,
+      baseBranch: "main",
+      issueDir,
+      retryMinutes: 30,
+      now: () => NOW,
+      report: (line) => reports.push(line),
+    });
+  const sha = (ref: string) => c.git(["rev-parse", ref], c.repoRoot);
+  return { ...c, host, reports, issueDir, search, sha };
+}
+
+test("lists conflicting done issues oldest first", async (t) => {
+  const c = await searchSetup(t, [
+    pull(1, {}),
+    pull(2, { headBranch: "agent/issue-10-y" }),
+  ]);
+  const found = await c.search([
+    tracked(9, "2026-10-02"),
+    tracked(10, "2026-10-01"),
+  ]);
+  assert.deepEqual(
+    found.map((candidate) => [
+      candidate.issue.number,
+      candidate.pullRequest.number,
+    ]),
+    [
+      [10, 2],
+      [9, 1],
+    ],
+  );
+  assert.deepEqual(found[1]!.conflict, {
+    baseSha: await c.sha("origin/main"),
+    headSha: await c.sha("origin/agent/issue-9-x"),
+    files: ["a.txt"],
+  });
+  assert.deepEqual(c.reports, []);
+});
+
+test("an empty candidate list calls no host method", async (t) => {
+  const c = await searchSetup(t, [pull(1, {})]);
+  assert.deepEqual(await c.search([]), []);
+  assert.deepEqual(c.host.state().calls, []);
+});
+
+test("skips clean, fork, planning, and wrong-base pull requests", async (t) => {
+  for (const [name, pr, branches] of [
+    [
+      "clean",
+      pull(1, { headBranch: "agent/issue-9-clean" }),
+      ["agent/issue-9-clean"],
+    ],
+    ["fork", pull(1, { headRepository: "fork/repo" }), undefined],
+    [
+      "planning",
+      pull(1, { headBranch: "agent/issue-9-x--spec" }),
+      ["agent/issue-9-x--spec"],
+    ],
+    ["wrong base", pull(1, { baseBranch: "develop" }), undefined],
+  ] as const) {
+    await t.test(name, async (t) => {
+      const c = await searchSetup(
+        t,
+        [pr],
+        branches ? [...branches] : undefined,
+      );
+      if (name === "clean") {
+        // Make the branch merge cleanly: it now matches main's a.txt.
+        await c.git(["checkout", "agent/issue-9-clean"]);
+        await c.git(["merge", "main"]);
+        await c.commit({ "a.txt": "main\n" }, "resolve");
+        await c.git(["push", "origin", "agent/issue-9-clean"]);
+      }
+      assert.deepEqual(await c.search([tracked(9, "2026-10-01")]), []);
+      assert.deepEqual(c.reports, []);
+    });
+  }
+});
+
+test("several open pull requests are skipped with a report", async (t) => {
+  const c = await searchSetup(t, [
+    pull(1, {}),
+    pull(2, { headBranch: "agent/issue-9-other" }),
+  ]);
+  assert.deepEqual(await c.search([tracked(9, "2026-10-01")]), []);
+  assert.deepEqual(c.reports, [
+    "Issue #9 conflict check skipped: several open pull requests: #1, #2",
+  ]);
+});
+
+async function recorded(
+  c: Awaited<ReturnType<typeof searchSetup>>,
+  startedAt: string,
+  baseSha?: string,
+) {
+  const conflict: MergeConflict = {
+    baseSha: baseSha ?? (await c.sha("origin/main")),
+    headSha: await c.sha("origin/agent/issue-9-x"),
+    files: ["a.txt"],
+  };
+  await recordConflictAttempt(c.issueDir(9), {
+    runId: "run-1",
+    startedAt,
+    conflict,
+  });
+  return conflict;
+}
+
+test("same head and base is skipped", async (t) => {
+  const c = await searchSetup(t, [pull(1, {})]);
+  const conflict = await recorded(c, minutesAgo(120));
+  assert.deepEqual(await c.search([tracked(9, "2026-10-01")]), []);
+  assert.deepEqual(c.reports, [
+    `Issue #9 conflict resolution skipped: already attempted at head ${short(conflict.headSha)} and base ${short(conflict.baseSha)}`,
+  ]);
+});
+
+test("a young record is skipped", async (t) => {
+  const c = await searchSetup(t, [pull(1, {})]);
+  await recorded(c, minutesAgo(10), "e".repeat(40));
+  assert.deepEqual(await c.search([tracked(9, "2026-10-01")]), []);
+  assert.deepEqual(c.reports, [
+    `Issue #9 conflict resolution skipped: last attempt at ${minutesAgo(10)}; retry after ${new Date(NOW.getTime() + 20 * 60_000).toISOString()}`,
+  ]);
+});
+
+test("an old record with a new base is listed", async (t) => {
+  const c = await searchSetup(t, [pull(1, {})]);
+  await recorded(c, minutesAgo(31), "e".repeat(40));
+  assert.equal((await c.search([tracked(9, "2026-10-01")])).length, 1);
+  assert.deepEqual(c.reports, []);
+});
+
+test("an unreadable record is treated as missing", async (t) => {
+  const c = await searchSetup(t, [pull(1, {})]);
+  await fs.mkdir(c.issueDir(9), { recursive: true });
+  await fs.writeFile(join(c.issueDir(9), "merge-conflict-attempt.json"), "{");
+  assert.equal((await c.search([tracked(9, "2026-10-01")])).length, 1);
+  assert.equal(c.reports.length, 1);
+  assert.match(
+    c.reports[0]!,
+    /^Issue #9 conflict attempt record is unreadable: /,
+  );
+});
+
+test("listing failure reports and returns nothing", async (t) => {
+  const c = await searchSetup(t, [pull(1, {})]);
+  c.host.listOpenPullRequests = async () => {
+    throw new Error("host down");
+  };
+  assert.deepEqual(await c.search([tracked(9, "2026-10-01")]), []);
+  assert.deepEqual(c.reports, ["Merge conflict check failed: host down"]);
+});
+
+test("recordConflictAttempt writes the record", async (t) => {
+  const c = await searchSetup(t, [pull(1, {})]);
+  const conflict = await recorded(c, minutesAgo(5));
+  assert.deepEqual(
+    JSON.parse(
+      await fs.readFile(
+        join(c.issueDir(9), "merge-conflict-attempt.json"),
+        "utf8",
+      ),
+    ),
+    {
+      runId: "run-1",
+      startedAt: minutesAgo(5),
+      headSha: conflict.headSha,
+      baseSha: conflict.baseSha,
+    },
+  );
+  const report = (line: string) => c.reports.push(line);
+  assert.equal(await isRecordedAttempt(c.issueDir(9), conflict, report), true);
+  assert.equal(
+    await isRecordedAttempt(
+      c.issueDir(9),
+      { ...conflict, headSha: "d".repeat(40) },
+      report,
+    ),
+    false,
+  );
+  assert.equal(
+    await isRecordedAttempt(c.issueDir(10), conflict, report),
+    false,
   );
 });
