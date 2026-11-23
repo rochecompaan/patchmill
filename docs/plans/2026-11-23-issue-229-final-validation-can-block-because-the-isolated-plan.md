@@ -4,7 +4,8 @@
 > execution, as for every kernel run) to implement this plan task-by-task. Steps
 > use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The managed `reviewer` prompt permits validation commands.
+**Goal:** The managed `reviewer` prompt permits validation commands and defers
+to the review brief in its task for the method and report format.
 `patchmill doctor` fails when the isolated runtime does not resolve the managed,
 current `reviewer` with `bash`. `patchmill doctor --fix` restores a missing or
 stale definition.
@@ -38,17 +39,20 @@ spec has no mockup and no HTML companion.
 
 ## Review Focus
 
-1. `~/.agents/reviewer.md` or `<repo>/.pi/agents/reviewer.md` exists: doctor
+1. A review brief with its own report format (the final review template and
+   appendix): the role prompt must not replace or trim its sections. (Task 1,
+   Step 5 cross-check; the final review reads the prompt against the briefs.)
+2. `~/.agents/reviewer.md` or `<repo>/.pi/agents/reviewer.md` exists: doctor
    fails, names that file, and `--fix` does not delete it. (Task 2 tests the
    project and home shadows.)
-2. `PI_CODING_AGENT_DIR` was already set before doctor ran: the check restores
+3. `PI_CODING_AGENT_DIR` was already set before doctor ran: the check restores
    the earlier value, also after a throw. (Task 2 uses a malformed
    `settings.json` to make preflight throw.)
-3. A custom `pi.agentDir` (not `.patchmill/pi-agent`): provisioning, check and
+4. A custom `pi.agentDir` (not `.patchmill/pi-agent`): provisioning, check and
    `--fix` all use it. (Tasks 1 to 3 use `custom/agent`.)
-4. `doctor --fix` when the file is already current: it prints no `[fixed]` line
+5. `doctor --fix` when the file is already current: it prints no `[fixed]` line
    and changes no file. (Task 3.)
-5. A current `reviewer.md` that loses `bash` at runtime through an
+6. A current `reviewer.md` that loses `bash` at runtime through an
    `agentOverrides` entry: doctor fails and lists the effective tools. (Task 2.)
 
 ---
@@ -88,9 +92,9 @@ spec has no mockup and no HTML companion.
     `writeWhenDifferent` for `reviewer.md`.
   - `provisionAgentDir` calls `provisionReviewerAgent`, then
     `writeWhenDifferent` for the worker.
-  - In `REVIEWER_AGENT`, replace the line that starts with
-    `Use read-only commands.` with the six lines in the spec's "Reviewer prompt"
-    section, verbatim. Keep all other lines.
+  - In `REVIEWER_AGENT`, keep the frontmatter. Replace the body with the text
+    block in the spec's "Reviewer prompt and the review brief" section,
+    verbatim.
   - In `init/main.ts`, remove the `optionalText(reviewer)` compare. Call
     `provisionReviewerAgent` first, then `provisionAgentDir`, and print
     `Agent directory: ${result}`. Remove the `REVIEWER_AGENT` import if it is no
@@ -98,7 +102,16 @@ spec has no mockup and no HTML companion.
 - [ ] **Step 4: Run**
       `node --test src/cli/commands/init/agent-dir.test.ts src/cli/commands/init/main.test.ts`.
       Expected: PASS.
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Cross-check the prompt against each review brief.** Read
+      `REVIEWER_AGENT` next to
+      `.patchmill/skills/requesting-code-review/code-reviewer.md`,
+      `skills/patchmill-implementation/review-appendix.md`,
+      `skills/patchmill-planning/planning-review.md` and the "Reviewer" section
+      of `skills/patchmill-frontend-review/SKILL.md`. Make sure that each row of
+      the spec's agreement table holds, and that the prompt has no method or
+      report rule of its own except the fallback. Record the result in the
+      commit message body. (Direct inspection; no prompt-text test.)
+- [ ] **Step 6: Commit**
       `feat(init): let the managed reviewer run validation commands (#229)`.
 
 ### Task 2: `checkReviewerRole`

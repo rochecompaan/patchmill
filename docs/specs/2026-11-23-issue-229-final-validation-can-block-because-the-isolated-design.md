@@ -64,11 +64,13 @@ is already in `main`:
 1. The managed `reviewer` prompt permits validation commands and read-only Git
    inspection. It forbids fixers, installs, authentication, edits, and Git or
    hosting changes.
-2. `patchmill doctor` fails when the resolved `reviewer` in the isolated runtime
+2. The managed `reviewer` prompt defers to the review brief in its task for the
+   method and the report format. It adds only tool and safety limits.
+3. `patchmill doctor` fails when the resolved `reviewer` in the isolated runtime
    is not the managed, current definition with `bash`.
-3. `patchmill doctor --fix` writes a missing or stale managed `reviewer.md`. It
+4. `patchmill doctor --fix` writes a missing or stale managed `reviewer.md`. It
    then runs the normal checks.
-4. Tests cover provisioning, resolution under the isolated
+5. Tests cover provisioning, resolution under the isolated
    `PI_CODING_AGENT_DIR`, and the doctor checks.
 
 ## Non-goals
@@ -114,22 +116,75 @@ is already in `main`:
 
 ## Design
 
-### Reviewer prompt
+### Reviewer prompt and the review brief
 
-`REVIEWER_AGENT` keeps its name, description and `tools` line. Replace the line
-that starts with "Use read-only commands." with this text:
+pi-subagents launches `reviewer` with `systemPromptMode: replace`,
+`inheritProjectContext: false` and `inheritSkills: false` (the defaults for a
+role named `reviewer` in `defaultSystemPromptMode` and
+`defaultInheritProjectContext`, `pi-subagents/src/agents/agents.js`). A test on
+the base revision showed these values in the launch contract. So the role prompt
+is the reviewer's whole system prompt. The review brief arrives only in the
+task:
+
+- Final review: `requesting-code-review/code-reviewer.md` with
+  `patchmill-implementation/review-appendix.md` and the review package.
+- Planning review: `patchmill-planning/planning-review.md`.
+- Frontend review: the rules in `patchmill-frontend-review/SKILL.md`.
+
+A system prompt usually takes priority over task text. The current prompt has
+its own method and report rules ("Look for …", "Separate blockers from optional
+suggestions", "Do not … execute workflows from installed skills"). These rules
+can compete with the brief. A reviewer could then drop brief sections such as
+"Declined to judge", the Structure results, the command evidence list, or the
+"Human Reviewer Callouts" section. A reviewer could also refuse the brief
+because it comes from an installed skill.
+
+Decision: the role prompt is a thin boundary layer. The brief owns the method
+and the report format. The role prompt owns only the tool and safety limits.
+When the brief is stricter than a limit, the brief wins. When no brief format
+exists, a short fallback format applies.
+
+`REVIEWER_AGENT` keeps its frontmatter (name, description,
+`tools: read, grep, find, ls, bash`). Its body becomes this text, verbatim:
 
 ```text
-You may use bash to run the project's validation commands: tests, lint, format checks, type checks, and builds.
-You may run read-only Git commands, such as git status, git diff, git log, and git show.
-These commands can write ignored build output or caches. That is permitted.
-Do not run commands that fix or rewrite files, such as --fix, --write, or a formatter in write mode.
-Do not edit files, install packages, authenticate, or change Git or hosting state.
-Run git status --short before and after your commands. Report each change that your commands caused.
+You are a fresh-context reviewer. Your task contains the review brief: a template or brief, any appendix, the scope, and the inputs.
+Follow the brief completely. It defines what to check, how to judge, and the report format with every required section.
+This role adds only the tool and safety limits below. When the brief is stricter than a limit, obey the brief.
+Do not trust summaries from the implementer or the planner. Read the scope, the diff or documents, and the relevant source yourself.
+
+Tool and safety limits:
+- You may use bash to run the project's validation commands: tests, lint, format checks, type checks, and builds.
+- You may run read-only Git commands, such as git status, git diff, git log, and git show.
+- These commands can write ignored build output or caches. That is permitted.
+- If the brief permits a disposable worktree in a temporary directory, you may create it. Remove it before you finish.
+- Do not run commands that fix or rewrite files, such as --fix, --write, or a formatter in write mode.
+- Do not edit files, install packages, authenticate, or change Git or hosting state of the reviewed checkout.
+- Do not launch agents. Read installed skill files when the brief tells you to. Do not start their workflows.
+- Run git status --short before and after your commands. Report each change that your commands caused.
+
+If the brief gives no report format, report concrete findings with file paths, line numbers, impact, and evidence.
+Separate blockers from optional suggestions, and state the limits of your evidence.
 ```
 
-The other lines do not change. The role stays review-only: no `edit`, no
-`write`, no `subagent`. This is the maintainer decision for Q3.
+Agreement with each brief:
+
+| Brief rule                                                                             | Role prompt                                                         |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `code-reviewer.md` output: Strengths, Issues by severity, Recommendations, Assessment  | "Follow the brief completely … report format with every section"    |
+| `code-reviewer.md` "Declined to judge" list                                            | Same                                                                |
+| `code-reviewer.md` "Read-Only Review": no change to the tree, index, HEAD or branch    | No edits, no Git changes of the reviewed checkout                   |
+| `code-reviewer.md` permits `git worktree add /tmp/review-<SHA>`                        | Disposable worktree permitted when the brief permits it             |
+| `code-reviewer.md` "You Do Not Dispatch Subagents"                                     | "Do not launch agents"                                              |
+| Appendix: Structure results, command evidence, final "Human Reviewer Callouts" section | Report format from the brief; validation commands permitted         |
+| Appendix: does not override tool restrictions or read-only and no-child boundaries     | The role prompt states those limits                                 |
+| `planning-review.md`: stay read-only, start no agents, report missing evidence         | Same limits; the stricter brief wins                                |
+| Frontend review: read-only, no subagents, file-writing commands in a disposable copy   | Same limits; ignored output only, otherwise the stricter brief wins |
+
+The role stays review-only: no `edit`, no `write`, no `subagent`. The command
+rules are the maintainer decision for Q3. The precedence rule is the maintainer
+request in the planning session that the role must not override the superpowers
+review prompt or the Patchmill review appendix.
 
 A changed prompt makes existing installations stale. The next `patchmill init`,
 Console start, `serve` start or `doctor --fix` writes the new content.
@@ -250,15 +305,29 @@ documentation work, with no browser-visible change.
 
 ## Acceptance criteria and verification
 
-| Criterion                                                                                                        | Verification                                                                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A fresh `patchmill init` installs `reviewer.md`. The resolved `reviewer` has `bash` and no `edit` or `write`.    | Init test: run `init`, then `checkReviewerRole` passes, and `resolveSubagentLaunchContract` under the isolated directory gives the managed path.        |
-| The reviewer can run the required commands itself.                                                               | The resolved tools include `bash`, and the prompt permits validation commands. Direct inspection of `REVIEWER_AGENT` in review.                         |
-| Doctor fails when the managed reviewer is missing, stale, shadowed, or lacks `bash`. `doctor --fix` restores it. | `reviewer-role.test.ts` cases for each failure. Doctor CLI test: missing gives exit 1; `--fix` writes the file and gives exit 0.                        |
-| Provisioning is idempotent and keeps other local files.                                                          | `agent-dir.test.ts`: a second call returns `"unchanged"` and keeps the mtime. `--fix` does not change `patchmill-implementation.md` or `settings.json`. |
-| Repository checks pass.                                                                                          | `npm run lint`, `npm test`, `npm run build`.                                                                                                            |
+| Criterion                                                                                                                                | Verification                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A fresh `patchmill init` installs `reviewer.md`. The resolved `reviewer` has `bash` and no `edit` or `write`.                            | Init test: run `init`, then `checkReviewerRole` passes, and `resolveSubagentLaunchContract` under the isolated directory gives the managed path.        |
+| The reviewer can run the required commands itself.                                                                                       | The resolved tools include `bash`, and the prompt permits validation commands. Direct inspection of `REVIEWER_AGENT` in review.                         |
+| Doctor fails when the managed reviewer is missing, stale, shadowed, or lacks `bash`. `doctor --fix` restores it.                         | `reviewer-role.test.ts` cases for each failure. Doctor CLI test: missing gives exit 1; `--fix` writes the file and gives exit 0.                        |
+| Provisioning is idempotent and keeps other local files.                                                                                  | `agent-dir.test.ts`: a second call returns `"unchanged"` and keeps the mtime. `--fix` does not change `patchmill-implementation.md` or `settings.json`. |
+| The role prompt does not override the review brief (`code-reviewer.md`, the review appendix, `planning-review.md`, the frontend review). | Direct inspection in review against the agreement table in "Reviewer prompt and the review brief". No prompt-text test (Testing Value Gate).            |
+| Repository checks pass.                                                                                                                  | `npm run lint`, `npm test`, `npm run build`.                                                                                                            |
 
 ## Visual explanation
+
+The first sketch shows who owns which part of the reviewer's instructions.
+
+```text
+reviewer system prompt (REVIEWER_AGENT, replace mode)
+├── defers: "Follow the brief completely" ──► task
+│                                             ├── code-reviewer.md + review-appendix.md (final review)
+│                                             ├── planning-review.md (planning review)
+│                                             └── frontend review rules
+│                                                 owns: method, judgement, report sections
+├── owns: tool and safety limits (bash for validation, no edits, no agents)
+└── fallback report format (only when the brief has none)
+```
 
 The flow below shows how doctor decides the `reviewer` result.
 
