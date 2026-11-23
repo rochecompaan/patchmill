@@ -31,8 +31,8 @@ Patchmill also accepts a GitHub App installation token in `GH_TOKEN`, for
 example in CI. An App token has no username, so only `host.login` and
 `host.trustedAuthors` grant trust. Put the bot login, for example
 `patchmill-e2e[bot]`, and the maintainer logins in `host.trustedAuthors`. If
-this list is empty, no comment author is trusted, and `patchmill doctor` warns
-about it.
+`host.login` and this list are both empty, no comment author is trusted.
+`patchmill doctor` warns when this list is empty.
 
 ## Planning gates
 
