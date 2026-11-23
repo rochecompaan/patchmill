@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { CONFIG_FILE } from "../../../config/config.ts";
 import { runCommand } from "../../../process/command.ts";
+import { checkReviewerRole } from "../doctor/reviewer-role.ts";
 
 import * as init from "./main.ts";
 async function harness(t: TestContext) {
@@ -134,4 +142,24 @@ test("registered init rejects invalid flags before provisioning and serves help"
   );
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /Usage: patchmill init/);
+});
+
+test("fresh init resolves a command-capable reviewer in the isolated agent directory", async (t) => {
+  const f = await harness(t);
+  const home = join(f.root, "home");
+  await mkdir(home);
+  const earlier = process.env.HOME;
+  t.after(() => {
+    process.env.HOME = earlier;
+  });
+  process.env.HOME = home;
+  assert.equal(await init.main([], f.options), 0, f.stderr.join("\n"));
+  assert.ok(f.stdout.includes("Agent directory: written"), f.stdout.join("\n"));
+  assert.deepEqual(
+    await checkReviewerRole({
+      repoRoot: f.root,
+      agentDir: ".patchmill/pi-agent",
+    }),
+    { ok: true },
+  );
 });
