@@ -35,6 +35,7 @@ Unknown keys fail by name. Copy only the values that your repository needs.
   },
   "run": {
     "triageIntervalMinutes": 5,
+    "conflictRetryMinutes": 30,
     "idleBackoff": { "initialSeconds": 60, "maxSeconds": 900 },
     "errorBackoff": { "initialSeconds": 30, "maxSeconds": 1800 }
   }
