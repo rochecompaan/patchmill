@@ -28,6 +28,32 @@ test("provisions the reviewer without rewriting unchanged files", async (t) => {
   assert.equal(await readFile(file, "utf8"), agent.REVIEWER_AGENT);
 });
 
+test("provisionReviewerAgent writes only the reviewer and reports changes", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-reviewer-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "custom/agent/agents/reviewer.md");
+  assert.equal(
+    await agent.provisionReviewerAgent(root, "custom/agent"),
+    "written",
+  );
+  assert.equal(await readFile(file, "utf8"), agent.REVIEWER_AGENT);
+  await assert.rejects(
+    stat(join(root, "custom/agent/agents/patchmill-implementation.md")),
+  );
+  const before = (await stat(file)).mtimeMs;
+  assert.equal(
+    await agent.provisionReviewerAgent(root, "custom/agent"),
+    "unchanged",
+  );
+  assert.equal((await stat(file)).mtimeMs, before);
+  await writeFile(file, "damaged");
+  assert.equal(
+    await agent.provisionReviewerAgent(root, "custom/agent"),
+    "written",
+  );
+  assert.equal(await readFile(file, "utf8"), agent.REVIEWER_AGENT);
+});
+
 test("appends missing excludes through Git common metadata in a linked checkout", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "patchmill-excludes-"));
   t.after(() => rm(root, { recursive: true, force: true }));

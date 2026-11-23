@@ -9,13 +9,27 @@ description: Fresh-context adversarial review of a bounded change
 tools: read, grep, find, ls, bash
 ---
 
-Review the change in a fresh context. Do not trust the implementation summary.
-Read the approved scope, base-to-head diff, and relevant source before judging the change.
-Look for incorrect behavior, missing tests, unsafe side effects, and scope drift.
-Use read-only commands. Do not edit files, install packages, authenticate, or mutate Git or hosting state.
-Do not launch agents or execute workflows from installed skills.
-Report concrete findings with file paths, line numbers, impact, and supporting evidence.
-Separate blockers from optional suggestions. State any limits in the evidence.
+You are a fresh-context reviewer. Your task contains the review brief: a template or brief, any appendix, the scope, and the inputs.
+Follow the brief completely. It defines what to check, how to judge, and the report format with every required section.
+Steps in the brief that are addressed to the parent or the implementer are not yours.
+This role adds the tool and safety limits below. When the brief is stricter than a limit, obey the brief.
+In a brief, "read-only" means: no edits to tracked files and no Git or hosting changes, except a disposable worktree that the brief permits. Ignored build output and caches from validation commands are not changes.
+Do not trust summaries from the implementer or the planner. Read the scope, the diff or documents, and the relevant source yourself.
+
+Tool and safety limits:
+- You may use bash to run the project's validation commands: tests, lint, format checks, type checks, and builds.
+- You may run read-only Git commands, such as git status, git diff, git log, and git show.
+- These commands can write ignored build output or caches. That is permitted.
+- If the brief permits a disposable worktree in a temporary directory, you may create it. Remove it before you finish.
+- Do not run commands that fix or rewrite files, such as --fix, --write, or a formatter in write mode.
+- Do not edit files, install packages, or authenticate.
+- Do not change Git or hosting state, except a disposable worktree that the brief permits.
+- Do not launch agents. Read installed skill files when the brief tells you to. Do not start their workflows.
+- Run git status --short before and after your commands. Report each change that your commands caused, with the brief's command evidence or inspection limits. If the brief has neither, add one line after its report.
+
+If the brief gives no report format, report concrete findings with file paths, line numbers, impact, and evidence.
+Separate blockers from optional suggestions, and state the limits of your evidence.
+If the runtime also asks for an acceptance report, put it after the complete report that the brief requires.
 `;
 
 export const IMPLEMENTATION_AGENT = `---
@@ -45,21 +59,44 @@ export async function provisionAgentDir(
         `skills: ${skills.map((skill) => skill.name).join(", ")}\nskillPath: ${skillPaths.join(", ")}\ntools: read`,
       )
     : IMPLEMENTATION_AGENT;
-  const directory = join(repoRoot, agentDir, "agents");
+  await provisionReviewerAgent(repoRoot, agentDir);
+  await writeWhenDifferent(
+    resolve(repoRoot, agentDir, "agents", "patchmill-implementation.md"),
+    implementation,
+  );
+}
+
+/**
+ * Writes the managed reviewer definition when it is missing or different.
+ * Touches no other file in the agent directory.
+ */
+export async function provisionReviewerAgent(
+  repoRoot: string,
+  agentDir: string,
+): Promise<"written" | "unchanged"> {
+  const directory = resolve(repoRoot, agentDir, "agents");
   await mkdir(directory, { recursive: true });
-  for (const [name, content] of [
-    ["reviewer.md", REVIEWER_AGENT],
-    ["patchmill-implementation.md", implementation],
-  ] as const) {
-    const file = join(directory, name);
-    let existing: string | undefined;
-    try {
-      existing = await readFile(file, "utf8");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    if (existing !== content) await writeFile(file, content);
+  return (await writeWhenDifferent(
+    join(directory, "reviewer.md"),
+    REVIEWER_AGENT,
+  ))
+    ? "written"
+    : "unchanged";
+}
+
+async function writeWhenDifferent(
+  file: string,
+  content: string,
+): Promise<boolean> {
+  let existing: string | undefined;
+  try {
+    existing = await readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  if (existing === content) return false;
+  await writeFile(file, content);
+  return true;
 }
 
 export async function ensureLocalExcludes(
