@@ -122,6 +122,8 @@ of `@earendil-works/pi-ai`.
 **Files:**
 
 - Create: `src/pi/command-timeout-extension.ts`
+- Modify: `test-support/fake-extension-api.ts` (a `tool_call` emitter, and a way
+  to read or set the session ID that `fire()` passes)
 - Test: `src/pi/command-timeout-extension.test.ts`
 
 **Interfaces:**
@@ -193,9 +195,9 @@ of `@earendil-works/pi-ai`.
       `createAgentSessionFromServices`, as in `src/console/start.ts`) in a child
       process. Copy the isolation pattern of
       `src/console/session-switch-lifecycle.test.ts`: re-run the file with
-      `--test --test-force-exit` and a marker variable, and clear
-      `PI_SUBAGENT_*` and `PI_SESSION_*`. Use the faux provider from
-      `@earendil-works/pi-ai`, the built-in tools, and
+      `--test --test-force-exit`, a marker variable, and a `--test-name-pattern`
+      for this test only, and clear `PI_SUBAGENT_*` and `PI_SESSION_*`. Use the
+      faux provider from `@earendil-works/pi-ai`, the built-in tools, and
       `extensionFactories: [createCommandTimeoutExtension({ limits: { defaultSeconds: 1, maxSeconds: 2 }, register: recorder })]`.
       Use a temp `agentDir` and `cwd`. Script the faux model: turn 1 calls
       `bash` with `{ command: "sleep 30 & echo $! > <tmp>/pid; wait" }` and no
@@ -243,6 +245,9 @@ of `@earendil-works/pi-ai`.
   (`createSessionLauncher()`)
 - Modify: `test-support/run-once-fixture.ts` (the fake Pi wrapper records the
   two variables)
+- Modify: `test-support/fake-human.ts` (line 22) and
+  `src/console/worker-launcher.test.ts` (line 98): they call `rpcModeLauncher`
+  and must pass the now-required `env`. Pass `env: {}`.
 - Test: `src/kernel/launch.test.ts`,
   `src/cli/commands/serve/session-launcher.test.ts`,
   `src/kernel/run-once-output.test.ts` (it uses `setupRun`),
@@ -298,6 +303,7 @@ of `@earendil-works/pi-ai`.
     the result as `additionalExtensionPaths`.
   - `createSessionLauncher()`: add the path to `extensionPaths` and spread the
     variables into `env`.
+  - Each other `rpcModeLauncher` caller that TypeScript flags: pass `env: {}`.
 - [ ] **Step 4: Run** the four test files, then `npm run check:types`. Expected:
       PASS.
 - [ ] **Step 5: Commit**

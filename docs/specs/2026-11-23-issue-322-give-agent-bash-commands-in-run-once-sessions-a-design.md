@@ -62,8 +62,8 @@ with it.
   (`mergePaths(cliEnabledExtensions, enabledExtensions)` in
   `dist/core/resource-loader.js`). So in the three Pi starts, the Patchmill
   default comes first. Where another handler runs first, its default stays,
-  because it is at or below the cap. The cap applies in every case, unless a
-  later handler raises the value.
+  unless it is above the cap. The cap applies in every case, unless a later
+  handler raises the value.
 
 ## Anti-goals
 
