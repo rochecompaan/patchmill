@@ -332,3 +332,81 @@ flowchart TD
 ## Companion artifacts
 
 None besides the spec and its `GLOSSARY.md` entry.
+
+## Planning review
+
+### Entry 1: combined spec and plan review
+
+- **Scope:** specification and implementation plan together (No gate, start of
+  implementation). Other document in scope:
+  `docs/plans/2026-11-23-issue-417-surface-expired-authentication-tokens-instead-of-plan.md`
+  for the spec, and
+  `docs/specs/2026-11-23-issue-417-surface-expired-authentication-tokens-instead-of-design.md`
+  for the plan.
+- **Reviewer:** `reviewer` agent, model `claude-bridge/claude-opus-5-5`,
+  thinking `high`, base revision `13eb7c3` (documents at `6aead88`).
+- **Reviewed body SHA-256:** spec
+  `0ebbd15b6f179d6d71c65c135ab50f7b281615a2507ca555da2f3a9a58bd21f8`; plan
+  `d7da57f19d4f68bc4ce2291b116f98c136ea2315cb7cd1ad2e5a6d41173615b3`, compared
+  with spec `0ebbd15b6f179d6d71c65c135ab50f7b281615a2507ca555da2f3a9a58bd21f8`.
+- **Survey:** the reviewer confirmed that `onMessageEnd`
+  (`src/web/session/web-session.ts`) and `projectPiThread`
+  (`src/web/pi-thread.ts`) drop `stopReason: "error"` messages; that `runPiRpc`
+  writes `errorMessage` only to the phase log and `verifyOutcome` reports "no
+  result block"; that the worker launcher copies the session file into
+  `launch.sessionDir`; that `runTriage` logs a generic warning; and that a
+  running Pi rereads `auth.json` when it changes.
+- **Findings and dispositions:**
+  - B1 (blocker, spec): provider text would reach a public issue comment.
+    **Escalated → maintainer ruling:** keep provider text out of issue comments;
+    local surfaces only. Spec Text, Unattended phases, Anti-goals and the plan's
+    constraints and tests revised.
+  - B2 (blocker, spec/plan): "start the run again" does not resume a
+    `needs-info` issue. **Accepted:** stop text now names
+    `patchmill run-once --issue <N>`; triage has its own notice. Maintainer
+    ruling: a Runner keeps going after a sign-in failure (Non-goal, follow-up).
+  - B3 (blocker, plan): wrong history event id. **Accepted:**
+    `<prefix>:1:error`.
+  - S1 (plan): triage test setup. **Accepted:** follows the existing
+    failed-session script pattern.
+  - S2 (spec): wrong names. **Accepted:** `runTriage`, `runPiRpc`.
+  - S3 (plan): history "text before error" test. **Accepted** the test.
+    **Rejected** moving it to `file-issue-detail.test.ts`: `projectPiThread` is
+    the exported projection interface that `issue-history.ts` uses.
+  - S4 (spec/plan): identity comparison. **Accepted:** `explainProviderFailure`
+    returns `{ result, failure } | undefined`; `providerFailureEntry` takes the
+    raw message.
+  - S5 (spec): wording. **Accepted:** "The model request failed…", period added
+    when missing.
+  - S6 (glossary): fallback text. **Accepted.**
+  - S7 (plan): set `stopReason`/`errorMessage` on the fake step. **Rejected** at
+    first with a wrong reason; see Entry 2.
+- **Inspection limits:** installed Pi 1.5.2 checked (base requires 1.6.0); the
+  `openai-codex` per-request credential read and pi-subagents `sessionFile` on
+  failure were not traced; no tests run.
+- **Outcome:** blockers corrected; confirmation in Entry 2.
+
+### Entry 2: scoped confirmation
+
+- **Reviewer:** `reviewer` agent, model `claude-bridge/claude-opus-5-5`,
+  thinking `high`, base revision `13eb7c3` (documents at `c3b6259`).
+- **Result:** B1–B3 and S1–S6 confirmed against the source. No remaining or new
+  blockers.
+- **Notes for the implementer** (non-blocking suggestions; not edited into the
+  body after confirmation):
+  - S7 correction: run-once does use the RPC path (`fake-pi.mjs` hands off to
+    `fake-pi-rpc.mjs` with `--mode`). The planned test works as written. Also
+    set `stopReason: "error"` and `errorMessage` on the run-once test step so
+    that the RPC stream matches a real failure.
+  - The anti-goal "Different wording for the same failure on different surfaces"
+    means one classification and one text per surface kind; the public/local
+    split is deliberate.
+  - The triage test script must create the `--session-dir` directory before it
+    writes the `.jsonl` file.
+  - The run-once notice may use `progressOutput("stderr", …)` instead of
+    `output.stderr`, so it also lands in the local run history; both stay local.
+- **Final body SHA-256:** spec
+  `78d12b050f31675417caa4b40e8cb96d95bc566b6dcdeae8a4c98c86123de540`; plan
+  `6d4fda08ae0f5664a328ef2df6e557667ac144536540345f97afe3031d878152`, compared
+  with spec `78d12b050f31675417caa4b40e8cb96d95bc566b6dcdeae8a4c98c86123de540`.
+- **Outcome:** `ready`.
