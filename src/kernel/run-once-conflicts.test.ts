@@ -14,7 +14,7 @@ import {
 import { STATE_DIR, StateStore } from "../state/store.ts";
 import { LocalWorkflowState } from "./local-workflow.ts";
 import { acquireLock } from "./lock.ts";
-import { ATTEMPT_FILE } from "./merge-conflicts.ts";
+import { ATTEMPT_FILE, recordConflictAttempt } from "./merge-conflicts.ts";
 import type { RunOnceDeps } from "./run-once.ts";
 
 const resolveStep = {
@@ -219,13 +219,67 @@ test("normal work gets the continue line", async (t) => {
   await assert.rejects(fs.access(attemptPath(c)));
 });
 
+test("a resumed Conflict resolution keeps the conflict-only line", async (t) => {
+  const c = await conflicting(t, [needsInput], { label: "in-progress" });
+  await c.deps.git.fetch();
+  const conflict = (await c.deps.git.mergeConflict(
+    "origin/main",
+    `origin/${branch}`,
+  ))!;
+  await recordConflictAttempt(
+    join(c.repoRoot, c.config.paths.runsDir, "issue-9"),
+    {
+      runId: "earlier",
+      startedAt: c.deps.now().toISOString(),
+      conflict,
+    },
+  );
+  await c.run();
+  const prompt = await (await c.records()).prompt();
+  assert.match(prompt, /This session is a Conflict resolution/);
+  assert.doesNotMatch(prompt, /then continue your normal work/);
+});
+
+/** Wraps the workflow so that the claim first runs `change`. */
+function onClaim(c: Scenario, change: () => Promise<void>) {
+  const workflow = c.deps.workflow;
+  let changed = false;
+  const setStatus: RunOnceDeps["workflow"]["setStatus"] = async (n, u) => {
+    if (!changed) {
+      changed = true;
+      await change();
+    }
+    return workflow.setStatus(n, u);
+  };
+  return {
+    workflow: {
+      sync: (n?: number) => workflow.sync(n),
+      openIssues: () => workflow.openIssues(),
+      issue: (n: number) => workflow.issue(n),
+      setStatus,
+    },
+  };
+}
+
+test("a pull request closed after the search is not reported as resolved", async (t) => {
+  const c = await conflicting(t, [needsInput]);
+  const outcome = await c.run(
+    {},
+    onClaim(c, () =>
+      c.mutate((s) => {
+        s.pullRequests[0]!.state = "closed";
+      }),
+    ),
+  );
+  assert.notDeepEqual(outcome, { status: "completed", issue: 9 });
+  assert.ok(!c.output.join("\n").includes("nothing to resolve"));
+});
+
 test("nothing to resolve stops without a session", async (t) => {
   const c = await conflicting(t, []);
-  const workflow = c.deps.workflow;
-  let fixed = false;
-  const setStatus: RunOnceDeps["workflow"]["setStatus"] = async (n, u) => {
-    if (!fixed) {
-      fixed = true;
+  const outcome = await c.run(
+    {},
+    onClaim(c, async () => {
       const cwd = join(c.dir, "seed");
       await c.git(["fetch", "origin"], cwd);
       await c.git(["checkout", "-B", "fix", `origin/${branch}`], cwd);
@@ -234,19 +288,7 @@ test("nothing to resolve stops without a session", async (t) => {
       await c.git(["add", "."], cwd);
       await c.git(["commit", "-m", "Person resolves"], cwd);
       await c.git(["push", "origin", `HEAD:${branch}`], cwd);
-    }
-    return workflow.setStatus(n, u);
-  };
-  const outcome = await c.run(
-    {},
-    {
-      workflow: {
-        sync: (n) => workflow.sync(n),
-        openIssues: () => workflow.openIssues(),
-        issue: (n) => workflow.issue(n),
-        setStatus,
-      },
-    },
+    }),
   );
   assert.deepEqual(outcome, { status: "completed", issue: 9 });
   assert.equal(await counter(c), "0");

@@ -62,6 +62,7 @@ export async function findConflictingPullRequests(input: {
     const ours = pulls.filter(
       (pr) =>
         pr.state === "open" &&
+        // The branch half holds by construction; this checks the repository.
         ownsPullRequest(pr, pr.headBranch, repository) &&
         isIssueBranch(n, pr.headBranch) &&
         parsePlanningBranch(n, pr.headBranch) === undefined &&

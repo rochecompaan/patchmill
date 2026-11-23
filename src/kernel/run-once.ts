@@ -335,7 +335,15 @@ export async function runOneIssue(
         const facts = before.facts;
         displayFacts = facts;
         await snapshot.facts(facts);
-        if (firstDerivation && conflictSelection && !facts.mergeConflict) {
+        // Only an open pull request into the base can have stopped conflicting;
+        // any other change goes through the normal derivation.
+        if (
+          firstDerivation &&
+          conflictSelection &&
+          !facts.mergeConflict &&
+          facts.pullRequest?.state === "open" &&
+          facts.pullRequest.baseBranch === facts.baseBranch
+        ) {
           stop = {
             label: "done",
             summary: `Pull request #${conflictSelection.pullRequest.number} no longer conflicts with origin/${facts.baseBranch}; nothing to resolve.`,
@@ -392,15 +400,17 @@ export async function runOneIssue(
         }
         const conflict =
           phase === "implementation" ? facts.mergeConflict : undefined;
-        const conflictResolution =
-          !!conflict &&
+        const resolving =
+          conflict &&
           (conflictSelection !== undefined ||
-            (await isRecordedAttempt(issueDir, conflict, output.stderr)));
-        if (conflictResolution)
+            (await isRecordedAttempt(issueDir, conflict, output.stderr)))
+            ? conflict
+            : undefined;
+        if (resolving)
           await recordConflictAttempt(issueDir, {
             runId,
             startedAt: now().toISOString(),
-            conflict: conflict!,
+            conflict: resolving,
           });
         const { launch, launcher } = await preparePhasePrompt(
           config,
@@ -411,7 +421,7 @@ export async function runOneIssue(
           facts,
           sessionNumber + 1,
           options.signal,
-          conflictResolution,
+          resolving !== undefined,
         );
         sessionNumber++;
         sinceHuman++;
