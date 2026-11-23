@@ -43,8 +43,9 @@ is already in `main`:
 - Other definitions can shadow the managed file. A test on the base revision
   showed two: a project file `<repository>/.pi/agents/reviewer.md` (source
   `project`), and `~/.agents/reviewer.md` (source `user`, higher priority than
-  the agent directory). A pi-subagents builtin override in the agent-directory
-  `settings.json` can also change the tools.
+  the agent directory). A pi-subagents `agentOverrides` entry for `reviewer` in
+  the agent-directory `settings.json` or the project `.pi/settings.json` can
+  also change the tools or disable the role.
 - `patchmill doctor` (`src/cli/commands/doctor/checks.ts`) has a `reviewer`
   check. It only makes sure that the file exists, and its severity is `warn`. It
   does not look at the resolved role or its tools.
@@ -76,6 +77,11 @@ is already in `main`:
   to run the project validation commands and to give the results to the
   reviewer. The reviewer can now also run commands itself. This is the
   maintainer decision for Q1 in the planning session.
+- The skills still call the reviewer "read-only" and tell the parent to run
+  file-writing commands in a disposable copy. After this change, "read-only"
+  means: no edits to tracked files and no Git or hosting changes. Ignored build
+  output and caches from validation commands are permitted. A later review must
+  not report this wording as a contradiction.
 - No copy of the bundled pi-subagents reviewer prompt. Patchmill keeps its short
   canonical prompt. This is the maintainer decision for Q2.
 - No proxy, broker or runner for commands. No receipts, session-log inspection
@@ -139,7 +145,9 @@ export async function provisionReviewerAgent(
 ): Promise<"written" | "unchanged">;
 ```
 
-- It creates `<repoRoot>/<agentDir>/agents/` when necessary.
+- It creates `resolve(repoRoot, agentDir, "agents")` when necessary. It uses
+  `resolve`, as the runtime callers and the check do, so an absolute
+  `pi.agentDir` also works.
 - It writes `REVIEWER_AGENT` only when the file is missing or different. It
   returns `"written"` or `"unchanged"`.
 - It touches no other file.
@@ -181,8 +189,8 @@ The checks run in this order. The first failure is the result.
    `Reviewer resolves to <filePath> (<source>), not <managed path>. Remove or rename that definition.`
 5. **Wrong tools.** `tools.effectiveAllowlist` does not include `bash`, or
    includes `edit`, `write` or `subagent`. `repairable: false`. The message
-   lists the effective tools. A builtin override in the agent-directory
-   `settings.json` can cause this.
+   lists the effective tools. An `agentOverrides` entry in a `settings.json` can
+   cause this.
 
 Caller obligations and invariants:
 
@@ -193,6 +201,9 @@ Caller obligations and invariants:
 - The project is treated as trusted (`projectTrusted` default `true`). Project
   agent definitions then count, as they do in a kernel run.
 - The check makes no model call and writes no file.
+- When `resolveSubagentLaunchContract` throws (for example, on a malformed
+  `settings.json`), the error propagates. The doctor `check()` wrapper reports
+  it as `fail`. The environment is restored first.
 - `HOME` affects the result through `~/.agents`. This is correct: the kernel
   runs Pi with the same `HOME`.
 
@@ -260,9 +271,55 @@ flowchart TD
     C --> M{managed file exists<br/>and is current?}
     M -- no --> R1[fail: missing or stale<br/>hint: --fix]
     M -- yes --> S[resolveSubagentLaunchContract<br/>PI_CODING_AGENT_DIR = isolated dir]
-    S --> W{winner is the<br/>managed file?}
+    S --> N{resolved?}
+    N -- no --> R0[fail: not resolved<br/>for example disabled]
+    N -- yes --> W{winner is the<br/>managed file?}
     W -- no --> R2[fail: shadowed by project,<br/>~/.agents or other file]
     W -- yes --> T{bash present,<br/>no edit / write / subagent?}
-    T -- no --> R3[fail: wrong tools<br/>settings override]
+    T -- no --> R3[fail: wrong tools<br/>agentOverrides entry]
     T -- yes --> OK[pass]
 ```
+
+## Planning review
+
+### Pass 1: combined with the plan
+
+- **Scope:** specification and implementation plan
+  (`docs/plans/2026-11-23-issue-229-final-validation-can-block-because-the-isolated-plan.md`).
+- **Reviewer:** canonical `reviewer` (managed Patchmill definition), model
+  `claude-bridge/claude-opus-5-5`, thinking `high`. Fresh context for each pass.
+- **Base revision:** `360c592` (`main`).
+- **Survey:** the reviewer read the agent-dir, init, doctor, console start and
+  serve sources and tests, the review skills, and the pi-subagents discovery and
+  preflight code. It ran probes with temporary `HOME` and repositories. They
+  confirmed the project and home shadows, `agentOverrides` tools and `disabled`
+  effects, and a throw on a malformed `settings.json`.
+- **Findings and dispositions:**
+  - B1 (blocker, plan): no tests for the not-resolved and wrong-tools checks.
+    **Accepted.** Task 2 adds the `agentOverrides` tools and `disabled` cases.
+  - S1 (plan, spec): the env-restore test did not reach the `finally` after a
+    throw. **Accepted.** The test uses a malformed `settings.json`. The spec
+    says that the throw propagates.
+  - S2 (spec, plan): `join` versus `resolve` for an absolute `pi.agentDir`.
+    **Accepted.** `provisionReviewerAgent` uses `resolve`.
+  - S3 (plan): the symlink test does not prove `realpath` use on Linux.
+    **Accepted.** It is now a smoke test. Review Focus 5 now names the
+    `agentOverrides` case.
+  - S4 (spec): the flow skipped "not resolved", and the override wording was not
+    exact. **Accepted.** Mermaid and wording revised.
+  - S5 (spec): "read-only" in the skills. **Accepted.** Non-goals define its
+    meaning after this change.
+  - Confirmation suggestion C1 (plan): "does not claim `bash`" was ambiguous.
+    **Accepted** after the confirmation. The plan now fixes the tools message
+    format and asserts `effective tools: read`. This edit changes only that test
+    assertion and message text.
+- **Inspection limits:** pi-subagents 0.80.0 only. No repository checks run (no
+  implementation yet). Kernel project-trust setting and macOS `/tmp` symlinks
+  not inspected.
+- **Confirmation:** a fresh scoped confirmation verified B1 and S1 to S5 against
+  the real package. No blockers remain.
+- **Reviewed body SHA-256:**
+  `3089f06bbe040078623f55a3bc3c84ab1fc5293231ea920e175eb22487f5016e` (initial).
+- **Final body SHA-256:**
+  `9fe9ec65ec0a4992dfd9faffac444cbc71864e8aaf1d325e70b0f2b4650badc2`.
+- **Outcome:** `ready`.

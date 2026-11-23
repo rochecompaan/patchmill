@@ -42,14 +42,14 @@ spec has no mockup and no HTML companion.
    fails, names that file, and `--fix` does not delete it. (Task 2 tests the
    project and home shadows.)
 2. `PI_CODING_AGENT_DIR` was already set before doctor ran: the check restores
-   the earlier value, also after a throw. (Task 2.)
+   the earlier value, also after a throw. (Task 2 uses a malformed
+   `settings.json` to make preflight throw.)
 3. A custom `pi.agentDir` (not `.patchmill/pi-agent`): provisioning, check and
    `--fix` all use it. (Tasks 1 to 3 use `custom/agent`.)
 4. `doctor --fix` when the file is already current: it prints no `[fixed]` line
    and changes no file. (Task 3.)
-5. A symlinked repository path (for example `/tmp` on macOS): the path compare
-   uses `realpath`, so a managed file is not reported as shadowed. (Task 2
-   passes a symlinked `repoRoot`.)
+5. A current `reviewer.md` that loses `bash` at runtime through an
+   `agentOverrides` entry: doctor fails and lists the effective tools. (Task 2.)
 
 ---
 
@@ -83,7 +83,8 @@ spec has no mockup and no HTML companion.
   - Add a private
     `writeWhenDifferent(file: string, content: string): Promise<boolean>` from
     the loop body of `provisionAgentDir` (ENOENT means missing).
-  - Add `provisionReviewerAgent`: `mkdir` the `agents` directory, then
+  - Add `provisionReviewerAgent`: `mkdir`
+    `resolve(repoRoot, agentDir, "agents")` (use `resolve`, not `join`), then
     `writeWhenDifferent` for `reviewer.md`.
   - `provisionAgentDir` calls `provisionReviewerAgent`, then
     `writeWhenDifferent` for the worker.
@@ -128,8 +129,8 @@ export async function checkReviewerRole(input: {
       restore in `t.after`), and `agentDir = "custom/agent"`.
   - `passes for the provisioned reviewer`: after `provisionReviewerAgent`,
     result is `{ ok: true }`.
-  - `passes through a symlinked repository path`: symlink the temp root; call
-    with the link path; result is `{ ok: true }`.
+  - `passes through a symlinked repository path` (smoke test): symlink the temp
+    root; call with the link path; result is `{ ok: true }`.
   - `missing is repairable`: no file; `ok: false`, `repairable: true`, message
     matches `/Missing reviewer: .*custom\/agent\/agents\/reviewer\.md.*--fix/`.
   - `stale is repairable`: write `REVIEWER_AGENT + "\n"`; `repairable: true`,
@@ -140,10 +141,18 @@ export async function checkReviewerRole(input: {
     path and `project`. The file still exists after the check.
   - `a home definition shadows the managed reviewer`: same with
     `<HOME>/.agents/reviewer.md`; message includes that path.
+  - `an agentOverrides tools entry fails the tools check`: provision, then write
+    `custom/agent/settings.json` with
+    `{"subagents":{"agentOverrides":{"reviewer":{"tools":["read"]}}}}`;
+    `repairable: false`, message matches `/effective tools: read(,|$)/`.
+  - `a disabled reviewer is not resolved`: provision, then write
+    `{"subagents":{"agentOverrides":{"reviewer":{"disabled":true}}}}`;
+    `repairable: false`, message includes `missing_agent`.
   - `restores PI_CODING_AGENT_DIR`: set
-    `process.env.PI_CODING_AGENT_DIR = "/earlier"`, run a passing and a missing
-    check; the value is `/earlier` after both. Delete the variable when it was
-    unset before the test.
+    `process.env.PI_CODING_AGENT_DIR = "/earlier"`. Run a passing check. Then
+    write a malformed `custom/agent/settings.json` (`"{"`) and assert that the
+    check rejects. The value is `/earlier` after both. Delete the variable when
+    it was unset before the test.
 - [ ] **Step 2: Run**
       `node --test src/cli/commands/doctor/reviewer-role.test.ts`. Expected:
       FAIL, module not found.
@@ -157,8 +166,11 @@ export async function checkReviewerRole(input: {
     `finally`.
   - Compare `await realpath(contract.agent.filePath)` with
     `await realpath(managedPath)`.
+  - `ok: false` from preflight gives `repairable: false` and a message with the
+    pi-subagents `code` and `message`. A throw propagates.
   - Tools check on `contract.tools.effectiveAllowlist`: needs `bash`; rejects
-    `edit`, `write`, `subagent`.
+    `edit`, `write`, `subagent`. Message:
+    `Reviewer needs bash and no edit, write or subagent; effective tools: <comma-separated list>`.
 - [ ] **Step 4: Add the init acceptance test**
       `fresh init resolves a command-capable reviewer in the isolated agent directory`
       to `init/main.test.ts`: set a temp `HOME`, run `init.main([], f.options)`,
@@ -256,3 +268,49 @@ Task 3  doctor/checks.ts       reviewer check: warn → fail
         doctor/main.ts         --fix → provisionReviewerAgent, then checks
         README + site docs
 ```
+
+## Planning review
+
+### Pass 1: combined with the specification
+
+- **Scope:** implementation plan and specification
+  (`docs/specs/2026-11-23-issue-229-final-validation-can-block-because-the-isolated-design.md`).
+- **Reviewer:** canonical `reviewer` (managed Patchmill definition), model
+  `claude-bridge/claude-opus-5-5`, thinking `high`. Fresh context for each pass.
+- **Base revision:** `360c592` (`main`).
+- **Survey:** the reviewer read the agent-dir, init, doctor, console start and
+  serve sources and tests, the review skills, and the pi-subagents discovery and
+  preflight code. It ran probes with temporary `HOME` and repositories. They
+  confirmed the project and home shadows, `agentOverrides` tools and `disabled`
+  effects, and a throw on a malformed `settings.json`.
+- **Findings and dispositions:**
+  - B1 (blocker, plan): no tests for the not-resolved and wrong-tools checks.
+    **Accepted.** Task 2 adds the `agentOverrides` tools and `disabled` cases.
+  - S1 (plan, spec): the env-restore test did not reach the `finally` after a
+    throw. **Accepted.** The test uses a malformed `settings.json`. The spec
+    says that the throw propagates.
+  - S2 (spec, plan): `join` versus `resolve` for an absolute `pi.agentDir`.
+    **Accepted.** `provisionReviewerAgent` uses `resolve`.
+  - S3 (plan): the symlink test does not prove `realpath` use on Linux.
+    **Accepted.** It is now a smoke test. Review Focus 5 now names the
+    `agentOverrides` case.
+  - S4 (spec): the flow skipped "not resolved", and the override wording was not
+    exact. **Accepted.** Mermaid and wording revised.
+  - S5 (spec): "read-only" in the skills. **Accepted.** Non-goals define its
+    meaning after this change.
+  - Confirmation suggestion C1 (plan): "does not claim `bash`" was ambiguous.
+    **Accepted** after the confirmation. The plan now fixes the tools message
+    format and asserts `effective tools: read`. This edit changes only that test
+    assertion and message text.
+- **Inspection limits:** pi-subagents 0.80.0 only. No repository checks run (no
+  implementation yet). Kernel project-trust setting and macOS `/tmp` symlinks
+  not inspected.
+- **Confirmation:** a fresh scoped confirmation verified B1 and S1 to S5 against
+  the real package. No blockers remain.
+- **Reviewed body SHA-256:**
+  `5ef0e21477aac878e87045b50986a434b9b98b2542d63117f434fbeabcafa1cd` (initial).
+- **Compared specification body SHA-256:**
+  `9fe9ec65ec0a4992dfd9faffac444cbc71864e8aaf1d325e70b0f2b4650badc2`.
+- **Final body SHA-256:**
+  `b9e6030691b6e16e003656a4e6260d909364435bd641dbced602447012f5adce`.
+- **Outcome:** `ready`.
