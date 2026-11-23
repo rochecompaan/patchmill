@@ -9,6 +9,7 @@ import { commandOutput, type CommandRunner } from "../../../process/command.ts";
 import { stateDir, StateStore } from "../../../state/store.ts";
 import { stateTrackingMode } from "../../../kernel/state-tracking-mode.ts";
 import type { PiCommandSpec } from "../../pi-cli.ts";
+import { checkReviewerRole } from "./reviewer-role.ts";
 
 type ProbeResult =
   | { ok: true; message?: string }
@@ -138,13 +139,12 @@ export async function runDoctorChecks(deps: {
       ? { ok: false, message: `Missing skill files: ${missing.join(", ")}` }
       : { ok: true };
   });
-  await check("reviewer", "warn", async () => {
-    const missing = await missingFiles([
-      resolve(repoRoot, config.pi.agentDir, "agents/reviewer.md"),
-    ]);
-    return missing.length
-      ? { ok: false, message: `Missing reviewer: ${missing[0]}` }
-      : { ok: true };
+  await check("reviewer", "fail", async () => {
+    const result = await checkReviewerRole({
+      repoRoot,
+      agentDir: config.pi.agentDir,
+    });
+    return result.ok ? { ok: true } : { ok: false, message: result.message };
   });
   await check("pi-subagents", "fail", async () => {
     resolvePiSubagentsPackageRoot();
