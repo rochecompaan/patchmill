@@ -439,7 +439,9 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
       ),
       sleep(recoverGraceMs).then(() => false),
     ]);
-    if (!answered) return "unresponsive";
+    // Pi that exited during the abort ended on its own: nothing to restart.
+    if (!answered)
+      return closed && !interruption ? "continued" : "unresponsive";
     if (finished || interruption || closed) return "continued";
     recovering = "prompt";
     // A background run can start a turn first: the message then steers it.
