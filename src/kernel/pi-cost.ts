@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { amount, parseUsageRecord } from "./pi-usage-records.ts";
+import {
+  amount,
+  parseUsageRecord,
+  type ParsedRecord,
+} from "./pi-usage-records.ts";
 
 export type PiUsage = {
   inputTokens: number;
@@ -38,38 +42,87 @@ export function totalUsage(entries: PiUsage[]): PiUsage | undefined {
   };
 }
 
+type WalkedFile = {
+  path: string;
+  /** Path relative to the session directory, with `/` separators. */
+  relative: string;
+  records: ParsedRecord[];
+};
+
+/**
+ * Recorded child paths are absolute. A suffix match keeps moved or archived
+ * run directories working.
+ */
+function matches(file: WalkedFile, recorded: Set<string>): boolean {
+  for (const path of recorded)
+    if (path === file.path || path.endsWith(`/${file.relative}`)) return true;
+  return false;
+}
+
+/**
+ * Reads the usage records below a session directory and counts each subagent
+ * child once. `seen` holds the keys already counted by the caller, for example
+ * in an earlier session of the same run. This function adds the key of each
+ * record it counts or skips.
+ *
+ * Returns `[]` when usage records exist but all are already counted, and
+ * `undefined` on a read or parse failure or when no usage record exists.
+ */
 export async function readSessionUsage(
   sessionDir: string,
+  seen: Set<string> = new Set(),
 ): Promise<PiUsageRecord[] | undefined> {
-  const records: PiUsageRecord[] = [];
-  const seen = new Set<string>();
-  async function walk(dir: string): Promise<void> {
+  const files: WalkedFile[] = [];
+  async function walk(dir: string, relative: string): Promise<void> {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
+      const name = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        await walk(path);
+        await walk(path, name);
       } else if (entry.name.endsWith(".jsonl")) {
-        for (const line of (await fs.readFile(path, "utf8")).split("\n")) {
-          if (!line.trim()) continue;
-          const parsed = parseUsageRecord(JSON.parse(line));
-          for (const record of [
-            ...parsed.own,
-            ...parsed.children.map((child) => child.record),
-          ]) {
-            if (record.key && seen.has(record.key)) continue;
-            if (record.key) seen.add(record.key);
-            records.push(record);
-          }
-        }
+        const records: ParsedRecord[] = [];
+        for (const line of (await fs.readFile(path, "utf8")).split("\n"))
+          if (line.trim()) records.push(parseUsageRecord(JSON.parse(line)));
+        files.push({ path, relative: name, records });
       }
     }
   }
   try {
-    await walk(sessionDir);
-    return records.length > 0 ? records : undefined;
+    await walk(sessionDir, "");
   } catch {
     return undefined;
   }
+  const transcripts = new Set<string>();
+  for (const file of files)
+    for (const record of file.records)
+      for (const child of record.childFiles)
+        if (child.transcriptPath) transcripts.add(child.transcriptPath);
+  // A child record whose session file is walked counts through that file.
+  const covered = (sessionFile: string | undefined) =>
+    sessionFile !== undefined &&
+    files.some((file) => matches(file, new Set([sessionFile])));
+  const records: PiUsageRecord[] = [];
+  let found = false;
+  for (const file of files) {
+    // A transcript copies its child session.
+    const skipFile = matches(file, transcripts);
+    for (const parsed of file.records) {
+      const candidates = [
+        ...parsed.own.map((record) => ({ record, skip: skipFile })),
+        ...parsed.children.map(({ record, files }) => ({
+          record,
+          skip: skipFile || covered(files.sessionFile),
+        })),
+      ];
+      for (const { record, skip } of candidates) {
+        found = true;
+        if (record.key && seen.has(record.key)) continue;
+        if (record.key) seen.add(record.key);
+        if (!skip) records.push(record);
+      }
+    }
+  }
+  return found ? records : undefined;
 }
 
 export async function sumSessionUsage(

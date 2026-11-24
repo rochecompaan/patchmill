@@ -359,3 +359,102 @@ test("a record with usage at the top level and in message counts once", async (t
   assert.equal(records?.length, 1);
   assert.equal(records[0]!.model, "m");
 });
+
+test("child session and transcript below the session directory count once", async (t) => {
+  const dir = await sessions(t);
+  const root = "/elsewhere/sessions/1";
+  const child = join(dir, "parent", "run-a", "run-0");
+  const artifacts = join(dir, "subagent-artifacts");
+  await fs.mkdir(child, { recursive: true });
+  await fs.mkdir(artifacts);
+  await fs.writeFile(
+    join(dir, "parent.jsonl"),
+    toolResult(
+      {
+        results: [
+          {
+            model: "claude-bridge/child:high",
+            usage: childUsage(100, 10, 0),
+            sessionFile: `${root}/parent/run-a/run-0/session.jsonl`,
+            transcriptPath: `${root}/subagent-artifacts/run-a_reviewer_0_transcript.jsonl`,
+          },
+        ],
+      },
+      { input: 100, output: 10, cost: { total: 0 } },
+    ),
+  );
+  await fs.writeFile(
+    join(child, "session.jsonl"),
+    JSON.stringify({
+      type: "message",
+      id: "c1",
+      message: {
+        role: "assistant",
+        model: "child",
+        usage: { input: 100, output: 10, cost: { total: 0 } },
+      },
+    }),
+  );
+  await fs.writeFile(
+    join(artifacts, "run-a_reviewer_0_transcript.jsonl"),
+    JSON.stringify({
+      usage: { input: 100, output: 10, cost: 0 },
+      message: {
+        role: "assistant",
+        model: "child",
+        usage: { input: 100, output: 10, cost: { total: 0 } },
+      },
+    }),
+  );
+  const unpriced = {
+    inputTokens: 100,
+    outputTokens: 10,
+    costUsd: 0,
+    unpriced: true,
+  };
+  assert.deepEqual(await sumSessionUsage(dir), unpriced);
+  assert.deepEqual(
+    (await readSessionUsage(dir))?.map((r) => r.model),
+    ["child"],
+  );
+
+  await fs.rm(join(child, "session.jsonl"));
+  assert.deepEqual(await sumSessionUsage(dir), unpriced);
+
+  // An async child names its transcript only in artifactPaths.
+  await fs.writeFile(
+    join(dir, "parent.jsonl"),
+    toolResult(
+      {
+        results: [],
+        completions: [
+          {
+            results: [
+              {
+                model: "claude-bridge/child:high",
+                usage: childUsage(100, 10, 0),
+                artifactPaths: {
+                  transcriptPath: `${root}/subagent-artifacts/run-a_reviewer_0_transcript.jsonl`,
+                },
+              },
+              {
+                model: "claude-bridge/child:high",
+                artifactPaths: {
+                  transcriptPath: `${root}/subagent-artifacts/run-b_reviewer_0_transcript.jsonl`,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { input: 100, output: 10, cost: { total: 0 } },
+      "bg_wait",
+    ),
+  );
+  // A child without usage still names a transcript that must not count.
+  await fs.writeFile(
+    join(artifacts, "run-b_reviewer_0_transcript.jsonl"),
+    JSON.stringify({ usage: { input: 7, output: 7, cost: 0 } }),
+  );
+  assert.deepEqual(await sumSessionUsage(dir), unpriced);
+});

@@ -227,3 +227,61 @@ test("subagent children are grouped under their own models", async (t) => {
     },
   });
 });
+
+test("a tool result copied into a forked session does not count again", async (t) => {
+  const f = await fixture(t);
+  await fs.writeFile(
+    join(f.run, "result.json"),
+    JSON.stringify({
+      sessions: [{ phase: "planning" }, { phase: "planning" }],
+    }),
+  );
+  const tool = JSON.stringify({
+    type: "message",
+    id: "tool",
+    message: {
+      role: "toolResult",
+      toolName: "subagent",
+      usage: { input: 100, output: 10, cost: { total: 0 } },
+      details: {
+        results: [
+          {
+            model: "claude-bridge/child:high",
+            usage: {
+              input: 100,
+              output: 10,
+              cacheRead: 0,
+              cacheWrite: 0,
+              cost: 0,
+            },
+            sessionFile: "/old/sessions/1/parent/run-a/run-0/session.jsonl",
+          },
+        ],
+      },
+    },
+  });
+  await fs.writeFile(join(f.sessions, "parent.jsonl"), `${tool}\n`);
+  const child = join(f.sessions, "parent", "run-a", "run-0");
+  await fs.mkdir(child, { recursive: true });
+  await fs.writeFile(
+    join(child, "session.jsonl"),
+    JSON.stringify({
+      type: "message",
+      id: "c1",
+      message: {
+        role: "assistant",
+        model: "child",
+        usage: { input: 100, output: 10, cost: { total: 0 } },
+      },
+    }),
+  );
+  const forked = join(f.run, "sessions", "2");
+  await fs.mkdir(forked);
+  await fs.writeFile(join(forked, "parent.jsonl"), `${tool}\n`);
+  assert.deepEqual((await readIssueCostReport(f.root))?.total, {
+    inputTokens: 100,
+    outputTokens: 10,
+    costUsd: 0,
+    unpriced: true,
+  });
+});
