@@ -17,10 +17,8 @@ export async function findPullRequest(
     host.pushRepository(),
     host.listPullRequests(branch),
   ]);
-  const ours = candidates.filter(
-    (pr) =>
-      pr.headBranch === branch &&
-      pr.headRepository?.toLowerCase() === repository.toLowerCase(),
+  const ours = candidates.filter((pr) =>
+    ownsPullRequest(pr, branch, repository),
   );
   for (const state of ["open", "merged", "closed"] as const) {
     const inState = ours.filter((pr) => pr.state === state);
@@ -29,6 +27,18 @@ export async function findPullRequest(
     if (found) return found;
   }
   return undefined;
+}
+
+/** The head is `branch` in the repository Patchmill pushes to. */
+export function ownsPullRequest(
+  pr: PullRequest,
+  branch: string,
+  pushRepository: string,
+): boolean {
+  return (
+    pr.headBranch === branch &&
+    pr.headRepository?.toLowerCase() === pushRepository.toLowerCase()
+  );
 }
 
 /** An open or merged pull request into another branch can neither pass a gate nor finish the issue. */

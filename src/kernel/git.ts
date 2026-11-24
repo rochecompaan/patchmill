@@ -15,6 +15,16 @@ export type WorkspaceSource =
   | { kind: "local-branch"; ref: string }
   | { kind: "remote-ref"; ref: string };
 
+/** A failed merge of a head into a base, as `git merge-tree` reports it. */
+export type MergeConflict = {
+  /** Commit of the base ref at the check. */
+  baseSha: string;
+  /** Commit of the head ref at the check. */
+  headSha: string;
+  /** Conflicted paths, sorted, without duplicates. */
+  files: string[];
+};
+
 export type KernelGit = {
   fetch(): Promise<void>;
   /** Publish an approved planning head as a new implementation branch. */
@@ -36,6 +46,13 @@ export type KernelGit = {
     worktree: string,
     branch: string,
   ): Promise<number | "no-remote-branch">;
+  /**
+   * Undefined when `head` merges cleanly into `base`. Both refs must exist.
+   * Needs Git 2.38 or later; it touches no working tree, index, or ref.
+   */
+  mergeConflict(base: string, head: string): Promise<MergeConflict | undefined>;
+  /** True when `ancestor` is reachable from `descendant`. */
+  isAncestor(ancestor: string, descendant: string): Promise<boolean>;
 };
 
 export function createKernelGit(
@@ -165,6 +182,42 @@ export function createKernelGit(
           undefined,
           worktree,
         ),
+      );
+    },
+    async mergeConflict(base, head) {
+      const baseSha = (await git([
+        "rev-parse",
+        "--verify",
+        `${base}^{commit}`,
+      ]))!;
+      const headSha = (await git([
+        "rev-parse",
+        "--verify",
+        `${head}^{commit}`,
+      ]))!;
+      // git() drops stdout for an expected exit code, so call the runner.
+      const args = [
+        "merge-tree",
+        "--write-tree",
+        "--name-only",
+        "--no-messages",
+        baseSha,
+        headSha,
+      ];
+      const result = await runner("git", args, { cwd: repoRoot });
+      if (result.code === 0) return undefined;
+      if (result.code !== 1) throw new CommandFailedError("git", args, result);
+      const lines = result.stdout.split("\n").slice(1);
+      const end = lines.indexOf("");
+      const files = [...new Set(end < 0 ? lines : lines.slice(0, end))].sort();
+      return { baseSha, headSha, files };
+    },
+    async isAncestor(ancestor, descendant) {
+      return (
+        (await git(
+          ["merge-base", "--is-ancestor", ancestor, descendant],
+          1,
+        )) !== undefined
       );
     },
     async treeFiles(ref, directory): Promise<string[]> {

@@ -11,6 +11,9 @@ import { stateTrackingMode } from "../../../kernel/state-tracking-mode.ts";
 import type { PiCommandSpec } from "../../pi-cli.ts";
 import { checkReviewerRole } from "./reviewer-role.ts";
 
+/** `git merge-tree --write-tree` first appeared in Git 2.38. */
+const MIN_GIT = [2, 38] as const;
+
 type ProbeResult =
   | { ok: true; message?: string }
   | { ok: false; message: string };
@@ -108,6 +111,22 @@ export async function runDoctorChecks(deps: {
       throw new Error(`Unknown doctor workflow check: ${String(unknown)}`);
     }
   }
+  await check("git", "fail", async () => {
+    const result = await runner("git", ["--version"], { cwd: repoRoot });
+    const output = commandOutput(result).trim();
+    const match = /^git version ((\d+)\.(\d+)\S*)/.exec(
+      result.code === 0 ? result.stdout.trim() : "",
+    );
+    if (!match)
+      return { ok: false, message: `Cannot read the Git version: ${output}` };
+    const [major, minor] = [Number(match[2]), Number(match[3])];
+    return major > MIN_GIT[0] || (major === MIN_GIT[0] && minor >= MIN_GIT[1])
+      ? { ok: true }
+      : {
+          ok: false,
+          message: `Git ${MIN_GIT.join(".")} or later is required; found ${match[1]}. Upgrade Git.`,
+        };
+  });
   await check("excludes", "warn", async () => {
     const warnings: string[] = [];
     for (const path of [

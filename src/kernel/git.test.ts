@@ -326,3 +326,63 @@ test("base artifact comparison reads a ref as well as a worktree", async (t) => 
     true,
   );
 });
+
+/** In seed: main changes `files.main`, branch `b` (from the initial commit) changes `files.b`. */
+async function divergedSetup(
+  t: TestContext,
+  files: { main: Record<string, string>; b: Record<string, string> },
+) {
+  const context = await setup(t);
+  const seed = join(context.dir, "seed");
+  const commit = async (changes: Record<string, string>, message: string) => {
+    for (const [path, text] of Object.entries(changes))
+      await fs.writeFile(join(seed, path), text);
+    await context.git(["add", "-A"], seed);
+    await context.git(["commit", "-m", message], seed);
+  };
+  await context.git(["checkout", "-b", "b"], seed);
+  await commit(files.b, "branch");
+  await context.git(["checkout", "main"], seed);
+  await commit(files.main, "main");
+  await context.git(["push", "origin", "main", "b"], seed);
+  await context.kernel.fetch();
+  return context;
+}
+
+test("mergeConflict returns undefined for a clean merge", async (t) => {
+  const { kernel } = await divergedSetup(t, {
+    main: { "a.txt": "main\n" },
+    b: { "b.txt": "branch\n" },
+  });
+  assert.equal(
+    await kernel.mergeConflict("origin/main", "origin/b"),
+    undefined,
+  );
+});
+
+test("mergeConflict lists conflicted files", async (t) => {
+  const { kernel, git } = await divergedSetup(t, {
+    main: { "z.txt": "main\n", "a.txt": "main\n" },
+    b: { "z.txt": "branch\n", "a.txt": "branch\n", "c.txt": "new\n" },
+  });
+  assert.deepEqual(await kernel.mergeConflict("origin/main", "origin/b"), {
+    baseSha: await git(["rev-parse", "origin/main"]),
+    headSha: await git(["rev-parse", "origin/b"]),
+    files: ["a.txt", "z.txt"],
+  });
+});
+
+test("mergeConflict throws for a missing ref", async (t) => {
+  const { kernel } = await setup(t);
+  await assert.rejects(
+    kernel.mergeConflict("origin/main", "origin/missing"),
+    CommandFailedError,
+  );
+});
+
+test("isAncestor follows commit reachability", async (t) => {
+  const { kernel, git, repoRoot } = await setup(t);
+  await git(["commit", "--allow-empty", "-m", "next"], repoRoot);
+  assert.equal(await kernel.isAncestor("main~1", "main"), true);
+  assert.equal(await kernel.isAncestor("main", "main~1"), false);
+});

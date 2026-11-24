@@ -5,7 +5,12 @@ import type { Host, Issue } from "../host/types.ts";
 import type { CommandRunner } from "../process/command.ts";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { KernelGit } from "./git.ts";
-import { collectFacts, provisionWorkspace, type Facts } from "./facts.ts";
+import {
+  collectFacts,
+  provisionWorkspace,
+  resolveBaseBranch,
+  type Facts,
+} from "./facts.ts";
 import { derivePhase, type Derived, type Phase } from "./phase.ts";
 import { acquireLock, LockHeldError, type IssueLock } from "./lock.ts";
 import type { WorkflowState } from "./workflow-state.ts";
@@ -42,6 +47,14 @@ import { newRunId } from "./names.ts";
 import { cleanupMergedIssue, type CleanupResult } from "./merged-cleanup.ts";
 import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
 import { explainMissingResult } from "./unfinished-runs.ts";
+import {
+  conflictResolutionGaps,
+  findConflictingPullRequests,
+  isRecordedAttempt,
+  recordConflictAttempt,
+  type ConflictCandidate,
+} from "./merge-conflicts.ts";
+import { errorMessage } from "./errors.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
 export type RunOnceOptions = {
@@ -121,13 +134,49 @@ export async function runOneIssue(
     });
   }
   await workflow.sync(options.issue);
-  const selection = await selectRunIssue({
-    host,
-    workflow,
-    ...(options.issue !== undefined ? { issue: options.issue } : {}),
-    warn: (issue, message) =>
-      output.stderr(`Warning: Issue #${issue}: ${message}`),
-  });
+  const issueDirOf = (n: number) =>
+    resolve(repoRoot, config.paths.runsDir, `issue-${n}`);
+  // Unattended runs resolve a conflicting done pull request before new work.
+  let conflictSelection: ConflictCandidate | undefined;
+  let conflictLock: IssueLock | undefined;
+  if (options.issue === undefined && !deps.human) {
+    const found = await searchConflicts(config, deps, issueDirOf);
+    // A stop request that arrived before the claim leaves every issue untouched.
+    if (found.length && !options.dryRun && options.signal?.aborted)
+      return { status: "no-work" };
+    for (const candidate of found) {
+      if (!options.dryRun) {
+        try {
+          conflictLock = await acquireLock(
+            join(issueDirOf(candidate.issue.number), "lock"),
+            { now },
+          );
+        } catch (error) {
+          if (!(error instanceof LockHeldError)) throw error;
+          output.stderr(
+            `Issue #${candidate.issue.number} conflict resolution skipped: another Run attempt is active`,
+          );
+          continue;
+        }
+      }
+      conflictSelection = candidate;
+      // The search kept only pull requests into the base branch.
+      const base = `origin/${candidate.pullRequest.baseBranch}`;
+      output.stderr(
+        `Issue #${candidate.issue.number}: pull request #${candidate.pullRequest.number} conflicts with ${base} in ${candidate.conflict.files.join(", ")}${options.dryRun ? "" : "; resolving it first"}.`,
+      );
+      break;
+    }
+  }
+  const selection = conflictSelection
+    ? { kind: "selected" as const, issue: conflictSelection.issue }
+    : await selectRunIssue({
+        host,
+        workflow,
+        ...(options.issue !== undefined ? { issue: options.issue } : {}),
+        warn: (issue, message) =>
+          output.stderr(`Warning: Issue #${issue}: ${message}`),
+      });
   if (selection.kind === "refused")
     return {
       status: "refused",
@@ -161,16 +210,18 @@ export async function runOneIssue(
     );
     return { status: "dry-run", issue: issueNumber, derived };
   }
-  const issueDir = resolve(
-    repoRoot,
-    config.paths.runsDir,
-    `issue-${issueNumber}`,
-  );
+  const issueDir = issueDirOf(issueNumber);
   // A stop request that arrived before the claim leaves the issue untouched.
-  if (options.signal?.aborted) return { status: "no-work" };
+  if (options.signal?.aborted) {
+    await conflictLock?.release();
+    return { status: "no-work" };
+  }
   let lock: IssueLock;
   try {
-    lock = heldLock ?? (await acquireLock(join(issueDir, "lock"), { now }));
+    lock =
+      heldLock ??
+      conflictLock ??
+      (await acquireLock(join(issueDir, "lock"), { now }));
   } catch (error) {
     if (error instanceof LockHeldError)
       return {
@@ -269,6 +320,7 @@ export async function runOneIssue(
       let sinceHuman = 0;
       let feedback: string | undefined;
       let resume: { facts: Facts; text: string } | undefined;
+      let firstDerivation = true;
       while (sinceHuman < MAX_SESSIONS_WITHOUT_HUMAN) {
         await snapshot.deriving();
         issue = await workflow.issue(issueNumber);
@@ -283,6 +335,23 @@ export async function runOneIssue(
         const facts = before.facts;
         displayFacts = facts;
         await snapshot.facts(facts);
+        // Only an open pull request into the base can have stopped conflicting;
+        // any other change goes through the normal derivation.
+        if (
+          firstDerivation &&
+          conflictSelection &&
+          !facts.mergeConflict &&
+          facts.pullRequest?.state === "open" &&
+          facts.pullRequest.baseBranch === facts.baseBranch
+        ) {
+          stop = {
+            label: "done",
+            summary: `Pull request #${conflictSelection.pullRequest.number} no longer conflicts with origin/${facts.baseBranch}; nothing to resolve.`,
+            warnings: [],
+          };
+          break;
+        }
+        firstDerivation = false;
         let decision = phaseDecision(facts, feedback, !!resume);
         if (
           deps.human &&
@@ -329,6 +398,20 @@ export async function runOneIssue(
           stop.summary = "planning complete";
           break;
         }
+        const conflict =
+          phase === "implementation" ? facts.mergeConflict : undefined;
+        const resolving =
+          conflict &&
+          (conflictSelection !== undefined ||
+            (await isRecordedAttempt(issueDir, conflict, output.stderr)))
+            ? conflict
+            : undefined;
+        if (resolving)
+          await recordConflictAttempt(issueDir, {
+            runId,
+            startedAt: now().toISOString(),
+            conflict: resolving,
+          });
         const { launch, launcher } = await preparePhasePrompt(
           config,
           deps,
@@ -338,6 +421,7 @@ export async function runOneIssue(
           facts,
           sessionNumber + 1,
           options.signal,
+          resolving !== undefined,
         );
         sessionNumber++;
         sinceHuman++;
@@ -414,6 +498,15 @@ export async function runOneIssue(
             logPath: launch.logPath,
             uncommitted: await git.hasUncommittedChanges(facts.worktree),
             unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
+            ...(conflict
+              ? {
+                  conflictGaps: await conflictResolutionGaps(
+                    git,
+                    conflict,
+                    after.facts,
+                  ),
+                }
+              : {}),
           },
           run,
           !!deps.human,
@@ -595,5 +688,33 @@ export async function runOneIssue(
     return outcome;
   } finally {
     if (lock !== heldLock) await lock.release();
+  }
+}
+
+/** Conflicting done pull requests; a search failure only reports. */
+async function searchConflicts(
+  config: PatchmillConfig,
+  deps: RunOnceDeps,
+  issueDir: (issue: number) => string,
+): Promise<ConflictCandidate[]> {
+  const report = deps.output.stderr;
+  try {
+    const candidates = (await deps.workflow.openIssues()).filter(
+      (issue) => issue.state === "open" && issue.status === "done",
+    );
+    if (!candidates.length) return [];
+    return await findConflictingPullRequests({
+      host: deps.host,
+      git: deps.git,
+      candidates,
+      baseBranch: await resolveBaseBranch({ ...deps, config }),
+      issueDir,
+      retryMinutes: config.run.conflictRetryMinutes,
+      now: deps.now,
+      report,
+    });
+  } catch (error) {
+    report(`Merge conflict check failed: ${errorMessage(error)}`);
+    return [];
   }
 }
