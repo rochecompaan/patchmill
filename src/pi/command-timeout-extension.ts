@@ -81,7 +81,8 @@ export function limitCommandTimeout(
   limits: CommandLimits,
 ): number | undefined {
   const cap = limits.maxSeconds > 0 ? limits.maxSeconds : Infinity;
-  // A model can send an explicit null for an omitted optional argument.
+  // Pi 1.6 validates arguments first and removes a null timeout. This guard
+  // keeps the default if a Pi version passes the model's raw null through.
   if (timeout === undefined || timeout === null)
     return limits.defaultSeconds > 0
       ? Math.min(limits.defaultSeconds, cap)

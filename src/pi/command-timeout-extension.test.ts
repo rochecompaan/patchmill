@@ -151,7 +151,7 @@ test("tool_call sets and caps bash timeouts and ignores other tools", async () =
     1500,
   );
   assert.equal((await call("bash", { command: "x", timeout: 30 })).timeout, 30);
-  // Some models send an explicit null for an omitted optional argument.
+  // Guard: Pi 1.6 removes a null timeout before tool_call, a later Pi may not.
   assert.equal(
     (await call("bash", { command: "x", timeout: null })).timeout,
     1200,
@@ -236,6 +236,13 @@ test("the real registry holds the entry under the session ID", async (t) => {
       extensions: [{ id: "probe", path: COMMAND_TIMEOUT_EXTENSION_PATH }],
     });
   assert.throws(again, /already registered/);
+  // A second load in the same session sees the real duplicate error and goes on.
+  const errors: string[] = [];
+  t.mock.method(console, "error", (...args: unknown[]) => {
+    errors.push(args.map(String).join(" "));
+  });
+  await load(on, registerRequiredChildExtensions).fire("session_start", {}, id);
+  assert.equal(errors.length, 1);
   await pi.fire("session_shutdown", {}, id);
   const registration = again();
   t.after(() => registration.dispose());
