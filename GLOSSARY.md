@@ -188,6 +188,17 @@ configured default, and a longer request gets the configured cap. When it fires,
 Pi stops that command, and the agent continues. _Avoid_: Session timeout, stall
 stop
 
+**Stall**: A Command timeout or a Stall stop in an unattended implementation
+session or one of its subagent sessions. A few Stalls are recoverable. The
+configured maximum, or a second Stall of the same command, stops the Run attempt
+at Needs Info. _Avoid_: Hang, timeout
+
+**Stall stop**: Patchmill stops the current turn of an unattended implementation
+session after the session and its subagent sessions show no activity for the
+configured time, outside a running `bash` call. Unless it is the last allowed
+Stall, the agent continues in the same session. _Avoid_: Session timeout,
+Command timeout
+
 **Budget window**: A daily or weekly period in the configured timezone. All
 committed model usage that occurred in the period counts toward its selection
 limits. _Avoid_: Billing period
