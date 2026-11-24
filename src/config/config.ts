@@ -23,7 +23,14 @@ export type PatchmillConfig = {
   };
   git: { baseBranch: string | null };
   skills: { triage: string; planning: string; implementation: string };
-  pi: { agentDir: string; timeoutMinutes: number };
+  pi: {
+    agentDir: string;
+    timeoutMinutes: number;
+    /** Default timeout of an agent `bash` call. 0 turns it off. */
+    commandTimeoutMinutes: number;
+    /** Longest timeout of an agent `bash` call. 0 turns it off. */
+    maxCommandTimeoutMinutes: number;
+  };
   workflow: {
     stateTracking: "labels" | "local";
     specApproval: { required: boolean };
@@ -58,7 +65,12 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
     planning: ".patchmill/skills/patchmill-planning",
     implementation: ".patchmill/skills/patchmill-implementation",
   },
-  pi: { agentDir: ".patchmill/pi-agent", timeoutMinutes: 90 },
+  pi: {
+    agentDir: ".patchmill/pi-agent",
+    timeoutMinutes: 90,
+    commandTimeoutMinutes: 20,
+    maxCommandTimeoutMinutes: 25,
+  },
   workflow: {
     stateTracking: "labels",
     specApproval: { required: false },
@@ -93,6 +105,8 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "skills.implementation", kind: "string" },
   { path: "pi.agentDir", kind: "string" },
   { path: "pi.timeoutMinutes", kind: "number" },
+  { path: "pi.commandTimeoutMinutes", kind: "number" },
+  { path: "pi.maxCommandTimeoutMinutes", kind: "number" },
   { path: "workflow.stateTracking", kind: "string" },
   { path: "workflow.specApproval.required", kind: "boolean" },
   { path: "workflow.planApproval.required", kind: "boolean" },
@@ -124,6 +138,34 @@ function checkRun(run: RunConfig) {
         `Invalid value for run.${key}.maxSeconds: it must be at least run.${key}.initialSeconds`,
       );
   }
+}
+
+/** Pi rejects a `bash` timeout above 2^31 - 1 ms. */
+const MAX_COMMAND_TIMEOUT_MINUTES = 35791;
+
+function checkPi(pi: PatchmillConfig["pi"]) {
+  for (const key of [
+    "commandTimeoutMinutes",
+    "maxCommandTimeoutMinutes",
+  ] as const) {
+    const value = pi[key];
+    if (
+      !Number.isFinite(value) ||
+      value < 0 ||
+      value > MAX_COMMAND_TIMEOUT_MINUTES
+    )
+      throw new ConfigError(
+        `Invalid value for pi.${key}: use a number from 0 to ${MAX_COMMAND_TIMEOUT_MINUTES}`,
+      );
+  }
+  if (
+    pi.commandTimeoutMinutes > 0 &&
+    pi.maxCommandTimeoutMinutes > 0 &&
+    pi.commandTimeoutMinutes > pi.maxCommandTimeoutMinutes
+  )
+    throw new ConfigError(
+      "Invalid value for pi.commandTimeoutMinutes: it must be at most pi.maxCommandTimeoutMinutes, or set one of them to 0",
+    );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -193,6 +235,7 @@ export function parseConfig(raw: unknown): PatchmillConfig {
   }
   walk(raw, config, "");
   checkRun(config.run);
+  checkPi(config.pi);
   // Preserve diagnostic priority independently of status display order.
   const labelKeys = Object.keys(DEFAULT_CONFIG.labels);
   const keys = [...WORKFLOW_STATUSES].sort(

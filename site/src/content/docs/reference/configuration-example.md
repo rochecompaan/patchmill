@@ -28,7 +28,12 @@ Unknown keys fail by name. Copy only the values that your repository needs.
     "planning": ".patchmill/skills/patchmill-planning",
     "implementation": ".patchmill/skills/patchmill-implementation"
   },
-  "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
+  "pi": {
+    "agentDir": ".patchmill/pi-agent",
+    "timeoutMinutes": 90,
+    "commandTimeoutMinutes": 20,
+    "maxCommandTimeoutMinutes": 25
+  },
   "workflow": {
     "specApproval": { "required": false },
     "planApproval": { "required": false }
