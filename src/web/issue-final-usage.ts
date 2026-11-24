@@ -59,15 +59,18 @@ export async function issueFinalUsage(
       runIds: records.map((r) => r.runId),
       records,
     });
-    return report
-      ? {
-          tokens: report.total.inputTokens + report.total.outputTokens,
-          cost:
-            report.total.costUsd === undefined
-              ? null
-              : { amount: report.total.costUsd.toFixed(4), currency: "USD" },
-        }
-      : null;
+    if (!report) return null;
+    const { costUsd, unpriced: anyUnpriced } = report.total;
+    // Unavailable wins over Unpriced, as in the PR cost table.
+    const unpriced = anyUnpriced === true && costUsd !== undefined;
+    return {
+      tokens: report.total.inputTokens + report.total.outputTokens,
+      cost:
+        costUsd === undefined || (unpriced && costUsd === 0)
+          ? null
+          : { amount: costUsd.toFixed(4), currency: "USD", partial: unpriced },
+      unpriced,
+    };
   } catch {
     return null;
   }

@@ -158,7 +158,10 @@ The console and issue comment continue to show the current attempt's cost.
 Prompt tokens include uncached input, cache reads, and cache writes. The table
 includes parent and subagent sessions. Copied assistant entries with the same ID
 and usage count once. Dollar estimates use Pi's recorded prices, not a billing
-statement. Missing prices leave dollar totals unavailable, not zero.
+statement. Missing prices leave dollar totals unavailable, not zero. Each
+subagent child counts once, under its own model. Usage that Pi recorded at a
+zero price, for example for a subscription-billed model, shows as "Unpriced",
+and a dollar total that leaves it out shows as "(partial)".
 
 Patchmill replaces only the section between its cost markers. The rest of the PR
 body stays unchanged. If usage cannot be read or publication fails, Patchmill

@@ -97,11 +97,10 @@ export async function readIssueCostReport(
       throw new Error(`Session phase metadata unavailable: ${sessionRoot}`);
     for (const [index, session] of run.sessions.entries()) {
       const dir = join(issueDir, run.runId, "sessions", String(index + 1));
-      const records = await readSessionUsage(dir);
+      // Deduplicates against earlier sessions, including forked copies.
+      const records = await readSessionUsage(dir, seen);
       if (!records) throw new Error(`Session usage unavailable: ${dir}`);
       for (const record of records) {
-        if (record.key && seen.has(record.key)) continue;
-        if (record.key) seen.add(record.key);
         const key = JSON.stringify([session.phase, record.model]);
         let group = groups.get(key);
         if (!group) {

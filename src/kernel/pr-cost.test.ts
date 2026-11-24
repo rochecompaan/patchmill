@@ -66,3 +66,49 @@ test("unbalanced, reversed, or repeated cost markers cannot overwrite the PR", (
     );
   }
 });
+
+test("unpriced rows and partial totals do not claim a complete dollar figure", () => {
+  const mixed: IssueCostReport = {
+    rows: [
+      {
+        phase: "planning",
+        model: "claude-opus-5-5",
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 20,
+          costUsd: 0,
+          unpriced: true,
+        },
+      },
+      {
+        phase: "planning",
+        model: "gpt-6.1-sol",
+        usage: { inputTokens: 200, outputTokens: 30, costUsd: 0.5522 },
+      },
+    ],
+    total: {
+      inputTokens: 1200,
+      outputTokens: 50,
+      costUsd: 0.5522,
+      unpriced: true,
+    },
+  };
+  const body = upsertRunCostSection("", mixed);
+  assert.ok(
+    body.includes("| Planning | claude-opus-5-5 | 1,000 | 20 | Unpriced |"),
+  );
+  assert.ok(body.includes("| Planning | gpt-6.1-sol | 200 | 30 | $0.5522 |"));
+  assert.ok(
+    body.includes(
+      "| **Total** |  | **1,200** | **50** | **$0.5522 (partial)** |",
+    ),
+  );
+  assert.ok(
+    body.includes("Unpriced means that Pi recorded tokens at a zero price"),
+  );
+  const unpriced = upsertRunCostSection("", {
+    rows: [mixed.rows[0]!],
+    total: mixed.rows[0]!.usage,
+  });
+  assert.ok(unpriced.includes("| **Unpriced** |"));
+});

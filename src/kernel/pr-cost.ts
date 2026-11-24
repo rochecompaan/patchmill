@@ -4,7 +4,7 @@ import {
   type CostRun,
   type IssueCostReport,
 } from "./issue-cost.ts";
-import type { PiUsage } from "./pi-cost.ts";
+import { costText, type PiUsage } from "./pi-cost.ts";
 import { findPullRequest } from "./pull-request.ts";
 
 const START = "<!-- patchmill-run-cost:start -->";
@@ -32,9 +32,7 @@ function row(
     model,
     usage.inputTokens.toLocaleString("en-US"),
     usage.outputTokens.toLocaleString("en-US"),
-    usage.costUsd === undefined
-      ? "Unavailable"
-      : `$${usage.costUsd.toFixed(4)}`,
+    costText(usage, 4) ?? "Unavailable",
   ];
   return `| ${cells.map((cell) => (total && cell ? `**${cell}**` : cell)).join(" | ")} |`;
 }
@@ -59,7 +57,7 @@ export function upsertRunCostSection(
     ),
     row("Total", "", report.total, true),
     "",
-    "_Includes all retained local runs for this issue, including specification and planning PRs. Prompt tokens include uncached input, cache reads, and cache writes. Estimated cost uses Pi's recorded model pricing and includes parent and subagent sessions._",
+    "_Includes all retained local runs for this issue, including specification and planning PRs. Prompt tokens include uncached input, cache reads, and cache writes. Estimated cost uses Pi's recorded model pricing and includes parent and subagent sessions. Unpriced means that Pi recorded tokens at a zero price, for example for a subscription-billed model. A partial cost leaves out unpriced usage. Unavailable means that Pi recorded no cost for some usage._",
     "",
     END,
   ].join("\n");
