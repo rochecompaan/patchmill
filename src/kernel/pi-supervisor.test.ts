@@ -636,24 +636,36 @@ for (const sink of ["stdout", "stderr"]) {
 }
 
 test("descendantGroups lists the group of a detached grandchild", async (t) => {
+  const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-groups-"));
+  const pidFile = join(dir, "grandchild.pid");
+  // The grandchild writes its own pid, so no output parsing or spawn timing
+  // decides what the test compares.
+  const grandchild = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
   const child = spawn(
     process.execPath,
     [
       "-e",
-      "const c=require('node:child_process').spawn('sleep',['30'],{detached:true,stdio:'ignore'});console.log(c.pid);setInterval(()=>{},1000)",
+      `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(grandchild)}], { detached: true, stdio: "ignore" }); setInterval(() => {}, 1000);`,
     ],
-    { stdio: ["ignore", "pipe", "ignore"] },
+    { stdio: "ignore" },
   );
-  const pid = Number(
-    await new Promise<string>((done) =>
-      child.stdout!.once("data", (chunk) => done(String(chunk))),
-    ),
-  );
-  t.after(() => {
+  let pid = 0;
+  t.after(async () => {
     child.kill("SIGKILL");
-    if (signalGroup(pid, 0)) signalGroup(pid, "SIGKILL");
+    if (pid && signalGroup(pid, 0)) signalGroup(pid, "SIGKILL");
+    await fs.rm(dir, { recursive: true, force: true });
   });
-  const groups = await descendantGroups(child.pid!);
-  assert.ok(groups.includes(pid), JSON.stringify(groups));
+  let groups: number[] = [];
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    pid = Number(await fs.readFile(pidFile, "utf8").catch(() => "0"));
+    if (pid) groups = await descendantGroups(child.pid!);
+    if (pid && groups.includes(pid)) break;
+    assert.ok(
+      Date.now() < deadline,
+      `pid ${pid}, groups ${JSON.stringify(groups)}`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
   assert.ok(!groups.includes(process.pid));
 });

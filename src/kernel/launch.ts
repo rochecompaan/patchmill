@@ -73,7 +73,6 @@ export function rpcModeLauncher(options: {
 }): PhaseLauncher {
   return async (launch) => {
     let reminded = false;
-    let blocked = false;
     const rpc: PiRpcOptions = {
       command: options.command,
       cwd: launch.worktree,
@@ -94,7 +93,7 @@ export function rpcModeLauncher(options: {
       // Keep the agent protocol in the logs, not the operator's terminal.
       onOutput: () => {},
       remind: (stdout) => {
-        if (blocked || hasResultBlock(stdout)) return undefined;
+        if (hasResultBlock(stdout)) return undefined;
         reminded = true;
         return RESULT_REMINDER;
       },
@@ -110,10 +109,7 @@ export function rpcModeLauncher(options: {
     const supervised = await superviseStalls({
       rpc,
       limits: options.stall.limits,
-      onStall: async (notice) => {
-        if (notice.action === "blocked") blocked = true;
-        await launch.onStall?.(notice);
-      },
+      onStall: launch.onStall ?? (async () => {}),
     });
     const { session } = supervised;
     return {

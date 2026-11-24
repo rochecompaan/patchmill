@@ -17,6 +17,25 @@ export async function writeStallBlock(
   );
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** The fields that the resume fact reads. */
+function isStall(value: unknown): value is Stall {
+  return (
+    isObject(value) &&
+    Array.isArray(value.calls) &&
+    value.calls.every(
+      (call) =>
+        isObject(call) &&
+        typeof call.tool === "string" &&
+        typeof call.session === "string" &&
+        (call.command === undefined || typeof call.command === "string") &&
+        (call.run === undefined || typeof call.run === "string"),
+    )
+  );
+}
+
 /** The Stalls of the record, or undefined when it is missing or broken. */
 export async function readStallBlock(
   issueDir: string,
@@ -26,8 +45,8 @@ export async function readStallBlock(
       await fs.readFile(join(issueDir, STALL_BLOCK_FILE), "utf8"),
     );
     const stalls = (record as { stalls?: unknown } | null)?.stalls;
-    return Array.isArray(stalls) && stalls.length
-      ? (stalls as Stall[])
+    return Array.isArray(stalls) && stalls.length && stalls.every(isStall)
+      ? stalls
       : undefined;
   } catch {
     return undefined;

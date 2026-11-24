@@ -78,9 +78,11 @@ export async function superviseStalls(options: {
     decision: Extract<StallDecision, { kind: "block" }>,
   ) => {
     block = { reason: decision.reason };
+    // Stop first: an interrupted session sends no Result reminder.
+    const stopping = session.stop();
     const last = decision.stalls.at(-1);
     if (last) await onStall({ stall: last, action: "blocked" });
-    await session.stop();
+    await stopping;
   };
 
   const restart = async (prompt: string) => {
