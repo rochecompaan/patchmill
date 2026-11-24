@@ -33,6 +33,22 @@ flowchart TD
     class s9 done
 ```
 
+## Stations
+
+| #   | Station               | Code                                                     | What happens                                                                                                           |
+| --- | --------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 0   | Commissioning         | `init`, `auth`, `labels setup`, `doctor`                 | You set up the factory once.                                                                                           |
+| 1   | Receiving dock        | host CLI (`gh` / `tea`)                                  | Open issues arrive as raw material.                                                                                    |
+| 2   | Triage                | `src/kernel/triage.ts`, `patchmill-issue-triage`         | Each issue gets `agent-ready`, `needs-info`, or `agent-unsuitable`. Triage adds blocker links.                         |
+| 3   | Pre-shift maintenance | `sweepMergedIssues`, `src/kernel/merge-conflicts.ts`     | Patchmill cleans up merged issues. A `done` pull request that now conflicts with the base is fixed before new work.    |
+| 4   | Dispatch and claim    | `src/kernel/issue-selection.ts`, `src/kernel/lock.ts`    | Patchmill picks the oldest ready issue with all blockers closed, locks it, and labels it `in-progress`.                |
+| 5   | Foreman               | `src/kernel/facts.ts`, `src/kernel/phase.ts`             | `derivePhase` reads git and the host to choose the next step. It keeps no remembered state.                            |
+| 6   | Design office         | `src/kernel/planning-workspace.ts`, `patchmill-planning` | The agent writes the spec, then the plan. Each optional planning gate opens a planning pull request.                   |
+| 7   | Assembly line         | `patchmill-implementation`                               | The agent prepares, builds, gets a reviewer subagent review, opens a draft pull request, and repairs CI at most twice. |
+| 8   | Final inspection      | `src/kernel/verify.ts`                                   | The kernel checks the pull request itself. The agent's "done" is not enough.                                           |
+| 9   | Shipping              | `src/kernel/publish.ts`                                  | Patchmill labels the issue `agent-done`, posts a comment with the cost, and writes `result.json`.                      |
+| 10  | Customer acceptance   | none                                                     | You review and merge. `src/kernel/merged-cleanup.ts` then removes the worktrees.                                       |
+
 ## Detailed view
 
 ```mermaid
@@ -187,22 +203,6 @@ flowchart TD
 
 Yellow nodes wait for a human. Red nodes stop the run. Green nodes are the
 finished product.
-
-## Stations
-
-| #   | Station               | Code                                                     | What happens                                                                                                           |
-| --- | --------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 0   | Commissioning         | `init`, `auth`, `labels setup`, `doctor`                 | You set up the factory once.                                                                                           |
-| 1   | Receiving dock        | host CLI (`gh` / `tea`)                                  | Open issues arrive as raw material.                                                                                    |
-| 2   | Triage                | `src/kernel/triage.ts`, `patchmill-issue-triage`         | Each issue gets `agent-ready`, `needs-info`, or `agent-unsuitable`. Triage adds blocker links.                         |
-| 3   | Pre-shift maintenance | `sweepMergedIssues`, `src/kernel/merge-conflicts.ts`     | Patchmill cleans up merged issues. A `done` pull request that now conflicts with the base is fixed before new work.    |
-| 4   | Dispatch and claim    | `src/kernel/issue-selection.ts`, `src/kernel/lock.ts`    | Patchmill picks the oldest ready issue with all blockers closed, locks it, and labels it `in-progress`.                |
-| 5   | Foreman               | `src/kernel/facts.ts`, `src/kernel/phase.ts`             | `derivePhase` reads git and the host to choose the next step. It keeps no remembered state.                            |
-| 6   | Design office         | `src/kernel/planning-workspace.ts`, `patchmill-planning` | The agent writes the spec, then the plan. Each optional planning gate opens a planning pull request.                   |
-| 7   | Assembly line         | `patchmill-implementation`                               | The agent prepares, builds, gets a reviewer subagent review, opens a draft pull request, and repairs CI at most twice. |
-| 8   | Final inspection      | `src/kernel/verify.ts`                                   | The kernel checks the pull request itself. The agent's "done" is not enough.                                           |
-| 9   | Shipping              | `src/kernel/publish.ts`                                  | Patchmill labels the issue `agent-done`, posts a comment with the cost, and writes `result.json`.                      |
-| 10  | Customer acceptance   | none                                                     | You review and merge. `src/kernel/merged-cleanup.ts` then removes the worktrees.                                       |
 
 ## Two loops
 
