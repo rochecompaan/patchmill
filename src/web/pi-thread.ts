@@ -1,4 +1,5 @@
 import type { ThreadEvent, TextBlock } from "./api-types.ts";
+import { providerFailureEntry } from "../kernel/provider-failure.ts";
 import { object, timestamp } from "./run-files.ts";
 
 export function text(content: unknown, attachmentNotice = false): string {
@@ -91,8 +92,8 @@ export function projectPiThread(input: {
         typeof m.content === "string"
           ? [{ type: "text", text: m.content }]
           : m.content;
-      if (!Array.isArray(content)) continue;
-      for (const [blockIndex, b] of content.entries()) {
+      const parts = Array.isArray(content) ? content : [];
+      for (const [blockIndex, b] of parts.entries()) {
         if (!object(b)) continue;
         const blockId = `${id}:${blockIndex}`;
         if (b.type === "text" && typeof b.text === "string" && b.text)
@@ -133,6 +134,9 @@ export function projectPiThread(input: {
           });
         }
       }
+      const failure = providerFailureEntry(m, "history");
+      if (failure)
+        events.push({ id: `${id}:error`, at, kind: "error", ...failure });
     }
   }
   return events;

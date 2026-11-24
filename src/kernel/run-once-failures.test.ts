@@ -558,3 +558,49 @@ for (const mode of [
     assert.equal(updates[1]!.runId, updates[0]!.runId);
   });
 }
+test("a phase that ends with a Provider failure names it", async (t) => {
+  const errorMessage =
+    "Your authentication token has expired. Please try refreshing it.";
+  const c = await setupRun(t, [
+    {
+      stdout: "",
+      stopReason: "error",
+      errorMessage,
+      exitCode: 1,
+      sessionEntries: [
+        {
+          type: "message",
+          timestamp: new Date().toISOString(),
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage,
+          },
+        },
+      ],
+    },
+  ]);
+  await c.seed({ [spec]: "spec", [plan]: "plan" });
+  await c.mutate((s) => s.issues[0]!.labels.push("spec-approved"));
+  await c.run();
+  const issue = c.host.state().issues[0]!;
+  assert.ok(issue.labels.includes("needs-info"));
+  const body = issue.comments[0]!.body;
+  assert.ok(
+    body.includes(
+      "The model request failed: the provider refused the sign-in. Run patchmill auth in the repository, then run patchmill run-once --issue 9.",
+    ),
+    body,
+  );
+  assert.match(body, /Log:/);
+  assert.match(body, /Exit code:/);
+  assert.doesNotMatch(body, /authentication token/);
+  assert.ok(
+    c.output
+      .join("\n")
+      .includes(
+        "The model request failed: Your authentication token has expired.",
+      ),
+  );
+});
