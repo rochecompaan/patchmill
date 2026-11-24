@@ -11,18 +11,19 @@ code or skill that runs it.
 config:
   flowchart:
     wrappingWidth: 420
+  themeCSS: ".nodeLabel { display: inline-block; width: 380px; }"
 ---
 flowchart TD
     s0["🏗️ <b>0 · Commissioning</b><br/>Set up config, skills, model, and labels once"]
     s1["📦 <b>1 · Receiving Dock</b><br/>Open issues arrive from the issue tracker"]
-    s2["🔍 <b>2 · Triage</b><br/>The agent labels each issue ready, needs-info, or unsuitable"]
-    s3["🧹 <b>3 · Pre-shift Maintenance</b><br/>Clean up merged work and fix conflicting PRs first"]
-    s4["📋 <b>4 · Dispatch & Claim</b><br/>Pick the oldest unblocked ready issue and lock it"]
+    s2["🔍 <b>2 · Triage</b><br/>Label issues ready, needs-info, or unsuitable"]
+    s3["🧹 <b>3 · Pre-shift Maintenance</b><br/>Clean up merged work, fix conflicting PRs"]
+    s4["📋 <b>4 · Dispatch & Claim</b><br/>Claim the oldest unblocked ready issue"]
     s5["🧭 <b>5 · Foreman</b><br/>Read git and the host to choose the next step"]
-    s6["📐 <b>6 · Design Office</b><br/>The agent writes the spec and the implementation plan"]
-    s7["🔩 <b>7 · Assembly Line</b><br/>The agent writes code and tests, gets a review, and passes CI"]
-    s8["✅ <b>8 · Final Inspection</b><br/>The kernel checks that the PR is real, ready, and closes the issue"]
-    s9["🚚 <b>9 · Shipping</b><br/>Label the issue agent-done and post a summary with the cost"]
+    s6["📐 <b>6 · Design Office</b><br/>The agent writes the spec and the plan"]
+    s7["🔩 <b>7 · Assembly Line</b><br/>The agent builds, tests, reviews, and passes CI"]
+    s8["✅ <b>8 · Final Inspection</b><br/>The kernel verifies the PR closes the issue"]
+    s9["🚚 <b>9 · Shipping</b><br/>Label agent-done, post summary and cost"]
     s10["👤 <b>10 · Customer Acceptance</b><br/>You review and merge, then Patchmill cleans up"]
 
     s0 --> s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9 --> s10
