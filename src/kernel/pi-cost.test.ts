@@ -458,3 +458,30 @@ test("child session and transcript below the session directory count once", asyn
   );
   assert.deepEqual(await sumSessionUsage(dir), unpriced);
 });
+
+test("child usage counts when the tool result records no aggregate", async (t) => {
+  const dir = await sessions(t);
+  await fs.writeFile(
+    join(dir, "usage.jsonl"),
+    toolResult(
+      {
+        results: [
+          { model: "claude-bridge/child:high", usage: childUsage(4, 2, 0) },
+        ],
+      },
+      undefined,
+    ),
+  );
+  assert.deepEqual(
+    (await readSessionUsage(dir))?.map(({ model, usage }) => ({
+      model,
+      usage,
+    })),
+    [
+      {
+        model: "child",
+        usage: { inputTokens: 4, outputTokens: 2, costUsd: 0, unpriced: true },
+      },
+    ],
+  );
+});

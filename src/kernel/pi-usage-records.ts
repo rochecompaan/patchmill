@@ -119,11 +119,9 @@ export function parseUsageRecord(record: unknown): ParsedRecord {
   // A transcript record repeats its usage at the top level and in `message`.
   const container = message && "usage" in message ? message : top;
   const own = parseUsage(container.usage);
-  if (
-    message &&
-    container === message &&
-    SUBAGENT_TOOLS.has(message.toolName as string)
-  ) {
+  // The tool name alone marks a tool result; its aggregate can be absent.
+  if (message && SUBAGENT_TOOLS.has(message.toolName as string)) {
+    const aggregate = parseUsage(message.usage);
     for (const [index, entry] of childEntries(message).entries()) {
       const child = object(entry);
       const files = filesOf(child);
@@ -139,8 +137,8 @@ export function parseUsageRecord(record: unknown): ParsedRecord {
       });
     }
     // The aggregate counts only when pi-subagents recorded no child usage.
-    if (result.children.length === 0 && own)
-      result.own.push(keyed(top.id, UNKNOWN_MODEL, own));
+    if (result.children.length === 0 && aggregate)
+      result.own.push(keyed(top.id, UNKNOWN_MODEL, aggregate));
     return result;
   }
   if (own)
