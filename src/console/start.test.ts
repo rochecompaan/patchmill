@@ -3,7 +3,9 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { PatchmillConfig } from "../config/config.ts";
+import { parseConfig, type PatchmillConfig } from "../config/config.ts";
+import { COMMAND_TIMEOUT_EXTENSION_PATH } from "../pi/command-timeout-extension.ts";
+import { resolvePiSubagentsPackageRoot } from "../pi/pi-subagents-package.ts";
 import type { RunOnceDeps } from "../kernel/run-once.ts";
 import { acquireConsoleLock, CONSOLE_SESSION_BUSY } from "./console-lock.ts";
 import { setupRun } from "../../test-support/run-once-fixture.ts";
@@ -11,6 +13,7 @@ import { fakeHuman } from "../../test-support/fake-human.ts";
 import {
   collectConsoleDiagnostics,
   createStartRun,
+  prepareConsoleExtensions,
   runConsoleRuntime,
   startConsole,
 } from "./start.ts";
@@ -176,4 +179,22 @@ test("startConsole refuses a Console session that another process holds", async 
   assert.deepEqual(stderr, [CONSOLE_SESSION_BUSY(7)]);
   const files = await readdir(join(root, ".patchmill/runs/issue-7/console"));
   assert.deepEqual(files, ["lock"]);
+});
+
+test("prepareConsoleExtensions sets the configured limits and lists the extension", () => {
+  const env: NodeJS.ProcessEnv = {};
+  const paths = prepareConsoleExtensions(
+    parseConfig({
+      pi: { commandTimeoutMinutes: 2, maxCommandTimeoutMinutes: 0 },
+    }),
+    env,
+  );
+  assert.deepEqual(paths, [
+    resolvePiSubagentsPackageRoot(),
+    COMMAND_TIMEOUT_EXTENSION_PATH,
+  ]);
+  assert.deepEqual(env, {
+    PATCHMILL_COMMAND_TIMEOUT_SECONDS: "120",
+    PATCHMILL_MAX_COMMAND_TIMEOUT_SECONDS: "0",
+  });
 });

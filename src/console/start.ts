@@ -11,6 +11,11 @@ import type { PatchmillConfig } from "../config/config.ts";
 import { provisionAgentDir } from "../cli/commands/init/agent-dir.ts";
 import { runOneIssue, type RunOnceDeps } from "../kernel/run-once.ts";
 import { consoleSkillPaths } from "./skills.ts";
+import {
+  COMMAND_TIMEOUT_EXTENSION_PATH,
+  commandLimits,
+  commandLimitsEnv,
+} from "../pi/command-timeout-extension.ts";
 import { resolvePiSubagentsPackageRoot } from "../pi/pi-subagents-package.ts";
 import { createConsoleSessionHost } from "./session-host.ts";
 import { openIssueConsoleSession } from "./console-session.ts";
@@ -35,6 +40,19 @@ export function collectConsoleDiagnostics(
       message: `Extension package "${path}": ${warning}`,
     })),
   ];
+}
+
+/**
+ * Sets the Command timeout limits on `env`, so that the Console session and
+ * the pi-subagents runners it starts read them, and returns the extension
+ * paths of the Console session.
+ */
+export function prepareConsoleExtensions(
+  config: PatchmillConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  Object.assign(env, commandLimitsEnv(commandLimits(config.pi)));
+  return [resolvePiSubagentsPackageRoot(), COMMAND_TIMEOUT_EXTENSION_PATH];
 }
 
 export async function runConsoleRuntime(
@@ -125,6 +143,7 @@ async function openConsole(
   await provisionAgentDir(repoRoot, config.pi.agentDir, skillPaths);
   const agentDir = resolve(repoRoot, config.pi.agentDir);
   process.env.PI_CODING_AGENT_DIR = agentDir;
+  const additionalExtensionPaths = prepareConsoleExtensions(config);
   const sessionManager = await openIssueConsoleSession(
     repoRoot,
     config.paths.runsDir,
@@ -150,7 +169,7 @@ async function openConsole(
         cwd: target.cwd,
         agentDir: target.agentDir,
         resourceLoaderOptions: {
-          additionalExtensionPaths: [resolvePiSubagentsPackageRoot()],
+          additionalExtensionPaths,
           extensionFactories: [{ name: "patchmill", factory: host.factory }],
           additionalSkillPaths: skillPaths,
         },

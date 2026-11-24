@@ -14,6 +14,7 @@ import type {
   InteractivePi,
   InteractivePiOptions,
 } from "../../../kernel/pi-rpc-interactive.ts";
+import { COMMAND_TIMEOUT_EXTENSION_PATH } from "../../../pi/command-timeout-extension.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import { createSessionLauncher } from "./session-launcher.ts";
 
@@ -25,7 +26,9 @@ async function setup(t: TestContext, prepared: InteractiveStart) {
   const root = await mkdtemp(join(tmpdir(), "patchmill-launcher-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const started: InteractivePiOptions[] = [];
-  const config = parseConfig({});
+  const config = parseConfig({
+    pi: { commandTimeoutMinutes: 2, maxCommandTimeoutMinutes: 0 },
+  });
   const launch = createSessionLauncher({
     config,
     repoRoot: root,
@@ -131,8 +134,11 @@ test("a ready start passes the console session file, skills, extensions and env"
   assert.deepEqual(options.extensionPaths, [
     resolvePiSubagentsPackageRoot(),
     WEB_SESSION_EXTENSION_PATH,
+    COMMAND_TIMEOUT_EXTENSION_PATH,
   ]);
   assert.deepEqual(options.env, {
+    PATCHMILL_COMMAND_TIMEOUT_SECONDS: "120",
+    PATCHMILL_MAX_COMMAND_TIMEOUT_SECONDS: "0",
     PATCHMILL_WEB_SESSION_REPO: f.root,
     PATCHMILL_WEB_SESSION_ISSUE: "7",
   });

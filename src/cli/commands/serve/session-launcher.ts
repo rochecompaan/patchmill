@@ -9,6 +9,11 @@ import { consoleSkillPaths } from "../../../console/skills.ts";
 import { WEB_SESSION_EXTENSION_PATH } from "../../../console/web-session-extension.ts";
 import { prepareInteractiveRun } from "../../../kernel/interactive-start.ts";
 import { startInteractivePi } from "../../../kernel/pi-rpc-interactive.ts";
+import {
+  COMMAND_TIMEOUT_EXTENSION_PATH,
+  commandLimits,
+  commandLimitsEnv,
+} from "../../../pi/command-timeout-extension.ts";
 import { resolvePiSubagentsPackageRoot } from "../../../pi/pi-subagents-package.ts";
 import type { CommandRunner } from "../../../process/command.ts";
 import type { SessionLauncher } from "../../../web/session/types.ts";
@@ -74,8 +79,10 @@ export function createSessionLauncher(input: {
       extensionPaths: [
         resolvePiSubagentsPackageRoot(),
         WEB_SESSION_EXTENSION_PATH,
+        COMMAND_TIMEOUT_EXTENSION_PATH,
       ],
       env: {
+        ...commandLimitsEnv(commandLimits(config.pi)),
         PATCHMILL_WEB_SESSION_REPO: repoRoot,
         PATCHMILL_WEB_SESSION_ISSUE: String(issue),
       },

@@ -5,6 +5,10 @@ import type {
   BlockAnswer,
 } from "../src/kernel/human-channel.ts";
 import { rpcModeLauncher } from "../src/kernel/launch.ts";
+import {
+  commandLimits,
+  commandLimitsEnv,
+} from "../src/pi/command-timeout-extension.ts";
 import type { Scenario } from "./run-once-fixture.ts";
 
 export function fakeHuman(
@@ -23,6 +27,7 @@ export function fakeHuman(
     command: c.deps.piCommand,
     agentDir: resolve(c.repoRoot, c.config.pi.agentDir),
     extensionPaths: c.deps.extensionPaths,
+    env: commandLimitsEnv(commandLimits(c.config.pi)),
   });
   return {
     calls,
