@@ -3,7 +3,13 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { costLine, costText, sumSessionUsage, totalUsage } from "./pi-cost.ts";
+import {
+  costLine,
+  costText,
+  readSessionUsage,
+  sumSessionUsage,
+  totalUsage,
+} from "./pi-cost.ts";
 
 async function sessions(t: TestContext) {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-cost-"));
@@ -212,4 +218,144 @@ test("cost text distinguishes unavailable, unpriced, partial, and priced", () =>
     "$0.5522 (partial)",
   );
   assert.equal(costText({ ...tokens, costUsd: 0.1 }, 4), "$0.1000");
+});
+
+function toolResult(
+  details: Record<string, unknown>,
+  usage: Record<string, unknown> | undefined,
+  toolName = "subagent",
+  id = "tool",
+) {
+  return JSON.stringify({
+    type: "message",
+    id,
+    message: {
+      role: "toolResult",
+      toolName,
+      ...(usage ? { usage } : {}),
+      details,
+    },
+  });
+}
+
+const childUsage = (input: number, output: number, cost: number) => ({
+  input,
+  output,
+  cacheRead: 0,
+  cacheWrite: 0,
+  cost,
+});
+
+test("child models drop the provider and thinking level only", async (t) => {
+  const dir = await sessions(t);
+  for (const [model, expected] of [
+    ["claude-bridge/claude-opus-5-5:high", "claude-opus-5-5"],
+    ["openrouter/anthropic/claude-x:max", "anthropic/claude-x"],
+    ["ollama/llama3:8b", "llama3:8b"],
+    ["openrouter/x:free", "x:free"],
+    ["gpt-5", "gpt-5"],
+    ["", "Unknown model"],
+    [undefined, "Unknown model"],
+  ] as const) {
+    await fs.writeFile(
+      join(dir, "usage.jsonl"),
+      toolResult(
+        {
+          results: [
+            {
+              ...(model === undefined ? {} : { model }),
+              usage: childUsage(1, 1, 0),
+            },
+          ],
+        },
+        { input: 1, output: 1, cost: { total: 0 } },
+      ),
+    );
+    const records = await readSessionUsage(dir);
+    assert.equal(records?.length, 1);
+    assert.equal(records[0]!.model, expected, String(model));
+  }
+});
+
+test("subagent aggregates count only when no child usage exists", async (t) => {
+  const dir = await sessions(t);
+  await fs.writeFile(
+    join(dir, "usage.jsonl"),
+    toolResult({ results: [{ model: "m" }] }, { input: 5, output: 1 }),
+  );
+  assert.deepEqual(
+    (await readSessionUsage(dir))?.map(({ model, usage }) => ({
+      model,
+      usage,
+    })),
+    [{ model: "Unknown model", usage: { inputTokens: 5, outputTokens: 1 } }],
+  );
+  await fs.writeFile(
+    join(dir, "usage.jsonl"),
+    toolResult(
+      { results: [{ usage: { input: 3, output: 1 } }] },
+      { input: 9, output: 9 },
+    ),
+  );
+  assert.deepEqual(
+    (await readSessionUsage(dir))?.map(({ model, usage }) => ({
+      model,
+      usage,
+    })),
+    [{ model: "Unknown model", usage: { inputTokens: 3, outputTokens: 1 } }],
+  );
+});
+
+test("async children in a bg_wait result use their models", async (t) => {
+  const dir = await sessions(t);
+  await fs.writeFile(
+    join(dir, "usage.jsonl"),
+    toolResult(
+      {
+        results: [],
+        completions: [
+          {
+            results: [
+              {
+                model: "openai-codex/gpt-6.1-sol:high",
+                usage: childUsage(50, 5, 0.2),
+              },
+            ],
+          },
+        ],
+      },
+      { input: 50, output: 5, cost: { total: 0.2 } },
+      "bg_wait",
+    ),
+  );
+  assert.deepEqual(
+    (await readSessionUsage(dir))?.map(({ model, usage }) => ({
+      model,
+      usage,
+    })),
+    [
+      {
+        model: "gpt-6.1-sol",
+        usage: { inputTokens: 50, outputTokens: 5, costUsd: 0.2 },
+      },
+    ],
+  );
+});
+
+test("a record with usage at the top level and in message counts once", async (t) => {
+  const dir = await sessions(t);
+  await fs.writeFile(
+    join(dir, "transcript.jsonl"),
+    JSON.stringify({
+      usage: { input: 2, output: 1, cost: 0 },
+      message: {
+        role: "assistant",
+        model: "m",
+        usage: { input: 2, output: 1, cost: { total: 0 } },
+      },
+    }),
+  );
+  const records = await readSessionUsage(dir);
+  assert.equal(records?.length, 1);
+  assert.equal(records[0]!.model, "m");
 });

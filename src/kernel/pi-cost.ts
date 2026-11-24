@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
+import { amount, parseUsageRecord } from "./pi-usage-records.ts";
 
 export type PiUsage = {
   inputTokens: number;
@@ -14,16 +15,6 @@ export type PiUsageRecord = {
   model: string;
   usage: PiUsage;
 };
-
-function object(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function amount(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
 
 export function totalUsage(entries: PiUsage[]): PiUsage | undefined {
   if (entries.length === 0) return undefined;
@@ -47,40 +38,6 @@ export function totalUsage(entries: PiUsage[]): PiUsage | undefined {
   };
 }
 
-function usageRecord(
-  container: Record<string, unknown> | undefined,
-  id: unknown,
-): PiUsageRecord | undefined {
-  const raw = object(container?.usage);
-  if (!raw || !amount(raw.input) || !amount(raw.output)) return undefined;
-  const cacheRead = raw.cacheRead ?? 0;
-  const cacheWrite = raw.cacheWrite ?? 0;
-  if (!amount(cacheRead) || !amount(cacheWrite)) return undefined;
-  const inputTokens = raw.input + cacheRead + cacheWrite;
-  if (!amount(inputTokens)) return undefined;
-  const cost = object(raw.cost)?.total;
-  const usage: PiUsage = {
-    inputTokens,
-    outputTokens: raw.output,
-    ...(amount(cost) ? { costUsd: cost } : {}),
-    ...(cost === 0 && inputTokens + raw.output > 0
-      ? { unpriced: true as const }
-      : {}),
-  };
-  const model =
-    typeof container?.model === "string" && container.model.trim()
-      ? container.model
-      : "Unknown model";
-  return {
-    model,
-    usage,
-    // Forked sessions can copy earlier assistant entries. No ID means no deduplication.
-    ...(typeof id === "string" && id
-      ? { key: JSON.stringify([id, model, usage]) }
-      : {}),
-  };
-}
-
 export async function readSessionUsage(
   sessionDir: string,
 ): Promise<PiUsageRecord[] | undefined> {
@@ -94,12 +51,14 @@ export async function readSessionUsage(
       } else if (entry.name.endsWith(".jsonl")) {
         for (const line of (await fs.readFile(path, "utf8")).split("\n")) {
           if (!line.trim()) continue;
-          const record = object(JSON.parse(line));
-          for (const container of [record, object(record?.message)]) {
-            const parsed = usageRecord(container, record?.id);
-            if (!parsed || (parsed.key && seen.has(parsed.key))) continue;
-            if (parsed.key) seen.add(parsed.key);
-            records.push(parsed);
+          const parsed = parseUsageRecord(JSON.parse(line));
+          for (const record of [
+            ...parsed.own,
+            ...parsed.children.map((child) => child.record),
+          ]) {
+            if (record.key && seen.has(record.key)) continue;
+            if (record.key) seen.add(record.key);
+            records.push(record);
           }
         }
       }
