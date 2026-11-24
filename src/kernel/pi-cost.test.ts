@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { costLine, sumSessionUsage } from "./pi-cost.ts";
+import { costLine, costText, sumSessionUsage, totalUsage } from "./pi-cost.ts";
 
 async function sessions(t: TestContext) {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-cost-"));
@@ -149,4 +149,67 @@ test("formats grouped tokens and optional dollar cost deterministically", () => 
     costLine({ inputTokens: 12345, outputTokens: 678 }),
     "Cost: 12,345 in / 678 out tokens",
   );
+  assert.equal(
+    costLine({
+      inputTokens: 1000,
+      outputTokens: 20,
+      costUsd: 0,
+      unpriced: true,
+    }),
+    "Cost: 1,000 in / 20 out tokens, Unpriced",
+  );
+  assert.equal(
+    costLine({
+      inputTokens: 1000,
+      outputTokens: 20,
+      costUsd: 0.5522,
+      unpriced: true,
+    }),
+    "Cost: 1,000 in / 20 out tokens, $0.55 (partial)",
+  );
+});
+
+test("zero-priced usage with tokens is unpriced, zero-token usage is not", async (t) => {
+  const dir = await sessions(t);
+  await fs.writeFile(
+    join(dir, "usage.jsonl"),
+    '{"usage":{"input":100,"output":20,"cost":{"total":0}}}\n',
+  );
+  assert.deepEqual(await sumSessionUsage(dir), {
+    inputTokens: 100,
+    outputTokens: 20,
+    costUsd: 0,
+    unpriced: true,
+  });
+});
+
+test("totals keep a priced sum and flag unpriced parts", () => {
+  assert.deepEqual(
+    totalUsage([
+      { inputTokens: 1, outputTokens: 1, costUsd: 0.5522 },
+      { inputTokens: 2, outputTokens: 2, costUsd: 0, unpriced: true },
+    ]),
+    { inputTokens: 3, outputTokens: 3, costUsd: 0.5522, unpriced: true },
+  );
+  assert.deepEqual(
+    totalUsage([
+      { inputTokens: 1, outputTokens: 1 },
+      { inputTokens: 2, outputTokens: 2, costUsd: 0, unpriced: true },
+    ]),
+    { inputTokens: 3, outputTokens: 3, unpriced: true },
+  );
+});
+
+test("cost text distinguishes unavailable, unpriced, partial, and priced", () => {
+  const tokens = { inputTokens: 10, outputTokens: 1 };
+  assert.equal(costText({ ...tokens, unpriced: true }, 4), undefined);
+  assert.equal(
+    costText({ ...tokens, costUsd: 0, unpriced: true }, 4),
+    "Unpriced",
+  );
+  assert.equal(
+    costText({ ...tokens, costUsd: 0.5522, unpriced: true }, 4),
+    "$0.5522 (partial)",
+  );
+  assert.equal(costText({ ...tokens, costUsd: 0.1 }, 4), "$0.1000");
 });

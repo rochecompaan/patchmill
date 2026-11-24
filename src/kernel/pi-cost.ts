@@ -4,7 +4,10 @@ import { join } from "node:path";
 export type PiUsage = {
   inputTokens: number;
   outputTokens: number;
+  /** Sum of recorded prices. Undefined when any part has no recorded cost. */
   costUsd?: number;
+  /** Present and true when some part is Unpriced usage. */
+  unpriced?: true;
 };
 export type PiUsageRecord = {
   key?: string;
@@ -40,6 +43,7 @@ export function totalUsage(entries: PiUsage[]): PiUsage | undefined {
     inputTokens,
     outputTokens,
     ...(amount(cost) ? { costUsd: cost } : {}),
+    ...(entries.some((entry) => entry.unpriced) ? { unpriced: true } : {}),
   };
 }
 
@@ -59,6 +63,9 @@ function usageRecord(
     inputTokens,
     outputTokens: raw.output,
     ...(amount(cost) ? { costUsd: cost } : {}),
+    ...(cost === 0 && inputTokens + raw.output > 0
+      ? { unpriced: true as const }
+      : {}),
   };
   const model =
     typeof container?.model === "string" && container.model.trim()
@@ -114,10 +121,23 @@ export async function sumSessionUsage(
   );
 }
 
+/**
+ * The cost text of usage, or undefined when some cost was not recorded.
+ * Unavailable wins over Unpriced; a sum that leaves out Unpriced usage is partial.
+ */
+export function costText(
+  usage: PiUsage,
+  fractionDigits: number,
+): string | undefined {
+  if (usage.costUsd === undefined) return undefined;
+  if (usage.unpriced && usage.costUsd === 0) return "Unpriced";
+  const dollars = `$${usage.costUsd.toFixed(fractionDigits)}`;
+  return usage.unpriced ? `${dollars} (partial)` : dollars;
+}
+
 export function costLine(usage: PiUsage | undefined): string {
   if (!usage) return "Cost: unavailable";
   const tokens = `Cost: ${usage.inputTokens.toLocaleString("en-US")} in / ${usage.outputTokens.toLocaleString("en-US")} out tokens`;
-  return usage.costUsd === undefined
-    ? tokens
-    : `${tokens}, $${usage.costUsd.toFixed(2)}`;
+  const cost = costText(usage, 2);
+  return cost === undefined ? tokens : `${tokens}, ${cost}`;
 }
