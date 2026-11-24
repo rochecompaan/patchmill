@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { getEventListeners, once } from "node:events";
 import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mock, test, type TestContext } from "node:test";
-import { piArgs, supervisePi, type PiSessionOptions } from "./pi-supervisor.ts";
+import {
+  descendantGroups,
+  piArgs,
+  signalGroup,
+  supervisePi,
+  type PiSessionOptions,
+} from "./pi-supervisor.ts";
 
 async function setup(
   t: TestContext,
@@ -628,3 +634,26 @@ for (const sink of ["stdout", "stderr"]) {
     );
   }
 }
+
+test("descendantGroups lists the group of a detached grandchild", async (t) => {
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      "const c=require('node:child_process').spawn('sleep',['30'],{detached:true,stdio:'ignore'});console.log(c.pid);setInterval(()=>{},1000)",
+    ],
+    { stdio: ["ignore", "pipe", "ignore"] },
+  );
+  const pid = Number(
+    await new Promise<string>((done) =>
+      child.stdout!.once("data", (chunk) => done(String(chunk))),
+    ),
+  );
+  t.after(() => {
+    child.kill("SIGKILL");
+    if (signalGroup(pid, 0)) signalGroup(pid, "SIGKILL");
+  });
+  const groups = await descendantGroups(child.pid!);
+  assert.ok(groups.includes(pid), JSON.stringify(groups));
+  assert.ok(!groups.includes(process.pid));
+});

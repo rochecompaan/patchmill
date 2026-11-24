@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import { resolve } from "node:path";
 import { piCommandArgs } from "../cli/pi-cli.ts";
 import {
+  descendantGroups,
   signalGroup,
   type PiSession,
   type PiSessionOptions,
@@ -23,6 +24,17 @@ export type PiRpcSession = {
   steer(message: string): Promise<void>;
   followUp(message: string): Promise<void>;
   abort(): Promise<void>;
+  /**
+   * Stop the current turn with RPC `abort` and send `message` as a new prompt
+   * in the same session. A settle in between does not finish the session.
+   * "unresponsive" means Pi did not answer the abort within `graceMs`.
+   */
+  recover(
+    message: string,
+    graceMs: number,
+  ): Promise<"continued" | "unresponsive">;
+  /** End the session like an abort, without marking it aborted or timed out. */
+  stop(): Promise<void>;
   done: Promise<PiSession>;
 };
 /**
@@ -37,6 +49,12 @@ export type PiRpcOptions = Omit<PiSessionOptions, "onOutput"> & {
    * message is sent as one more prompt in the same session.
    */
   remind?: (stdout: string) => string | undefined;
+  /** Called with each parsed RPC record, before the session handles it. */
+  onRecord?: (record: RpcRecord) => void;
+  /** Continue this session file (`--session`). */
+  sessionFile?: string;
+  /** Append to `logPath` instead of replacing it, for a restart. */
+  appendLogs?: boolean;
 };
 
 const REPORT_WAIT_MS = 15_000;
@@ -48,24 +66,32 @@ type Pending = {
 /** How Pi answered a `prompt` command. A failure carries Pi's error text. */
 function promptOutcome(
   response: RpcRecord,
-): { kind: "failed"; error: string } | { kind: "handled" | "started" } {
+):
+  | { kind: "failed"; error: string }
+  | { kind: "handled" | "started" | "queued" } {
   if ("success" in response && !response.success)
     return { kind: "failed", error: String(response.error ?? "Prompt failed") };
+  const disposition = (response as { data?: { disposition?: string } }).data
+    ?.disposition;
   return {
     kind:
-      (response as { data?: { disposition?: string } }).data?.disposition ===
-      "handled"
+      disposition === "handled"
         ? "handled"
-        : "started",
+        : disposition === "queued"
+          ? "queued"
+          : "started",
   };
 }
 
-export function piRpcArgs(options: PiSessionOptions): string[] {
+export function piRpcArgs(
+  options: PiSessionOptions & { sessionFile?: string },
+): string[] {
   return [
     "--mode",
     "rpc",
     "--session-dir",
     options.sessionDir,
+    ...(options.sessionFile ? ["--session", options.sessionFile] : []),
     ...(options.skillPath ? ["--skill", options.skillPath] : []),
     ...options.extensionPaths.flatMap((path) => ["-e", path]),
   ];
@@ -110,6 +136,8 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
   let reminderSettle: number | undefined;
   let interruption: Promise<void> | undefined;
   let escalation: Promise<void> | undefined;
+  // "abort" until the recovery prompt is sent, then "prompt" until its turn starts.
+  let recovering: "abort" | "prompt" | undefined;
 
   const later = (ms: number, run: () => void) => {
     const timer = setTimeout(() => {
@@ -182,11 +210,22 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     // Before the spawn, the flag is enough: run() checks it and starts nothing.
     if (!child) return Promise.resolve();
     interruption ??= (async () => {
+      // Pi starts each command in its own group, and pi-subagents starts its
+      // runners detached, so a kill of Pi's group alone can leave them.
+      const groups = child?.pid ? await descendantGroups(child.pid) : [];
       const abort = send("abort").catch(() => undefined);
       await Promise.race([abort, waitForExit(graceMs)]);
       endInput();
       await waitForExit(graceMs);
       if (!closed) await escalate();
+      // A kept group can hold Pi's output open, so do not wait for close.
+      for (const group of groups) {
+        try {
+          if (signalGroup(group, 0)) signalGroup(group, "SIGKILL");
+        } catch (error) {
+          errors.push(error);
+        }
+      }
     })();
     return interruption;
   };
@@ -219,12 +258,13 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     return true;
   };
   const evaluate = () => {
-    if (finished || busy || settles === 0) return;
+    if (finished || busy || recovering || settles === 0) return;
     if (reminderSettle !== undefined && settles <= reminderSettle) return;
     if (reports.get(settles) !== 0) return;
     if (!remind()) finish();
   };
   const onRecord = (record: RpcRecord) => {
+    options.onRecord?.(record);
     switch (record.type) {
       case "response": {
         const response = record as Extract<RpcRecord, { type: "response" }>;
@@ -275,6 +315,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
       }
       case "agent_start":
         busy = true;
+        if (recovering === "prompt") recovering = undefined;
         return;
       case "agent_settled": {
         busy = false;
@@ -304,7 +345,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
         promptPath,
         await fs.readFile(promptPath, "utf8"),
       );
-      logs.push(await fs.open(options.logPath, "w"));
+      logs.push(await fs.open(options.logPath, options.appendLogs ? "a" : "w"));
       if (options.aggregateLogPath)
         logs.push(await fs.open(options.aggregateLogPath, "a"));
       if (result.aborted) return result;
@@ -385,6 +426,43 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     return result;
   };
 
+  const recover = async (
+    message: string,
+    recoverGraceMs: number,
+  ): Promise<"continued" | "unresponsive"> => {
+    if (finished || interruption || closed || !child) return "continued";
+    recovering = "abort";
+    const answered = await Promise.race([
+      send("abort").then(
+        () => true,
+        () => false,
+      ),
+      sleep(recoverGraceMs).then(() => false),
+    ]);
+    if (!answered) return "unresponsive";
+    if (finished || interruption || closed) return "continued";
+    recovering = "prompt";
+    // A background run can start a turn first: the message then steers it.
+    send("prompt", { message, streamingBehavior: "steer" }).then(
+      (response) => {
+        const outcome = promptOutcome(response);
+        if (outcome.kind === "started") return;
+        recovering = undefined;
+        if (outcome.kind === "queued") return evaluate();
+        if (outcome.kind === "failed") {
+          log(`${outcome.error}\n`);
+          failedPrompt = true;
+        }
+        finish();
+      },
+      () => {
+        recovering = undefined;
+        finish();
+      },
+    );
+    return "continued";
+  };
+
   const done = run();
   return {
     steer: (message) => command("steer", { message }),
@@ -392,6 +470,8 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     abort: async () => {
       await interrupt("aborted");
     },
+    recover,
+    stop: () => interrupt(),
     done,
   };
 }
