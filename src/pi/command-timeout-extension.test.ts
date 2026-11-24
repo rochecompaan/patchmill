@@ -50,8 +50,14 @@ test("limitCommandTimeout applies the policy table", () => {
   const defaultOff = { defaultSeconds: 0, maxSeconds: 1500 };
   const capOff = { defaultSeconds: 1200, maxSeconds: 0 };
   const off = { defaultSeconds: 0, maxSeconds: 0 };
-  const cases: [number | undefined, CommandLimits, number | undefined][] = [
+  const cases: [
+    number | null | undefined,
+    CommandLimits,
+    number | undefined,
+  ][] = [
     [undefined, on, 1200],
+    [null, on, 1200],
+    [null, { defaultSeconds: 0, maxSeconds: 1500 }, undefined],
     [600, on, 600],
     [1500, on, 1500],
     [1501, on, 1500],
@@ -145,6 +151,11 @@ test("tool_call sets and caps bash timeouts and ignores other tools", async () =
     1500,
   );
   assert.equal((await call("bash", { command: "x", timeout: 30 })).timeout, 30);
+  // Some models send an explicit null for an omitted optional argument.
+  assert.equal(
+    (await call("bash", { command: "x", timeout: null })).timeout,
+    1200,
+  );
   assert.deepEqual(await call("read", { path: "a" }), { path: "a" });
   const off = load({ defaultSeconds: 0, maxSeconds: 1500 }, noRegister);
   const input = { command: "x" };

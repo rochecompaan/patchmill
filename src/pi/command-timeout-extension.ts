@@ -77,11 +77,12 @@ export function readCommandLimits(env: NodeJS.ProcessEnv): CommandLimits {
  * unchanged, so Pi rejects it with its own message.
  */
 export function limitCommandTimeout(
-  timeout: number | undefined,
+  timeout: number | null | undefined,
   limits: CommandLimits,
 ): number | undefined {
   const cap = limits.maxSeconds > 0 ? limits.maxSeconds : Infinity;
-  if (timeout === undefined)
+  // A model can send an explicit null for an omitted optional argument.
+  if (timeout === undefined || timeout === null)
     return limits.defaultSeconds > 0
       ? Math.min(limits.defaultSeconds, cap)
       : undefined;
@@ -98,7 +99,8 @@ export function createCommandTimeoutExtension(options: {
     let registration: RequiredChildExtensionRegistration | undefined;
     pi.on("tool_call", (event) => {
       if (!isToolCallEventType("bash", event)) return;
-      const timeout = limitCommandTimeout(event.input.timeout, options.limits);
+      const requested = event.input.timeout as number | null | undefined;
+      const timeout = limitCommandTimeout(requested, options.limits);
       if (timeout === undefined) delete event.input.timeout;
       else event.input.timeout = timeout;
     });
