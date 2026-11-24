@@ -320,3 +320,54 @@ test("run rejects a wait longer than the timer limit", () => {
     2_147_483,
   );
 });
+
+test("command timeout keys default to 20 and 25 minutes", () => {
+  const { pi } = parseConfig({});
+  assert.equal(pi.commandTimeoutMinutes, 20);
+  assert.equal(pi.maxCommandTimeoutMinutes, 25);
+});
+
+test("command timeout keys accept 0 and fractions", () => {
+  const { pi } = parseConfig({
+    pi: { commandTimeoutMinutes: 0, maxCommandTimeoutMinutes: 0.5 },
+  });
+  assert.equal(pi.commandTimeoutMinutes, 0);
+  assert.equal(pi.maxCommandTimeoutMinutes, 0.5);
+});
+
+test("a default longer than an enabled cap is rejected", () => {
+  assert.throws(
+    () =>
+      parseConfig({
+        pi: { commandTimeoutMinutes: 30, maxCommandTimeoutMinutes: 25 },
+      }),
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      error.message.includes("pi.commandTimeoutMinutes") &&
+      error.message.includes("pi.maxCommandTimeoutMinutes"),
+  );
+});
+
+test("a default longer than a disabled cap is accepted", () => {
+  const { pi } = parseConfig({
+    pi: { commandTimeoutMinutes: 30, maxCommandTimeoutMinutes: 0 },
+  });
+  assert.equal(pi.commandTimeoutMinutes, 30);
+});
+
+test("invalid command timeout values are rejected", () => {
+  for (const key of ["commandTimeoutMinutes", "maxCommandTimeoutMinutes"])
+    for (const value of [-1, 35792, "20", Number.NaN])
+      assert.throws(
+        () =>
+          parseConfig({
+            pi: {
+              commandTimeoutMinutes: 0,
+              maxCommandTimeoutMinutes: 0,
+              [key]: value,
+            },
+          }),
+        ConfigError,
+        `${key}=${String(value)}`,
+      );
+});

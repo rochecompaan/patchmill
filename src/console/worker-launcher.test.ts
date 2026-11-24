@@ -102,6 +102,7 @@ test("missing JSON matches rpcModeLauncher parsing and uses completion fallback"
     },
     agentDir: f.root,
     extensionPaths: [],
+    env: {},
   })(f.launch);
   assert.deepEqual(run.result, parseAgentResult("plain text"));
   assert.deepEqual(run.result, launched.result);

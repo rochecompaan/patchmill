@@ -12,7 +12,7 @@ Facts:
 - Pull request: {{pullRequest}}{{mergeConflict}}
 - Planning stage: {{stage}}
 - Gate: {{gate}}
-- Time limit: {{timeoutMinutes}} minutes
+- Time limit: {{timeoutMinutes}} minutes{{commandTimeout}}
 
 {{resultRules}}{{planningRules}}{{parentSpecRules}}
 

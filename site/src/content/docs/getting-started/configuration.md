@@ -115,9 +115,18 @@ names a directory with a `SKILL.md` file. Put repository procedures in skills
 and `AGENTS.md`, not extra configuration keys.
 
 `pi.agentDir` defaults to `.patchmill/pi-agent`. `pi.timeoutMinutes` defaults to
-90 for each session. Run `patchmill auth` to configure provider credentials and
-choose a default model in that directory. The command verifies the provider and
-returns to the shell without opening Pi chat. See
+90 for each session.
+
+`pi.commandTimeoutMinutes` defaults to 20. It is the timeout that an agent
+`bash` call gets when it sets none. `pi.maxCommandTimeoutMinutes` defaults
+to 25. It is the longest timeout that an agent `bash` call can get. A longer
+request gets the cap. Set a value to `0` to turn that limit off. The default
+must not be longer than an enabled cap. The limits also apply in subagent
+sessions.
+
+Run `patchmill auth` to configure provider credentials and choose a default
+model in `pi.agentDir`. The command verifies the provider and returns to the
+shell without opening Pi chat. See
 [Skills configuration](/guides/skills-configuration/).
 
 ## Full defaults
@@ -144,7 +153,12 @@ returns to the shell without opening Pi chat. See
     "planning": ".patchmill/skills/patchmill-planning",
     "implementation": ".patchmill/skills/patchmill-implementation"
   },
-  "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
+  "pi": {
+    "agentDir": ".patchmill/pi-agent",
+    "timeoutMinutes": 90,
+    "commandTimeoutMinutes": 20,
+    "maxCommandTimeoutMinutes": 25
+  },
   "workflow": {
     "specApproval": { "required": false },
     "planApproval": { "required": false }

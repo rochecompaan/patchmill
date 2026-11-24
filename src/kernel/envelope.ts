@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { findPackageRoot } from "../package-root.ts";
 import type { LabelsConfig } from "../config/config.ts";
+import type { CommandLimits } from "../pi/command-timeout-extension.ts";
 import type { Issue, IssueDependency, Repository } from "../host/types.ts";
 import type { Facts } from "./facts.ts";
 import { parsePlanningBranch } from "./names.ts";
@@ -14,6 +15,8 @@ export type RunEnvelopeInput = {
   facts: Facts;
   skill: { name: string; path: string };
   timeoutMinutes: number;
+  /** The Command timeout limits, stated in the implementation envelope. */
+  commandLimits: CommandLimits;
   trusted: string[];
   interactive?: boolean;
   /** The session resolves only `facts.mergeConflict`; see merge-conflicts.ts. */
@@ -64,6 +67,25 @@ function renderTemplate(file: string, values: Record<string, string>): string {
       throw new Error(`Unknown envelope placeholder: ${name}`);
     return value;
   });
+}
+
+function minutes(seconds: number): string {
+  return String(Number((seconds / 60).toFixed(2)));
+}
+
+/** The Command timeout fact line, or "" when there is nothing to state. */
+function commandTimeoutFact(limits: CommandLimits): string {
+  const { defaultSeconds, maxSeconds } = limits;
+  if (defaultSeconds <= 0 && maxSeconds <= 0) return "";
+  const text =
+    defaultSeconds > 0
+      ? `bash calls get a ${minutes(defaultSeconds)}-minute timeout by default. ${
+          maxSeconds > 0
+            ? `Full builds or test suites can ask for up to ${minutes(maxSeconds)} minutes.`
+            : "A call can ask for a longer timeout."
+        }`
+      : `bash calls have no default timeout. A call can ask for up to ${minutes(maxSeconds)} minutes.`;
+  return `\n- Command timeout: ${text}`;
 }
 
 export function renderRunEnvelope(input: RunEnvelopeInput): string {
@@ -127,6 +149,10 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
             : "required; submit for approval only, no PR option: a planning PR would carry the earlier unmerged document. Write later documents on this implementation branch"
           : `required; publish the ${facts.stage} PR and stop until it is merged`,
     timeoutMinutes: String(input.timeoutMinutes),
+    commandTimeout:
+      input.phase === "implementation"
+        ? commandTimeoutFact(input.commandLimits)
+        : "",
     issue: renderIssue(input.issue, input.trusted),
   });
 }

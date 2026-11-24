@@ -418,7 +418,12 @@ Each key is optional. Patchmill rejects unknown keys by name.
     "planning": ".patchmill/skills/patchmill-planning",
     "implementation": ".patchmill/skills/patchmill-implementation"
   },
-  "pi": { "agentDir": ".patchmill/pi-agent", "timeoutMinutes": 90 },
+  "pi": {
+    "agentDir": ".patchmill/pi-agent",
+    "timeoutMinutes": 90,
+    "commandTimeoutMinutes": 20,
+    "maxCommandTimeoutMinutes": 25
+  },
   "workflow": {
     "stateTracking": "labels",
     "specApproval": { "required": false },
@@ -440,6 +445,10 @@ These keys change the most:
 - `workflow.stateTracking` selects labels on the host or
   [local state](#local-state-mode).
 - `pi.timeoutMinutes` limits each Pi session.
+- `pi.commandTimeoutMinutes` (default 20) is the timeout of an agent `bash` call
+  that sets none. `pi.maxCommandTimeoutMinutes` (default 25) is the longest
+  timeout that a call can get. `0` turns a limit off. The default must not be
+  longer than an enabled cap.
 - `git.baseBranch: null` uses the default branch of the remote.
 - `run` sets the triage interval and the wait limits of `patchmill run`.
 

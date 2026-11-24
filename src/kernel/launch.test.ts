@@ -4,12 +4,13 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { COMMAND_TIMEOUT_EXTENSION_PATH } from "../pi/command-timeout-extension.ts";
 import { BACKGROUND_WORK_EXTENSION_PATH, rpcModeLauncher } from "./launch.ts";
 
 const fakePi = new URL("../../test-support/fake-pi.mjs", import.meta.url).href;
 const done = { status: "done", summary: "Finished" };
 
-test("rpcModeLauncher runs Pi in RPC mode with the background-work extension first", async (t) => {
+test("rpcModeLauncher runs Pi in RPC mode with the background-work extension first and passes env", async (t) => {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-launch-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const script = join(dir, "steps.json");
@@ -18,7 +19,7 @@ test("rpcModeLauncher runs Pi in RPC mode with the background-work extension fir
   const wrapper = join(dir, "pi.mjs");
   await fs.writeFile(
     wrapper,
-    `process.env.PATCHMILL_FAKE_PI_SCRIPT = ${JSON.stringify(script)}; (await import("node:fs")).writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(process.argv.slice(2))); await import(${JSON.stringify(fakePi)});`,
+    `process.env.PATCHMILL_FAKE_PI_SCRIPT = ${JSON.stringify(script)}; (await import("node:fs")).writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify({ argv: process.argv.slice(2), timeout: process.env.PATCHMILL_COMMAND_TIMEOUT_SECONDS })); await import(${JSON.stringify(fakePi)});`,
   );
   const promptPath = join(dir, "prompt.md");
   await fs.writeFile(promptPath, "prompt");
@@ -26,6 +27,8 @@ test("rpcModeLauncher runs Pi in RPC mode with the background-work extension fir
     command: { command: process.execPath, argsPrefix: [wrapper] },
     agentDir: join(dir, "agent"),
     extensionPaths: ["/ext/one"],
+    // Not the default 1200, which a Patchmill session that runs this test has.
+    env: { PATCHMILL_COMMAND_TIMEOUT_SECONDS: "77" },
   })({
     phase: "implementation",
     envelope: "prompt",
@@ -38,7 +41,9 @@ test("rpcModeLauncher runs Pi in RPC mode with the background-work extension fir
     timeoutMs: 10_000,
   });
   assert.deepEqual(run.result, { ok: true, result: done });
-  assert.deepEqual(JSON.parse(await fs.readFile(argvPath, "utf8")), [
+  const recorded = JSON.parse(await fs.readFile(argvPath, "utf8"));
+  assert.equal(recorded.timeout, "77");
+  assert.deepEqual(recorded.argv, [
     "--mode",
     "rpc",
     "--session-dir",
@@ -47,6 +52,8 @@ test("rpcModeLauncher runs Pi in RPC mode with the background-work extension fir
     "/skill",
     "-e",
     BACKGROUND_WORK_EXTENSION_PATH,
+    "-e",
+    COMMAND_TIMEOUT_EXTENSION_PATH,
     "-e",
     "/ext/one",
   ]);

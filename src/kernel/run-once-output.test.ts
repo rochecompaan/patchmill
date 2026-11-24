@@ -105,3 +105,27 @@ test("no eligible issue has a readable result instead of silent success", async 
   assert.equal((await c.run()).status, "no-work");
   assert.match(c.output.join("\n"), /Final result:.*No eligible issue/);
 });
+
+test("a phase session gets the configured command limits", async (t) => {
+  const c = await setupRun(t, [
+    {
+      writeFiles: { [spec]: "design" },
+      commit: "Spec",
+      push: true,
+      pullRequest: { draft: true, body: "Refs #9" },
+      printEnv: [
+        "PATCHMILL_COMMAND_TIMEOUT_SECONDS",
+        "PATCHMILL_MAX_COMMAND_TIMEOUT_SECONDS",
+      ],
+      result: done,
+    },
+  ]);
+  c.config.workflow.specApproval.required = true;
+  // Non-default values, so the extension's built-in limits cannot hide a gap.
+  c.config.pi.commandTimeoutMinutes = 2;
+  c.config.pi.maxCommandTimeoutMinutes = 0;
+  await c.run();
+  const { dir } = await c.records();
+  const log = await fs.readFile(`${dir}/pi.log`, "utf8");
+  assert.match(log, /^120\n0$/m);
+});

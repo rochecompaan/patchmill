@@ -27,7 +27,9 @@
   },
   "pi": {
     "agentDir": ".patchmill/pi-agent",
-    "timeoutMinutes": 90
+    "timeoutMinutes": 90,
+    "commandTimeoutMinutes": 20,
+    "maxCommandTimeoutMinutes": 25
   },
   "workflow": {
     "specApproval": {

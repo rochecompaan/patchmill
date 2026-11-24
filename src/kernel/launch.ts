@@ -2,6 +2,7 @@ import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { Phase } from "./phase.ts";
+import { COMMAND_TIMEOUT_EXTENSION_PATH } from "../pi/command-timeout-extension.ts";
 import { runPiRpc } from "./pi-rpc.ts";
 import type { PiSession } from "./pi-supervisor.ts";
 import {
@@ -57,6 +58,8 @@ export function rpcModeLauncher(options: {
   command: PiCommandSpec;
   agentDir: string;
   extensionPaths: string[];
+  /** Added to Pi's environment, for example the Command timeout limits. */
+  env: Record<string, string>;
 }): PhaseLauncher {
   return async (launch) => {
     let reminded = false;
@@ -72,8 +75,10 @@ export function rpcModeLauncher(options: {
       // First, so its shutdown handler runs before pi-subagents removes its bridge.
       extensionPaths: [
         BACKGROUND_WORK_EXTENSION_PATH,
+        COMMAND_TIMEOUT_EXTENSION_PATH,
         ...options.extensionPaths,
       ],
+      env: options.env,
       timeoutMs: launch.timeoutMs,
       // Keep the agent protocol in the logs, not the operator's terminal.
       onOutput: () => {},

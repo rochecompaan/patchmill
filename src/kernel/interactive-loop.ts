@@ -19,6 +19,10 @@ import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
 import { parsePlanningBranch } from "./names.ts";
 import { planningGateComment } from "./comments.ts";
+import {
+  commandLimits,
+  commandLimitsEnv,
+} from "../pi/command-timeout-extension.ts";
 
 export async function continueGate(
   facts: Facts,
@@ -161,6 +165,7 @@ export async function preparePhasePrompt(
     interactive: !!deps.human,
     ...(conflictResolution ? { conflictResolution } : {}),
     timeoutMinutes: config.pi.timeoutMinutes,
+    commandLimits: commandLimits(config.pi),
     trusted: trustedAuthors(config, (await host.checkCli()).login),
   });
   await fs.writeFile(promptPath, envelope);
@@ -168,6 +173,7 @@ export async function preparePhasePrompt(
     command: deps.piCommand,
     agentDir: resolve(repoRoot, config.pi.agentDir),
     extensionPaths: deps.extensionPaths,
+    env: commandLimitsEnv(commandLimits(config.pi)),
   });
   const launch: PhaseLaunch = {
     phase,
