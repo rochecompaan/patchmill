@@ -9,7 +9,7 @@ Facts:
 - Base: {{base}}
 - Spec: {{spec}}{{parentSpec}}
 - Plan: {{plan}}
-- Pull request: {{pullRequest}}
+- Pull request: {{pullRequest}}{{mergeConflict}}
 - Planning stage: {{stage}}
 - Gate: {{gate}}
 - Time limit: {{timeoutMinutes}} minutes

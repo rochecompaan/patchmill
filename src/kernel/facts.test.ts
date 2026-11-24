@@ -554,3 +554,85 @@ for (const alias of [false, true]) {
     );
   });
 }
+
+/** Branch `head` and main both change `a.txt` from the initial commit. */
+async function conflictSetup(
+  t: TestContext,
+  options: { head?: string; branchText?: string; specGate?: boolean } = {},
+) {
+  const c = await setup(t);
+  if (options.specGate) c.config.workflow.specApproval.required = true;
+  const head = options.head ?? "agent/issue-9-x";
+  const seed = join(c.dir, "seed");
+  await c.git(["checkout", "-b", "work"], seed);
+  await fs.mkdir(join(seed, "custom/specs"), { recursive: true });
+  await fs.mkdir(join(seed, "custom/plans"), { recursive: true });
+  await fs.writeFile(
+    join(seed, "custom/specs/2026-10-15-issue-9-x-design.md"),
+    "spec",
+  );
+  await fs.writeFile(
+    join(seed, "custom/plans/2026-10-15-issue-9-x-plan.md"),
+    "plan",
+  );
+  await fs.writeFile(join(seed, "a.txt"), options.branchText ?? "branch\n");
+  await c.git(["add", "."], seed);
+  await c.git(["commit", "-m", "Branch"], seed);
+  await c.git(["push", "origin", `HEAD:${head}`], seed);
+  await c.git(["checkout", "main"], seed);
+  await fs.writeFile(join(seed, "a.txt"), "main\n");
+  await c.git(["add", "."], seed);
+  await c.git(["commit", "-m", "Main"], seed);
+  await c.git(["push", "origin", "main"], seed);
+  const pr: PullRequest = {
+    number: 3,
+    url: "https://example.invalid/3",
+    state: "open",
+    draft: false,
+    body: "Closes #9",
+    headRepository: "fixture/repo",
+    headBranch: head,
+    baseBranch: "main",
+  };
+  return { ...c, pr };
+}
+
+const factsOf = async (c: Awaited<ReturnType<typeof setup>>) => {
+  const result = await collectFacts(c.deps, issue);
+  if (result.kind !== "facts") throw new Error("Expected facts");
+  return result.facts;
+};
+
+test("an open implementation pull request that conflicts has mergeConflict", async (t) => {
+  const c = await conflictSetup(t);
+  c.setPr(c.pr);
+  const facts = await factsOf(c);
+  assert.equal(facts.stage, "implementation");
+  assert.deepEqual(facts.mergeConflict, {
+    baseSha: await c.git(["rev-parse", "origin/main"]),
+    headSha: await c.git(["rev-parse", "origin/agent/issue-9-x"]),
+    files: ["a.txt"],
+  });
+});
+
+test("no mergeConflict when clean, without an open pull request, or at a planning stage", async (t) => {
+  await t.test("clean", async (t) => {
+    const c = await conflictSetup(t, { branchText: "main\n" });
+    c.setPr(c.pr);
+    assert.equal((await factsOf(c)).mergeConflict, undefined);
+  });
+  await t.test("without an open pull request", async (t) => {
+    const c = await conflictSetup(t);
+    c.setPr({ ...c.pr, state: "closed" });
+    assert.equal((await factsOf(c)).mergeConflict, undefined);
+  });
+  await t.test("at a planning stage", async (t) => {
+    const head = "agent/issue-9-x--spec";
+    const c = await conflictSetup(t, { head, specGate: true });
+    c.setPr(c.pr);
+    const facts = await factsOf(c);
+    assert.equal(facts.stage, "spec");
+    assert.equal(facts.branch, head);
+    assert.equal(facts.mergeConflict, undefined);
+  });
+});

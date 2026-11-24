@@ -17,6 +17,14 @@ implementation merge into the base and issue closure. Every real run sweeps
 local candidates before selection, including non-interactive runs. A confirmed
 interactive merge also cleans up immediately. Dry runs never clean up.
 
+An unattended run without `--issue` also checks for merge conflicts before
+selection. It runs `git merge-tree --write-tree` on the fetched base and issue
+branches, which changes no working tree, index, or ref. This needs Git 2.38 or
+later. An agent resolves a conflict with a merge of the base, never a rebase or
+force push. After the session, Patchmill checks that the pushed branch merges
+cleanly and still contains its previous head and the base commit. If it does
+not, the issue stops with Needs Info.
+
 The optional `cleanupHook` runs from the implementation worktree with Bash
 before any removal. After hook success, Patchmill keeps each dirty worktree and
 its branch. Hook failure keeps every target without changing done status.

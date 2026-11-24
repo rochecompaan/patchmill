@@ -58,7 +58,9 @@ buildNpmPackageNode24 rec {
     ln -s "$package_dir/node_modules" "$out/share/${pname}/node_modules"
 
     rm -f "$out/bin/patchmill"
+    # --prefix, so that an older system Git never comes first.
     makeWrapper ${nodejs_24}/bin/node "$out/bin/patchmill" \
+      --prefix PATH : ${lib.makeBinPath [ git ]} \
       --add-flags "$out/share/${pname}/bin/patchmill.ts"
   '';
 
@@ -67,6 +69,7 @@ buildNpmPackageNode24 rec {
     runHook preInstallCheck
     $out/bin/patchmill --help >/dev/null
     $out/bin/patchmill version >/dev/null
+    grep -q '${git}/bin' $out/bin/patchmill
     runHook postInstallCheck
   '';
 

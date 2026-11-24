@@ -16,6 +16,8 @@ export type RunEnvelopeInput = {
   timeoutMinutes: number;
   trusted: string[];
   interactive?: boolean;
+  /** The session resolves only `facts.mergeConflict`; see merge-conflicts.ts. */
+  conflictResolution?: boolean;
 };
 export type TriageEnvelopeInput = {
   repository: Repository;
@@ -113,6 +115,7 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     pullRequest: facts.pullRequest
       ? `${facts.pullRequest.url} (${facts.pullRequest.state})`
       : "none",
+    mergeConflict: mergeConflictFact(input),
     stage: facts.stage,
     gate:
       facts.stage === "implementation"
@@ -126,6 +129,15 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     timeoutMinutes: String(input.timeoutMinutes),
     issue: renderIssue(input.issue, input.trusted),
   });
+}
+
+function mergeConflictFact(input: RunEnvelopeInput): string {
+  const conflict = input.facts.mergeConflict;
+  if (!conflict || input.phase !== "implementation") return "";
+  const fact = `the pull request conflicts with origin/${input.facts.baseBranch} at ${conflict.baseSha} in: ${conflict.files.join(", ")}.`;
+  return input.conflictResolution
+    ? `\n- Merge conflict: ${fact} This session is a Conflict resolution: resolve only this conflict, as the skill's Merge conflicts section says.`
+    : `\n- Merge conflict: ${fact} Merge the base branch first, as the skill's Merge conflicts section says, then continue your normal work.`;
 }
 
 export function renderTriageEnvelope(input: TriageEnvelopeInput): string {
