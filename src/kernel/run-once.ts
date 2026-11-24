@@ -41,7 +41,12 @@ import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue, type CleanupResult } from "./merged-cleanup.ts";
 import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
+import type { ParsedResult } from "./result.ts";
 import { explainMissingResult } from "./unfinished-runs.ts";
+import {
+  explainProviderFailure,
+  providerFailureNotice,
+} from "./provider-failure.ts";
 
 export const MAX_SESSIONS_WITHOUT_HUMAN = 3;
 export type RunOnceOptions = {
@@ -237,6 +242,17 @@ export async function runOneIssue(
       })),
     );
   };
+  // A Provider failure names the stop. Its message stays in local output.
+  const explainResult = async (result: ParsedResult, sessionDir: string) => {
+    const provider = await explainProviderFailure(
+      result,
+      sessionDir,
+      issueNumber,
+    );
+    if (!provider) return explainMissingResult(result, sessionDir);
+    await progressOutput("stderr", providerFailureNotice(provider.failure));
+    return provider.result;
+  };
   const review = async (facts: Facts, restart: boolean) => {
     await snapshot.wait("review-wait");
     await reviewWait({
@@ -360,10 +376,7 @@ export async function runOneIssue(
             ? launched
             : {
                 ...launched,
-                result: await explainMissingResult(
-                  launched.result,
-                  launch.sessionDir,
-                ),
+                result: await explainResult(launched.result, launch.sessionDir),
               };
         resume = undefined;
         const { session, result } = run;
