@@ -131,7 +131,11 @@ export async function replayIssueRun(sourceDir, destinationDir, issue) {
     sources,
     phases,
     toolCalls,
-    cost: report?.total.costUsd?.toFixed(4) ?? null,
+    // The page shows Unpriced, not a dollar amount, for zero-priced usage.
+    cost:
+      report?.total.unpriced && report.total.costUsd === 0
+        ? null
+        : (report?.total.costUsd?.toFixed(4) ?? null),
     tokens: report
       ? report.total.inputTokens + report.total.outputTokens
       : null,

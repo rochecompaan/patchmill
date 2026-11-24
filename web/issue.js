@@ -98,7 +98,7 @@ function renderMeta(doc, detail, name, p, live) {
     (detail.run || (issue.status === "done" && detail.finalUsage))
   ) {
     const usage = detail.finalUsage;
-    const cost = usage?.cost
+    const amount = usage?.cost
       ? new Intl.NumberFormat(undefined, {
           style: "currency",
           currency: usage.cost.currency,
@@ -106,6 +106,10 @@ function renderMeta(doc, detail, name, p, live) {
           maximumFractionDigits: 4,
         }).format(Number(usage.cost.amount))
       : null;
+    const cost =
+      amount && usage?.cost?.partial
+        ? `${amount} (partial)`
+        : (amount ?? (usage?.unpriced ? "Unpriced" : null));
     const tokens =
       usage?.tokens === null || usage?.tokens === undefined
         ? "tokens not recorded"

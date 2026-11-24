@@ -418,3 +418,45 @@ test("active attempts show history without cost, unlocked progress becomes incom
   assert.equal(ended.summary.elapsedSeconds, null);
   assert.match(texts(ended), /Run ended before recording a result/);
 });
+
+test("unpriced usage is not shown as a zero dollar cost", async (t) => {
+  const entry = (id: string, cost: unknown) => ({
+    ...piEntry(id, "assistant", [{ type: "text", text: "work" }]),
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "work" }],
+      model: "fixture",
+      usage: {
+        input: 100,
+        output: 10,
+        cacheRead: 0,
+        cacheWrite: 0,
+        ...(cost === undefined ? {} : { cost }),
+      },
+    },
+  });
+  const read = async (messages: unknown[]) => {
+    const f = await issueThreadFixture(t);
+    await f.attempt({ messages });
+    return (await f.read()).finalUsage;
+  };
+  assert.deepEqual(
+    await read([
+      piEntry("priced", "assistant", [{ type: "text", text: "work" }]),
+      entry("unpriced", { total: 0 }),
+    ]),
+    {
+      tokens: 220,
+      cost: { amount: "0.1000", currency: "USD", partial: true },
+      unpriced: true,
+    },
+  );
+  assert.deepEqual(
+    await read([entry("a", { total: 0 }), entry("b", { total: 0 })]),
+    { tokens: 220, cost: null, unpriced: true },
+  );
+  assert.deepEqual(
+    await read([entry("missing", undefined), entry("unpriced", { total: 0 })]),
+    { tokens: 220, cost: null, unpriced: false },
+  );
+});

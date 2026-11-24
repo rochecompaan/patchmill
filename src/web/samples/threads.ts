@@ -1188,7 +1188,9 @@ export const sampleThreads: Readonly<
       cost: {
         amount: "3.84",
         currency: "USD",
+        partial: false,
       },
+      unpriced: false,
     },
   },
   "173": {
@@ -1282,7 +1284,9 @@ export const sampleThreads: Readonly<
       cost: {
         amount: "5.10",
         currency: "USD",
+        partial: false,
       },
+      unpriced: false,
     },
   },
   "247": {

@@ -113,10 +113,15 @@ export interface IssueDetail {
   readonly artifacts: readonly Artifact[];
   readonly finalUsage: {
     readonly tokens: number | null;
+    /** Null when a cost is unavailable or when all usage is unpriced. */
     readonly cost: {
       readonly amount: string;
       readonly currency: string;
+      /** True when the amount leaves out Unpriced usage. */
+      readonly partial: boolean;
     } | null;
+    /** True when some usage is Unpriced and no cost is unavailable. */
+    readonly unpriced: boolean;
   } | null;
 }
 
