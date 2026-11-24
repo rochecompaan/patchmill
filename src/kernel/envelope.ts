@@ -7,6 +7,8 @@ import type { Issue, IssueDependency, Repository } from "../host/types.ts";
 import type { Facts } from "./facts.ts";
 import { parsePlanningBranch } from "./names.ts";
 import type { Phase } from "./phase.ts";
+import { previousStallsFact } from "./stall-text.ts";
+import type { Stall } from "./stall-watch.ts";
 
 export type RunEnvelopeInput = {
   repository: Repository;
@@ -17,6 +19,13 @@ export type RunEnvelopeInput = {
   timeoutMinutes: number;
   /** The Command timeout limits, stated in the implementation envelope. */
   commandLimits: CommandLimits;
+  /**
+   * The Stall policy of an unattended implementation session. `minutes` 0
+   * means Stall stops are off and only Command timeouts count.
+   */
+  stallStop?: { minutes: number; maxStalls: number };
+  /** The Stalls of the last Run attempt that stopped at the Stall limit. */
+  previousStalls?: Stall[];
   trusted: string[];
   interactive?: boolean;
   /** The session resolves only `facts.mergeConflict`; see merge-conflicts.ts. */
@@ -88,6 +97,15 @@ function commandTimeoutFact(limits: CommandLimits): string {
   return `\n- Command timeout: ${text}`;
 }
 
+function stallFact(stall: RunEnvelopeInput["stallStop"]): string {
+  if (!stall) return "";
+  const count =
+    stall.maxStalls > 0 ? `After ${stall.maxStalls} stalls, or a` : "A";
+  if (stall.minutes > 0)
+    return `\n- Stall stop: when the session and its subagents show no activity for ${minutes(stall.minutes * 60)} minutes, outside a running bash call, Patchmill stops the turn and asks you to continue another way. ${count} second stall of the same command${stall.maxStalls > 0 ? "," : ""} ${stall.maxStalls > 0 ? "the run stops" : "stops the run"} as blocked.`;
+  return `\n- Stalls: a command that times out is a stall. ${count} second timeout of the same command${stall.maxStalls > 0 ? "," : ""} ${stall.maxStalls > 0 ? "the run stops" : "stops the run"} as blocked.`;
+}
+
 export function renderRunEnvelope(input: RunEnvelopeInput): string {
   const { facts } = input;
   const interactivePlanning = input.interactive && input.phase === "planning";
@@ -151,7 +169,11 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
     timeoutMinutes: String(input.timeoutMinutes),
     commandTimeout:
       input.phase === "implementation"
-        ? commandTimeoutFact(input.commandLimits)
+        ? commandTimeoutFact(input.commandLimits) +
+          (input.interactive ? "" : stallFact(input.stallStop)) +
+          (input.previousStalls?.length
+            ? `\n${previousStallsFact(input.previousStalls)}`
+            : "")
         : "",
     issue: renderIssue(input.issue, input.trusted),
   });

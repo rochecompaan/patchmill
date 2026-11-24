@@ -34,7 +34,9 @@ import {
   formatRunStart,
   formatPhaseStart,
   formatPhaseComplete,
+  formatStall,
 } from "./console.ts";
+import { consumeStallBlock, writeStallBlock } from "./stall-block.ts";
 import type { OutcomeLabel } from "./verify.ts";
 import { reviewedDocuments, verifyPlanningApproval } from "./chat-approval.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
@@ -266,6 +268,7 @@ export async function runOneIssue(
     exitCode: number | null;
     timedOut: boolean;
     status: string;
+    stalls?: number;
     planningApproval?: "pr" | "no-pr";
   }[] = [];
   let stop: Omit<StopPublication, "cost"> = {
@@ -439,6 +442,8 @@ export async function runOneIssue(
           options.signal,
           resolving !== undefined,
         );
+        launch.onStall = (notice) =>
+          progressOutput("stderr", formatStall(notice, config.pi.maxStalls));
         sessionNumber++;
         sinceHuman++;
         await snapshot.phase(phase, sessionNumber);
@@ -456,7 +461,9 @@ export async function runOneIssue(
           resume?.text,
         );
         const run =
-          launched.session.timedOut || launched.session.aborted
+          launched.session.timedOut ||
+          launched.session.aborted ||
+          launched.stallBlock
             ? launched
             : {
                 ...launched,
@@ -481,6 +488,7 @@ export async function runOneIssue(
           exitCode: session.exitCode,
           timedOut: session.timedOut,
           status: result.ok ? result.result.status : "invalid",
+          ...(run.stalls ? { stalls: run.stalls.length } : {}),
           ...(run.planningApproval
             ? { planningApproval: run.planningApproval }
             : {}),
@@ -493,6 +501,11 @@ export async function runOneIssue(
           stop = { label: "inProgress", summary: "Run paused.", warnings: [] };
           break;
         }
+        // The resume record is used once, by an attempt that did not pause.
+        if (phase === "implementation")
+          await consumeStallBlock(issueDir, runDir);
+        if (run.stallBlock)
+          await writeStallBlock(issueDir, { runId, stalls: run.stalls ?? [] });
         const after = await collect(await workflow.issue(issueNumber), facts);
         if (after.kind === "ambiguous-branches") {
           stop.summary = `Several issue branches exist: ${after.branches.join(", ")}`;
@@ -511,6 +524,7 @@ export async function runOneIssue(
             logPath: launch.logPath,
             uncommitted: await git.hasUncommittedChanges(facts.worktree),
             unpushed: await git.unpushedCommits(facts.worktree, facts.branch),
+            ...(run.stallBlock ? { stallBlock: run.stallBlock } : {}),
             ...(conflict
               ? {
                   conflictGaps: await conflictResolutionGaps(

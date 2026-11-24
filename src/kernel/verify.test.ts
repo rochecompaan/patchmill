@@ -461,3 +461,17 @@ test("conflict gaps make a verified pull request needsInfo", () => {
   assert.ok(verified.comment.startsWith("The claim was not verified."));
   assert.match(verified.comment, /X\./);
 });
+
+test("a stall block stops with needsInfo and the reason first", () => {
+  const outcome = verifyOutcome({
+    ...input,
+    result: { ok: false, reason: "No result block.", missing: true },
+    stallBlock: "The implementation stopped after 3 stalls.",
+    uncommitted: true,
+  });
+  assert.equal(outcome.kind, "stop");
+  if (outcome.kind !== "stop") return;
+  assert.equal(outcome.label, "needsInfo");
+  assert.match(outcome.comment, /^The implementation stopped after 3 stalls\./);
+  assert.ok(outcome.warnings.includes("uncommitted changes in the worktree"));
+});

@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { trustedAuthors, type PatchmillConfig } from "../config/config.ts";
 import type { ParsedResult } from "./result.ts";
 import type { PiSession } from "./pi-supervisor.ts";
@@ -19,6 +19,7 @@ import { closesIssue, type Outcome, type OutcomeLabel } from "./verify.ts";
 import type { Facts } from "./facts.ts";
 import { parsePlanningBranch } from "./names.ts";
 import { planningGateComment } from "./comments.ts";
+import { readStallBlock } from "./stall-block.ts";
 import {
   commandLimits,
   commandLimitsEnv,
@@ -156,6 +157,20 @@ export async function preparePhasePrompt(
   const { host, repoRoot } = deps;
   const skill = resolvePhaseSkill(config, repoRoot, phase);
   const promptPath = join(runDir, "prompt.md");
+  const limits = commandLimits(config.pi);
+  // Only an unattended implementation session gets the Stall policy.
+  const stallPolicy = phase === "implementation" && !deps.human;
+  const stallStop =
+    stallPolicy &&
+    (config.pi.stallStopMinutes > 0 ||
+      limits.defaultSeconds > 0 ||
+      limits.maxSeconds > 0)
+      ? { minutes: config.pi.stallStopMinutes, maxStalls: config.pi.maxStalls }
+      : undefined;
+  const previousStalls =
+    phase === "implementation"
+      ? await readStallBlock(dirname(runDir))
+      : undefined;
   const envelope = renderRunEnvelope({
     repository: await host.repository(),
     issue,
@@ -165,7 +180,9 @@ export async function preparePhasePrompt(
     interactive: !!deps.human,
     ...(conflictResolution ? { conflictResolution } : {}),
     timeoutMinutes: config.pi.timeoutMinutes,
-    commandLimits: commandLimits(config.pi),
+    commandLimits: limits,
+    ...(stallStop ? { stallStop } : {}),
+    ...(previousStalls ? { previousStalls } : {}),
     trusted: trustedAuthors(config, (await host.checkCli()).login),
   });
   await fs.writeFile(promptPath, envelope);
@@ -173,7 +190,18 @@ export async function preparePhasePrompt(
     command: deps.piCommand,
     agentDir: resolve(repoRoot, config.pi.agentDir),
     extensionPaths: deps.extensionPaths,
-    env: commandLimitsEnv(commandLimits(config.pi)),
+    env: commandLimitsEnv(limits),
+    ...(stallPolicy
+      ? {
+          stall: {
+            limits: {
+              stopAfterMs: config.pi.stallStopMinutes * 60_000,
+              maxStalls: config.pi.maxStalls,
+              command: limits,
+            },
+          },
+        }
+      : {}),
   });
   const launch: PhaseLaunch = {
     phase,
