@@ -15,13 +15,25 @@ import {
   writeFakeHostState,
 } from "../../../../test-support/fake-host.ts";
 import { DEFAULT_CONFIG } from "../../../config/config.ts";
-import type { CommandRunner } from "../../../process/command.ts";
+import { runCommand, type CommandRunner } from "../../../process/command.ts";
+import { provisionReviewerAgent } from "../init/agent-dir.ts";
 import { runDoctorChecks } from "./checks.ts";
 import { main } from "./main.ts";
 
 async function fixture(t: TestContext) {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-doctor-"));
   t.after(() => rm(repoRoot, { recursive: true, force: true }));
+  assert.equal(
+    (await runCommand("git", ["init", "-q"], { cwd: repoRoot })).code,
+    0,
+  );
+  const home = await mkdtemp(join(tmpdir(), "patchmill-doctor-home-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const earlierHome = process.env.HOME;
+  t.after(() => {
+    process.env.HOME = earlierHome;
+  });
+  process.env.HOME = home;
   const config = structuredClone(DEFAULT_CONFIG);
   config.paths.runsDir = "custom/runs";
   config.pi.agentDir = "custom/agent";
@@ -29,13 +41,7 @@ async function fixture(t: TestContext) {
     await mkdir(join(repoRoot, path), { recursive: true });
     await writeFile(join(repoRoot, path, "SKILL.md"), "fixture");
   }
-  await mkdir(join(repoRoot, config.pi.agentDir, "agents"), {
-    recursive: true,
-  });
-  await writeFile(
-    join(repoRoot, config.pi.agentDir, "agents/reviewer.md"),
-    "fixture",
-  );
+  await provisionReviewerAgent(repoRoot, config.pi.agentDir);
   const state = join(repoRoot, "host.json");
   writeFakeHostState(state, { labels: Object.values(config.labels) });
   const host = new FakeHost(state);
@@ -173,7 +179,7 @@ test("missing resources fail or warn without preventing later probes", async (t)
   assert.equal(checks.find((c) => c.name === "labels")!.status, "fail");
   assert.equal(checks.find((c) => c.name === "skills")!.status, "fail");
   assert.equal(checks.find((c) => c.name === "excludes")!.status, "warn");
-  assert.equal(checks.find((c) => c.name === "reviewer")!.status, "warn");
+  assert.equal(checks.find((c) => c.name === "reviewer")!.status, "fail");
   assert.equal(checks.find((c) => c.name === "Pi smoke")!.status, "pass");
 });
 
@@ -229,6 +235,18 @@ for (const [output, status, message] of [
   });
 }
 
+test("a passing host CLI check shows its message", async (t) => {
+  const f = await fixture(t);
+  f.host.checkCli = async () => ({ ok: true, message: "app token guidance" });
+  let checks = await runDoctorChecks(f.deps);
+  assert.equal(checks[0]!.status, "pass");
+  assert.equal(checks[0]!.message, "app token guidance");
+  f.host.checkCli = async () => ({ ok: true, message: "" });
+  checks = await runDoctorChecks(f.deps);
+  assert.equal(checks[0]!.status, "pass");
+  assert.equal(checks[0]!.message, "Ready");
+});
+
 test("a host CLI failure remains a failure even without a diagnostic message", async (t) => {
   const f = await fixture(t);
   f.host.checkCli = async () => ({ ok: false, message: "" });
@@ -237,7 +255,7 @@ test("a host CLI failure remains a failure even without a diagnostic message", a
   assert.ok(checks[0]!.message.length > 0);
 });
 
-test("doctor CLI prints diagnostics and fails only for failures or invalid input", async (t) => {
+async function cli(t: TestContext) {
   const f = await fixture(t);
   await writeFile(
     join(f.repoRoot, "patchmill.config.json"),
@@ -255,6 +273,62 @@ test("doctor CLI prints diagnostics and fails only for failures or invalid input
       stderr: (s: string) => stderr.push(s),
     },
   };
+  return { f, stdout, stderr, options };
+}
+
+test("a stale reviewer fails with a fix hint", async (t) => {
+  const f = await fixture(t);
+  await writeFile(
+    join(f.repoRoot, f.config.pi.agentDir, "agents/reviewer.md"),
+    "fixture",
+  );
+  const reviewer = (await runDoctorChecks(f.deps)).find(
+    (c) => c.name === "reviewer",
+  )!;
+  assert.equal(reviewer.status, "fail");
+  assert.match(reviewer.message, /--fix/);
+});
+
+test("doctor --fix restores only the managed reviewer", async (t) => {
+  const { f, stdout, options } = await cli(t);
+  const agents = join(f.repoRoot, f.config.pi.agentDir, "agents");
+  const reviewer = join(agents, "reviewer.md");
+  const worker = join(agents, "patchmill-implementation.md");
+  const settings = join(f.repoRoot, f.config.pi.agentDir, "settings.json");
+  await rm(reviewer);
+  await writeFile(worker, "worker bytes");
+  await writeFile(settings, "{}\n");
+  assert.equal(await main([], options), 1);
+  assert.ok(stdout.some((s) => s.startsWith("[fail] reviewer:")));
+  stdout.length = 0;
+  assert.equal(await main(["--fix"], options), 0, stdout.join("\n"));
+  assert.ok(stdout.includes(`[fixed] reviewer: wrote ${reviewer}`));
+  assert.ok(stdout.some((s) => s.startsWith("[pass] reviewer:")));
+  assert.equal(await readFile(worker, "utf8"), "worker bytes");
+  assert.equal(await readFile(settings, "utf8"), "{}\n");
+  stdout.length = 0;
+  assert.equal(await main(["--fix"], options), 0);
+  assert.ok(!stdout.some((s) => s.startsWith("[fixed]")));
+});
+
+test("doctor --fix does not remove a shadowing definition", async (t) => {
+  const { f, stdout, options } = await cli(t);
+  const shadow = join(f.repoRoot, ".pi/agents/reviewer.md");
+  await mkdir(join(f.repoRoot, ".pi/agents"), { recursive: true });
+  await writeFile(
+    shadow,
+    "---\nname: reviewer\ndescription: x\ntools: read\n---\nhi\n",
+  );
+  assert.equal(await main(["--fix"], options), 1);
+  assert.ok(
+    stdout.some((s) => s.includes(shadow)),
+    stdout.join("\n"),
+  );
+  assert.equal(await readFile(shadow, "utf8").then(Boolean), true);
+});
+
+test("doctor CLI prints diagnostics and fails only for failures or invalid input", async (t) => {
+  const { f, stdout, stderr, options } = await cli(t);
   assert.equal(await main([], options), 0);
   assert.ok(stdout.some((s) => /^\[warn\] trusted authors:/.test(s)));
   assert.ok(stdout.some((s) => /^\[pass\] Pi smoke:/.test(s)));
@@ -265,6 +339,10 @@ test("doctor CLI prints diagnostics and fails only for failures or invalid input
   assert.equal(await main([], options), 1);
   assert.ok(stdout.some((s) => /^\[fail\] host CLI: please install/.test(s)));
   assert.equal(await main(["--bad"], options), 1);
+  assert.equal(await main(["--fix", "--fix"], options), 1);
+  stdout.length = 0;
+  assert.equal(await main(["--help"], options), 0);
+  assert.match(stdout.join("\n"), /Usage: patchmill doctor \[--fix\]/);
   await writeFile(
     join(f.repoRoot, "patchmill.config.json"),
     '{"retired":true}',

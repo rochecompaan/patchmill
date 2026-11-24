@@ -15,7 +15,7 @@ import type { CliOutput } from "../../main.ts";
 import {
   ensureLocalExcludes,
   provisionAgentDir,
-  REVIEWER_AGENT,
+  provisionReviewerAgent,
 } from "./agent-dir.ts";
 import { installSkills } from "./skill-installer.ts";
 
@@ -111,10 +111,9 @@ export async function main(
     output.stdout(
       `Skills: ${counts.written} written, ${counts.unchanged} unchanged`,
     );
-    const reviewer = join(repoRoot, config.pi.agentDir, "agents/reviewer.md");
-    const unchanged = (await optionalText(reviewer)) === REVIEWER_AGENT;
+    const reviewer = await provisionReviewerAgent(repoRoot, config.pi.agentDir);
     await provisionAgentDir(repoRoot, config.pi.agentDir);
-    output.stdout(`Agent directory: ${unchanged ? "unchanged" : "written"}`);
+    output.stdout(`Agent directory: ${reviewer}`);
     const added = await ensureLocalExcludes(
       repoRoot,
       [

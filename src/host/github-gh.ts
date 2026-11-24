@@ -129,12 +129,29 @@ export class GitHubHost implements Host, RepositorySetupHost {
     });
     const version = await this.gh(["--version"]);
     if (version.code !== 0) return fail("gh --version", version);
-    const auth = await this.gh(["auth", "status"]);
-    if (auth.code !== 0) return fail("gh auth status", auth);
+    // `gh auth status` and `gh api user` both need a user; App tokens have none.
     const user = await this.gh(["api", "user", "--jq", ".login"]);
-    if (user.code !== 0) return fail("gh api user", user);
-    const login = user.stdout.trim();
-    return { ok: true, message: `gh authenticated as ${login}`, login };
+    if (user.code === 0) {
+      const login = user.stdout.trim();
+      return { ok: true, message: `gh authenticated as ${login}`, login };
+    }
+    // Only GitHub App installation tokens may list installation repositories.
+    const installation = await this.gh([
+      "api",
+      "installation/repositories",
+      "--jq",
+      ".total_count",
+    ]);
+    if (installation.code === 0)
+      return {
+        ok: true,
+        message:
+          "gh authenticated with a GitHub App installation token; trusted comment authors come from host.login and host.trustedAuthors",
+      };
+    return {
+      ok: false,
+      message: `No usable GitHub token: gh api user failed: ${commandOutput(user)}; gh api installation/repositories failed: ${commandOutput(installation)}. With a GitHub App installation token, trusted comment authors come only from host.login and host.trustedAuthors.`,
+    };
   }
   async repository(): Promise<Repository> {
     const result = await this.ghOk([

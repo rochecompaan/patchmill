@@ -25,8 +25,10 @@ async function harness(t: TestContext, fail?: "auth" | "list" | "create") {
     const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
     const bad = { code: 1, stdout: "", stderr: "owned fake failure" };
     if (args[0] === "--version") return ok("gh version fake");
-    if (args.join(" ") === "auth status") return fail === "auth" ? bad : ok();
-    if (args.join(" ") === "api user --jq .login") return ok("fake-user");
+    if (args.join(" ") === "api user --jq .login")
+      return fail === "auth" ? bad : ok("fake-user");
+    if (args.join(" ") === "api installation/repositories --jq .total_count")
+      return fail === "auth" ? bad : ok("1");
     if (args.join(" ") === "label list --limit 200 --json name") {
       return fail === "list"
         ? bad

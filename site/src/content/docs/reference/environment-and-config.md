@@ -51,8 +51,12 @@ scripts, retry rules, and inspected manual recovery.
 Patchmill sets `PI_CODING_AGENT_DIR` to the configured agent directory for Pi
 processes. Other provider environment comes from the shell and host CLIs.
 Patchmill has no host-login environment override. GitHub uses active `gh`
-authentication. Forgejo uses Tea's default profile when `host.login` is empty,
-or the explicit profile alias when set.
+authentication. GitHub also accepts a GitHub App installation token in
+`GH_TOKEN`. With that token, trust comes only from `host.login` and
+`host.trustedAuthors`. See
+[Host and trust](/getting-started/configuration/#host-and-trust). Forgejo uses
+Tea's default profile when `host.login` is empty, or the explicit profile alias
+when set.
 
 `patchmill auth` presents standalone authentication and model pickers. Pi's SDK
 saves credentials in the configured agent directory's `auth.json`. Patchmill
@@ -65,20 +69,21 @@ explicit extension paths. This does not guarantee global extension isolation.
 
 ## Operator commands
 
-| Command                                                    | Behaviour                                                                                                                                                     |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                                                         |
-| `patchmill auth`                                           | Choose a subscription or API key, provider, and default model. Save them in the configured Pi agent directory, verify the provider, then return to the shell. |
-| `patchmill doctor`                                         | Read-only checks: host CLI logged in, labels exist, worktree directory ignored, skills present, Pi answers a smoke prompt.                                    |
-| `patchmill labels setup`                                   | Create missing labels.                                                                                                                                        |
-| `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                                         |
-| `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                                                        |
-| `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                       |
-| `patchmill skills update`                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files dropped from the pack.                       |
-| `patchmill version`                                        | Print the version.                                                                                                                                            |
-| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                            |
+| Command                                                    | Behaviour                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                                                                                                          |
+| `patchmill auth`                                           | Choose a subscription or API key, provider, and default model. Save them in the configured Pi agent directory, verify the provider, then return to the shell.                                                  |
+| `patchmill doctor [--fix]`                                 | Readiness checks: host CLI logged in, labels exist, worktree directory ignored, skills present, the managed `reviewer` resolves with `bash`, Pi answers a smoke prompt. `--fix` restores the managed reviewer. |
+| `patchmill labels setup`                                   | Create missing labels.                                                                                                                                                                                         |
+| `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                                                                                          |
+| `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                                                                                                         |
+| `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                                                                                                        |
+| `patchmill skills update`                                  | Update the managed skill pack to the installed Patchmill version. Refuses edited managed files and removes files dropped from the pack.                                                                        |
+| `patchmill version`                                        | Print the version.                                                                                                                                                                                             |
+| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                                                                                             |
 
 `doctor` is read-only with respect to repository and host configuration, but it
-writes local smoke logs and makes a model call. Triage dry run also makes model
-calls and writes local output. Run-once dry run does not claim or run Pi. Logs
-and sessions can contain sensitive content. Keep them local.
+writes local smoke logs and makes a model call. `doctor --fix` writes only the
+managed `agents/reviewer.md` in the Pi agent directory. Triage dry run also
+makes model calls and writes local output. Run-once dry run does not claim or
+run Pi. Logs and sessions can contain sensitive content. Keep them local.

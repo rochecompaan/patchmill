@@ -9,6 +9,7 @@ import { commandOutput, type CommandRunner } from "../../../process/command.ts";
 import { stateDir, StateStore } from "../../../state/store.ts";
 import { stateTrackingMode } from "../../../kernel/state-tracking-mode.ts";
 import type { PiCommandSpec } from "../../pi-cli.ts";
+import { checkReviewerRole } from "./reviewer-role.ts";
 
 /** `git merge-tree --write-tree` first appeared in Git 2.38. */
 const MIN_GIT = [2, 38] as const;
@@ -73,9 +74,12 @@ export async function runDoctorChecks(deps: {
   }
   await check("host CLI", "fail", async () => {
     const result = await host.checkCli();
-    return result.ok
-      ? { ok: true }
-      : { ok: false, message: result.message || "Host CLI check failed" };
+    // On success, show the message: App-token users need its trust guidance.
+    if (result.ok)
+      return result.message
+        ? { ok: true, message: result.message }
+        : { ok: true };
+    return { ok: false, message: result.message || "Host CLI check failed" };
   });
   const mode = stateTrackingMode(config);
   switch (mode.doctorWorkflowCheck) {
@@ -157,13 +161,12 @@ export async function runDoctorChecks(deps: {
       ? { ok: false, message: `Missing skill files: ${missing.join(", ")}` }
       : { ok: true };
   });
-  await check("reviewer", "warn", async () => {
-    const missing = await missingFiles([
-      resolve(repoRoot, config.pi.agentDir, "agents/reviewer.md"),
-    ]);
-    return missing.length
-      ? { ok: false, message: `Missing reviewer: ${missing[0]}` }
-      : { ok: true };
+  await check("reviewer", "fail", async () => {
+    const result = await checkReviewerRole({
+      repoRoot,
+      agentDir: config.pi.agentDir,
+    });
+    return result.ok ? { ok: true } : { ok: false, message: result.message };
   });
   await check("pi-subagents", "fail", async () => {
     resolvePiSubagentsPackageRoot();
