@@ -457,3 +457,60 @@ test("entries stay at 2000 with an earlier marker", async () => {
     `note ${MAX_ENTRIES + 4}`,
   );
 });
+
+const EXPIRED =
+  "Your authentication token has expired. Please try refreshing it.";
+const failedEnd = (
+  errorMessage: string,
+  content: unknown[] = [],
+  stopReason = "error",
+) => ({
+  type: "message_end",
+  message: { role: "assistant", content, stopReason, errorMessage },
+});
+const errors = (s: ReturnType<typeof setup>) =>
+  s.entries().filter((e) => e.kind === "error") as (ThreadEvent & {
+    kind: "error";
+  })[];
+
+test("a failed reply adds a sign-in error entry", () => {
+  const s = setup();
+  s.fake.emit({ type: "agent_start" });
+  s.fake.emit(failedEnd(EXPIRED));
+  s.fake.emit({ type: "agent_settled" });
+  assert.equal(s.entries().length, 1);
+  const [entry] = errors(s);
+  assert.equal(entry?.title, "Sign-in failed");
+  assert.match(entry?.text ?? "", /Run patchmill auth/);
+  assert.match(entry?.text ?? "", /Your authentication token has expired\./);
+  assert.equal(s.session.snapshot().state, "idle");
+});
+
+test("each failed reply adds its own error entry", () => {
+  const s = setup();
+  s.fake.emit(failedEnd(EXPIRED));
+  s.fake.emit(failedEnd(EXPIRED));
+  const list = errors(s);
+  assert.equal(list.length, 2);
+  assert.notEqual(list[0]!.id, list[1]!.id);
+});
+
+test("text before a failure stays before the error", () => {
+  const s = setup();
+  s.fake.emit(failedEnd("Overloaded", [{ type: "text", text: "Partial" }]));
+  const [message, error] = s.entries() as (ThreadEvent &
+    Record<string, unknown>)[];
+  assert.equal(message?.kind, "message");
+  assert.deepEqual(message?.blocks, [
+    { kind: "paragraph", content: [{ kind: "text", text: "Partial" }] },
+  ]);
+  assert.equal(error?.kind, "error");
+  assert.equal(error?.title, "The agent's request failed");
+  assert.equal(error?.text, "Overloaded.");
+});
+
+test("an aborted reply adds no error entry", () => {
+  const s = setup();
+  s.fake.emit(failedEnd("Request was aborted", [], "aborted"));
+  assert.equal(errors(s).length, 0);
+});
