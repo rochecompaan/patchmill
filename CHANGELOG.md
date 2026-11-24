@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.2.0](https://github.com/rochecompaan/patchmill/compare/v1.1.0...v1.2.0) (2026-11-24)
+
+
+### Features
+
+* **console:** Keep the issue visible and say what to do next after an Interactive Issue run ([#406](https://github.com/rochecompaan/patchmill/issues/406)) ([#414](https://github.com/rochecompaan/patchmill/issues/414)) ([360c592](https://github.com/rochecompaan/patchmill/commit/360c5921e164c89023a5d03642cf6dbbd99afbce))
+* **init:** let the managed reviewer run validation commands ([#229](https://github.com/rochecompaan/patchmill/issues/229)) ([#418](https://github.com/rochecompaan/patchmill/issues/418)) ([9e93b60](https://github.com/rochecompaan/patchmill/commit/9e93b60b4b670b6593e1cc54cfae4db5af818fc7))
+* **kernel:** add a local patchmill run loop for one runner per clone ([#403](https://github.com/rochecompaan/patchmill/issues/403)) ([12f871a](https://github.com/rochecompaan/patchmill/commit/12f871afd84725007a81cd629cae8e5ac6182444))
+* **kernel:** prepare the kernel for control-plane mode ([#400](https://github.com/rochecompaan/patchmill/issues/400)) ([f7de8e6](https://github.com/rochecompaan/patchmill/commit/f7de8e60f13fa9906dab708862299d5b57145ccd))
+* **kernel:** resolve merge conflicts on open Patchmill pull requests in the run loop ([#416](https://github.com/rochecompaan/patchmill/issues/416)) ([18c77ee](https://github.com/rochecompaan/patchmill/commit/18c77ee0a6417e3596fa902894f1b90545bc5787))
+* **pi:** give agent bash calls a default timeout and a cap ([#322](https://github.com/rochecompaan/patchmill/issues/322)) ([#422](https://github.com/rochecompaan/patchmill/issues/422)) ([1a8e71f](https://github.com/rochecompaan/patchmill/commit/1a8e71fb0c4e639856f39adff83852f35bd1a28c))
+
+
+### Bug Fixes
+
+* **host:** run Patchmill with GitHub App installation tokens ([#317](https://github.com/rochecompaan/patchmill/issues/317)) ([#419](https://github.com/rochecompaan/patchmill/issues/419)) ([13eb7c3](https://github.com/rochecompaan/patchmill/commit/13eb7c311fb1b29cef0c4906dfa2245ea06e9af4))
+* **kernel:** fail a phase when Pi exits abnormally after a done result ([#408](https://github.com/rochecompaan/patchmill/issues/408)) ([b9a02cf](https://github.com/rochecompaan/patchmill/commit/b9a02cfea56a84bbb5d7c98ccbcbfc5cd768c444))
+* **kernel:** recover when a phase worker ends without its result block ([#407](https://github.com/rochecompaan/patchmill/issues/407)) ([#413](https://github.com/rochecompaan/patchmill/issues/413)) ([9ef23e7](https://github.com/rochecompaan/patchmill/commit/9ef23e77d5ce102a9adffd37e73bf7fd5bca9d75))
+* **kernel:** Surface Provider failures instead of leaving agents unresponsive ([#417](https://github.com/rochecompaan/patchmill/issues/417)) ([#421](https://github.com/rochecompaan/patchmill/issues/421)) ([d590dbb](https://github.com/rochecompaan/patchmill/commit/d590dbb75f2418c5b3219b54d32301814ec9f309))
+* **skills:** workers wait for their own subagents before ending ([#388](https://github.com/rochecompaan/patchmill/issues/388)) ([#411](https://github.com/rochecompaan/patchmill/issues/411)) ([43c9824](https://github.com/rochecompaan/patchmill/commit/43c98248cdcb27896cd0d83f4803211b13b0e674))
+
 ## [1.1.0](https://github.com/rochecompaan/patchmill/compare/v1.0.0...v1.1.0) (2026-11-20)
 
 
