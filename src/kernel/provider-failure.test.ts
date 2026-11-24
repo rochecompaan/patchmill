@@ -114,6 +114,14 @@ test("entry and notice text", () => {
     "The model request failed: Overloaded.",
   );
   assert.equal(providerFailureEntry(ok), undefined);
+  assert.deepEqual(providerFailureEntry(failed(EXPIRED), "history"), {
+    title: "Sign-in failed",
+    text: `${EXPIRED}\n\nThe model provider refused the sign-in. Run patchmill auth in the repository, then try again.`,
+  });
+  assert.deepEqual(providerFailureEntry(failed("Overloaded"), "history"), {
+    title: "The agent's request failed",
+    text: "Overloaded.",
+  });
 });
 
 test("lastProviderFailure reads the newest session file", async (t) => {

@@ -38,7 +38,10 @@ test("a failed assistant record becomes an error event", () => {
   assert.equal(last?.at, AT);
   if (last?.kind === "error") {
     assert.equal(last.title, "Sign-in failed");
-    assert.match(last.text, /Run patchmill auth/);
+    assert.equal(
+      last.text,
+      `${EXPIRED}\n\nThe model provider refused the sign-in. Run patchmill auth in the repository, then try again.`,
+    );
   }
 });
 

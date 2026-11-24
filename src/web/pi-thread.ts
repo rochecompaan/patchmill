@@ -92,10 +92,8 @@ export function projectPiThread(input: {
         typeof m.content === "string"
           ? [{ type: "text", text: m.content }]
           : m.content;
-      for (const [blockIndex, b] of (Array.isArray(content)
-        ? content
-        : []
-      ).entries()) {
+      const parts = Array.isArray(content) ? content : [];
+      for (const [blockIndex, b] of parts.entries()) {
         if (!object(b)) continue;
         const blockId = `${id}:${blockIndex}`;
         if (b.type === "text" && typeof b.text === "string" && b.text)
@@ -136,7 +134,7 @@ export function projectPiThread(input: {
           });
         }
       }
-      const failure = providerFailureEntry(m);
+      const failure = providerFailureEntry(m, "history");
       if (failure)
         events.push({ id: `${id}:error`, at, kind: "error", ...failure });
     }

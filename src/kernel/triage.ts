@@ -230,16 +230,12 @@ export async function runTriage(
         timeoutMs: config.pi.timeoutMinutes * 60_000,
         ...(options.signal ? { signal: options.signal } : {}),
       });
-      if (
-        session.aborted ||
-        options.signal?.aborted ||
-        session.timedOut ||
-        session.exitCode !== 0
-      ) {
-        const failure =
-          session.aborted || options.signal?.aborted || session.timedOut
-            ? undefined
-            : await lastProviderFailure(sessionDir);
+      const interrupted =
+        session.aborted || options.signal?.aborted || session.timedOut;
+      if (interrupted || session.exitCode !== 0) {
+        const failure = interrupted
+          ? undefined
+          : await lastProviderFailure(sessionDir);
         warn(
           number,
           failure

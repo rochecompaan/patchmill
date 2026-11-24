@@ -22,8 +22,12 @@ const SIGN_IN_PATTERNS: readonly RegExp[] = [
   /invalid (api )?key|api key (is )?(invalid|missing)/i,
   /(log ?in|sign ?in|re-?authenticate).*(again|required|expired)/i,
 ];
-const THREAD_SIGN_IN_GUIDANCE =
-  "The model provider refused the sign-in. Run patchmill auth in the repository, then send your message again. If it fails again, press Pause and then Resume.";
+/** The live Web session has a composer and Pause; a history thread may not. */
+const THREAD_SIGN_IN_GUIDANCE = {
+  live: "The model provider refused the sign-in. Run patchmill auth in the repository, then send your message again. If it fails again, press Pause and then Resume.",
+  history:
+    "The model provider refused the sign-in. Run patchmill auth in the repository, then try again.",
+} as const;
 
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -51,16 +55,18 @@ export function providerFailure(message: unknown): ProviderFailure | undefined {
   };
 }
 
-/** A Pi message object → the Issue thread error entry, or undefined. */
+/** A Pi message object → the Issue thread error entry, or undefined.
+ * `live` is the Web session; `history` is a recorded session file. */
 export function providerFailureEntry(
   message: unknown,
+  surface: "live" | "history" = "live",
 ): { title: string; text: string } | undefined {
   const failure = providerFailure(message);
   if (!failure) return undefined;
   return failure.signIn
     ? {
         title: "Sign-in failed",
-        text: `${sentence(failure.message)}\n\n${THREAD_SIGN_IN_GUIDANCE}`,
+        text: `${sentence(failure.message)}\n\n${THREAD_SIGN_IN_GUIDANCE[surface]}`,
       }
     : { title: "The agent's request failed", text: sentence(failure.message) };
 }
