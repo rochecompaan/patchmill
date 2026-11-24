@@ -14,6 +14,12 @@ Make sure that `gh auth status` reports a usable login. In the repository, run
 authentication context. Init can seed `host.login` with the detected username
 for comment trust. That value does not select a GitHub account.
 
+A GitHub App installation token in `GH_TOKEN` also works. It does not report a
+login, so `gh auth status` fails with it. Patchmill does not use
+`gh auth status`. With an App token, set the trusted comment authors in
+`host.trustedAuthors`. See
+[Host and trust](/getting-started/configuration/#host-and-trust).
+
 ## Forgejo and Gitea
 
 Use `tea logins list` to inspect profiles. Run

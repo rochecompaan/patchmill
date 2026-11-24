@@ -9,7 +9,7 @@ import {
 import type { PatchmillConfig } from "../config/config.ts";
 import type { Host, Issue, PullRequest } from "../host/types.ts";
 import { refArtifacts, worktreeArtifacts } from "./artifact-source.ts";
-import type { KernelGit } from "./git.ts";
+import type { KernelGit, MergeConflict } from "./git.ts";
 import { planningWorkspace, type WorkflowStage } from "./planning-workspace.ts";
 
 export type Facts = {
@@ -24,6 +24,8 @@ export type Facts = {
   expectedSpecPath: string;
   expectedPlanPath: string;
   pullRequest?: PullRequest;
+  /** Set when the open implementation pull request conflicts with base. */
+  mergeConflict?: MergeConflict;
 };
 export type FactsResult =
   | { kind: "facts"; facts: Facts }
@@ -77,10 +79,7 @@ async function selectWorkspace(
 ): Promise<WorkspaceResult> {
   const { git, host, config, repoRoot } = deps;
   await git.fetch();
-  const baseBranch =
-    config.git.baseBranch ??
-    (await git.remoteDefaultBranch()) ??
-    (await host.repository()).defaultBranch;
+  const baseBranch = await resolveBaseBranch(deps);
   const branches = await git.remoteBranches(issue.number);
   const implementation = branches.filter(
     (branch) => parsePlanningBranch(issue.number, branch) === undefined,
@@ -117,6 +116,17 @@ async function selectWorkspace(
       baseBranch,
     },
   };
+}
+
+/** The configured base, else origin's default branch, else the host's. */
+export async function resolveBaseBranch(
+  deps: Pick<Deps, "git" | "host" | "config">,
+): Promise<string> {
+  return (
+    deps.config.git.baseBranch ??
+    (await deps.git.remoteDefaultBranch()) ??
+    (await deps.host.repository()).defaultBranch
+  );
 }
 
 /** Slugs of the issue's newest artifacts on base, which fix planning names. */
@@ -203,6 +213,13 @@ async function observe(
         `A merged planning PR's artifact is missing from, or differs from, base ${baseBranch}. Reconcile the merged documents before continuing.`,
       );
   }
+  const mergeConflict =
+    rest.stage === "implementation" &&
+    pullRequest?.state === "open" &&
+    pullRequest.baseBranch === baseBranch &&
+    rest.remoteBranchExists
+      ? await git.mergeConflict(`origin/${baseBranch}`, `origin/${rest.branch}`)
+      : undefined;
   return {
     kind: "facts",
     facts: {
@@ -217,6 +234,7 @@ async function observe(
       expectedSpecPath: expectedPath(config.paths.specsDir, "spec"),
       expectedPlanPath: expectedPath(config.paths.plansDir, "plan"),
       ...(pullRequest === undefined ? {} : { pullRequest }),
+      ...(mergeConflict === undefined ? {} : { mergeConflict }),
     },
   };
 }

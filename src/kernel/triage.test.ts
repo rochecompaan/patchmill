@@ -571,6 +571,42 @@ for (const mode of ["failed", "timeout", "cancelled"] as const) {
   });
 }
 
+test("a failed triage session names its Provider failure", async (t) => {
+  const f = await setup(t, []);
+  const script = join(f.root, "auth-fail.mjs");
+  const record = {
+    type: "message",
+    timestamp: new Date().toISOString(),
+    message: {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage:
+        "Your authentication token has expired. Please try refreshing it.",
+    },
+  };
+  await fs.writeFile(
+    script,
+    `import fs from "node:fs"; import { join } from "node:path";
+const dir = process.argv[process.argv.indexOf("--session-dir") + 1];
+fs.mkdirSync(dir, { recursive: true });
+fs.writeFileSync(join(dir, "s.jsonl"), ${JSON.stringify(JSON.stringify(record) + "\n")});
+process.exitCode = 1;`,
+  );
+  f.deps.piCommand.argsPrefix = [script];
+  assert.deepEqual(await f.run(), []);
+  assert.ok(
+    f.stderr
+      .join("\n")
+      .includes(
+        "The model request failed: Your authentication token has expired. Please try refreshing it. Run patchmill auth in the repository. Skipping.",
+      ),
+    f.stderr.join("\n"),
+  );
+  assert.deepEqual(f.host.state().issues[0]!.labels, []);
+  assert.deepEqual(f.host.state().issues[0]!.comments, []);
+});
+
 for (const login of ["work", ""]) {
   test(`runtime triage trusts authenticated identity, not Tea selector ${JSON.stringify(login)}`, async (t) => {
     const people = ["alice", "work", "reviewer"];

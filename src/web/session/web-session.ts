@@ -13,6 +13,7 @@ import type {
   TextBlock,
   ThreadEvent,
 } from "../api-types.ts";
+import { providerFailureEntry } from "../../kernel/provider-failure.ts";
 import { shortened, text as contentText } from "../pi-thread.ts";
 import type {
   HubResult,
@@ -250,6 +251,8 @@ export function createWebSession(input: {
       )
         if (block.text || streams.has(index))
           assistantEntry(index, block.text, true);
+    const failure = providerFailureEntry(message);
+    if (failure) error(failure.title, failure.text);
     streams.clear();
     streamText.clear();
   };

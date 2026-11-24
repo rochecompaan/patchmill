@@ -118,6 +118,40 @@ When it applies, commit the validated work, then read and follow
 and validation. It does not replace them. Resolve its findings before you mark
 the pull request ready.
 
+## Merge conflicts
+
+Use this section when the envelope has a `Merge conflict` fact. It names the
+base commit and the conflicted files.
+
+1. Run `git fetch origin`. Run `git merge --ff-only origin/<branch>`, so that
+   the local branch has every pushed commit. Then run `git merge origin/<base>`
+   in the worktree. Never rebase, reset the branch, or force-push. If the
+   fast-forward fails because the local and pushed branches have diverged, stop
+   with `needs-input` and say so in `summary`.
+2. Resolve each conflicted file, so that the intent of both sides stays. Read
+   the base commits that changed the file.
+3. If a resolution needs a product decision, or the two sides cannot both hold,
+   run `git merge --abort`. Then stop with `needs-input`, and name each file and
+   the reason in `summary`.
+4. Run the project validation commands.
+
+If the fact says that the session is a Conflict resolution:
+
+- Work only on the conflict. Do not restart the feature, and do not make
+  unrelated changes. Leave open review comments for a later revision.
+- The independent review covers the resolution only. Supply
+  `git show --remerge-diff <merge commit>` and the conflicted files, not the
+  whole branch.
+- Commit the merge, push, and wait for the checks, as in Commit and publish.
+  Keep the pull request ready and keep its closing reference.
+
+Otherwise, commit the merge, then continue the normal work of the envelope. The
+normal review, checks, and ready rules apply.
+
+Patchmill checks the pushed branch after the session. The branch must merge
+cleanly into the base, and it must contain its previous head and the base
+commit. If a check fails, the issue stops with Needs Info.
+
 ## Commit and publish
 
 Review the final diff, commit the changes, and push the provided issue branch.

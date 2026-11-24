@@ -21,8 +21,8 @@ Each cycle has two steps:
 1. When `run.triageIntervalMinutes` has passed since the last triage, run
    triage, as `patchmill triage` does. Triage runs at the first cycle too.
 2. Run one pass of work. A pass is one `patchmill run-once` without `--issue`.
-   It cleans up merged issues, resumes in-progress work, and selects the next
-   eligible issue.
+   It cleans up merged issues, resolves a merge conflict, resumes in-progress
+   work, and selects the next eligible issue.
 
 The result of the pass decides what happens next:
 
@@ -42,6 +42,25 @@ The Needs Info rule stops a broken provider or Pi installation from moving each
 ready issue to `needs-info` without a pause. Issues still move to `needs-info`:
 three at once, then one after each error wait.
 
+## Merge conflicts
+
+When one pull request merges, another open Patchmill pull request can conflict
+with the base branch. Before it selects new work, a pass checks each Done issue
+with an open implementation pull request. It runs `git merge-tree` on the
+fetched branches, so the check is the same for every host. Planning pull
+requests are not checked.
+
+The oldest conflicting issue goes first. Its status changes to In Progress, and
+an agent merges the base branch into the issue branch. It never rebases or
+force-pushes. Patchmill then checks the pushed branch: it must merge cleanly,
+and it must contain its previous head and the base commit. The issue then goes
+back to Done. If the agent cannot resolve the conflict, or a check fails, the
+issue stops with Needs Info and a comment that names the files.
+
+A pull request is not tried again while its head and the base stay the same. A
+new attempt also waits at least `run.conflictRetryMinutes` after the last one.
+When another run holds the issue, the pass skips it and selects other work.
+
 ## Backoff
 
 The `run.idleBackoff` and `run.errorBackoff` settings each have an
@@ -53,6 +72,7 @@ the error wait, and an error resets the idle wait.
 | Key                               | Default |
 | --------------------------------- | ------- |
 | `run.triageIntervalMinutes`       | `5`     |
+| `run.conflictRetryMinutes`        | `30`    |
 | `run.idleBackoff.initialSeconds`  | `60`    |
 | `run.idleBackoff.maxSeconds`      | `900`   |
 | `run.errorBackoff.initialSeconds` | `30`    |

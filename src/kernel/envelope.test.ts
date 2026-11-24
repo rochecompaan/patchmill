@@ -489,3 +489,52 @@ test("planning has no command timeout line", () => {
     /Command timeout/,
   );
 });
+
+test("renders the merge conflict fact after the pull request line", () => {
+  const facts = {
+    ...input.facts,
+    stage: "implementation" as const,
+    pullRequest: {
+      number: 4,
+      url: "https://example.invalid/pulls/4",
+      state: "open" as const,
+      draft: false,
+      body: "Closes #9",
+      headRepository: "team/project",
+      headBranch: input.facts.branch,
+      baseBranch: "main",
+    },
+    mergeConflict: {
+      baseSha: "abc123",
+      headSha: "def456",
+      files: ["a.ts", "b.ts"],
+    },
+  };
+  const fact =
+    "- Pull request: https://example.invalid/pulls/4 (open)\n- Merge conflict: the pull request conflicts with origin/main at abc123 in: a.ts, b.ts.";
+  const resolution = renderRunEnvelope({
+    ...input,
+    phase: "implementation",
+    facts,
+    conflictResolution: true,
+  });
+  assert.ok(
+    resolution.includes(
+      `${fact} This session is a Conflict resolution: resolve only this conflict, as the skill's Merge conflicts section says.\n- Planning stage:`,
+    ),
+  );
+  const normal = renderRunEnvelope({
+    ...input,
+    phase: "implementation",
+    facts,
+  });
+  assert.ok(
+    normal.includes(
+      `${fact} Merge the base branch first, as the skill's Merge conflicts section says, then continue your normal work.\n- Planning stage:`,
+    ),
+  );
+  assert.doesNotMatch(
+    renderRunEnvelope({ ...input, phase: "planning", facts }),
+    /Merge conflict/,
+  );
+});

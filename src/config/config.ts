@@ -41,6 +41,8 @@ export type PatchmillConfig = {
 export type BackoffSettings = { initialSeconds: number; maxSeconds: number };
 export type RunConfig = {
   triageIntervalMinutes: number;
+  /** Minimum minutes between two Conflict resolutions of one pull request. */
+  conflictRetryMinutes: number;
   idleBackoff: BackoffSettings;
   errorBackoff: BackoffSettings;
 };
@@ -78,6 +80,7 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
   },
   run: {
     triageIntervalMinutes: 5,
+    conflictRetryMinutes: 30,
     idleBackoff: { initialSeconds: 60, maxSeconds: 900 },
     errorBackoff: { initialSeconds: 30, maxSeconds: 1800 },
   },
@@ -111,6 +114,7 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "workflow.specApproval.required", kind: "boolean" },
   { path: "workflow.planApproval.required", kind: "boolean" },
   { path: "run.triageIntervalMinutes", kind: "number" },
+  { path: "run.conflictRetryMinutes", kind: "number" },
   { path: "run.idleBackoff.initialSeconds", kind: "number" },
   { path: "run.idleBackoff.maxSeconds", kind: "number" },
   { path: "run.errorBackoff.initialSeconds", kind: "number" },
@@ -125,6 +129,7 @@ function checkRun(run: RunConfig) {
       throw new ConfigError(`Invalid value for run.${path}: use a number > 0`);
   };
   positive("triageIntervalMinutes", run.triageIntervalMinutes);
+  positive("conflictRetryMinutes", run.conflictRetryMinutes);
   for (const key of ["idleBackoff", "errorBackoff"] as const) {
     positive(`${key}.initialSeconds`, run[key].initialSeconds);
     positive(`${key}.maxSeconds`, run[key].maxSeconds);

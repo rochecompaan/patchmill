@@ -10,6 +10,10 @@ import type { RunOnceDeps } from "./run-once.ts";
 import { renderTriageEnvelope } from "./envelope.ts";
 import { newRunId } from "./names.ts";
 import { supervisePi } from "./pi-supervisor.ts";
+import {
+  lastProviderFailure,
+  providerFailureNotice,
+} from "./provider-failure.ts";
 import { parseJsonBlock } from "./result.ts";
 import type { TrackedIssue } from "./workflow-state.ts";
 import type { WorkflowStatus } from "./workflow-state.ts";
@@ -210,12 +214,13 @@ export async function runTriage(
         }),
       );
       const logPath = join(runDir, "session-1.log");
+      const sessionDir = join(runDir, "sessions", "1");
       options.onProgress?.({ type: "started", issue, logPath });
       const session = await supervisePi({
         command: deps.piCommand,
         cwd: repoRoot,
         agentDir: resolve(repoRoot, config.pi.agentDir),
-        sessionDir: join(runDir, "sessions", "1"),
+        sessionDir,
         skillPath: skill.path,
         promptPath,
         logPath,
@@ -225,15 +230,17 @@ export async function runTriage(
         timeoutMs: config.pi.timeoutMinutes * 60_000,
         ...(options.signal ? { signal: options.signal } : {}),
       });
-      if (
-        session.aborted ||
-        options.signal?.aborted ||
-        session.timedOut ||
-        session.exitCode !== 0
-      ) {
+      const interrupted =
+        session.aborted || options.signal?.aborted || session.timedOut;
+      if (interrupted || session.exitCode !== 0) {
+        const failure = interrupted
+          ? undefined
+          : await lastProviderFailure(sessionDir);
         warn(
           number,
-          "Pi session failed, timed out, or was cancelled; skipping.",
+          failure
+            ? `${providerFailureNotice(failure)} Skipping.`
+            : "Pi session failed, timed out, or was cancelled; skipping.",
         );
         continue;
       }

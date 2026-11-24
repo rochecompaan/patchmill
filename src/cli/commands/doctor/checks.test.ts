@@ -48,6 +48,8 @@ async function fixture(t: TestContext) {
   const probes: string[] = [];
   const runner: CommandRunner = async (command, args, options) => {
     assert.equal(command, "git");
+    if (args[0] === "--version")
+      return { code: 0, stdout: "git version 2.56.0\n", stderr: "" };
     assert.deepEqual(args.slice(0, 2), ["check-ignore", "-q"]);
     assert.equal(options?.cwd, repoRoot);
     probes.push(args.at(-1)!);
@@ -88,6 +90,7 @@ test("checks are ordered, read-only, and smoke uses configured paths and supervi
     [
       "host CLI",
       "labels",
+      "git",
       "excludes",
       "skills",
       "reviewer",
@@ -98,7 +101,7 @@ test("checks are ordered, read-only, and smoke uses configured paths and supervi
   );
   assert.deepEqual(
     checks.map((c) => c.status),
-    ["pass", "pass", "pass", "pass", "pass", "pass", "pass", "warn"],
+    ["pass", "pass", "pass", "pass", "pass", "pass", "pass", "pass", "warn"],
   );
   assert.deepEqual(f.probes, [".worktrees", "custom/runs", "custom/agent"]);
   assert.deepEqual(f.host.state().calls, ["checkCli", "listLabels"]);
@@ -198,11 +201,50 @@ test("probe exceptions become diagnostics, smoke failures include the log path",
   assert.equal(checks[0]!.status, "fail");
   assert.match(checks[0]!.message, /CLI unavailable/);
   assert.equal(checks[1]!.status, "fail");
-  assert.equal(checks[2]!.status, "warn");
-  assert.equal(checks[6]!.status, "fail");
-  assert.match(checks[6]!.message, /custom\/runs\/doctor-.*\/pi.log/);
+  assert.equal(checks[2]!.status, "fail");
+  assert.equal(checks[3]!.status, "warn");
+  assert.equal(checks[7]!.status, "fail");
+  assert.match(checks[7]!.message, /custom\/runs\/doctor-.*\/pi.log/);
   await writeFile(f.script, "console.log('OK'); process.exit(2)");
-  assert.equal((await runDoctorChecks(f.deps))[6]!.status, "fail");
+  assert.equal((await runDoctorChecks(f.deps))[7]!.status, "fail");
+});
+
+for (const [output, status, message] of [
+  [
+    "git version 2.37.1",
+    "fail",
+    "Git 2.38 or later is required; found 2.37.1. Upgrade Git.",
+  ],
+  ["git version 2.38.0", "pass", "Ready"],
+  ["git version 2.56.0.windows.1", "pass", "Ready"],
+  ["nonsense", "fail", "Cannot read the Git version: nonsense"],
+] as const) {
+  test(`git version check: ${output}`, async (t) => {
+    const f = await fixture(t);
+    const checks = await runDoctorChecks({
+      ...f.deps,
+      runner: async (command, args, options) =>
+        args[0] === "--version"
+          ? { code: 0, stdout: `${output}\n`, stderr: "" }
+          : f.runner(command, args, options),
+    });
+    assert.deepEqual(
+      checks.find((c) => c.name === "git"),
+      { name: "git", status, message },
+    );
+  });
+}
+
+test("a passing host CLI check shows its message", async (t) => {
+  const f = await fixture(t);
+  f.host.checkCli = async () => ({ ok: true, message: "app token guidance" });
+  let checks = await runDoctorChecks(f.deps);
+  assert.equal(checks[0]!.status, "pass");
+  assert.equal(checks[0]!.message, "app token guidance");
+  f.host.checkCli = async () => ({ ok: true, message: "" });
+  checks = await runDoctorChecks(f.deps);
+  assert.equal(checks[0]!.status, "pass");
+  assert.equal(checks[0]!.message, "Ready");
 });
 
 test("a host CLI failure remains a failure even without a diagnostic message", async (t) => {

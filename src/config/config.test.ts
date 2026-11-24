@@ -252,6 +252,7 @@ test("Tea selector never grants author trust when authenticated identity is unav
 test("run defaults apply when the section is absent", () => {
   assert.deepEqual(parseConfig({}).run, {
     triageIntervalMinutes: 5,
+    conflictRetryMinutes: 30,
     idleBackoff: { initialSeconds: 60, maxSeconds: 900 },
     errorBackoff: { initialSeconds: 30, maxSeconds: 1800 },
   });
@@ -266,6 +267,7 @@ test("run accepts partial overrides", () => {
 
 for (const path of [
   ["triageIntervalMinutes"],
+  ["conflictRetryMinutes"],
   ["idleBackoff", "initialSeconds"],
   ["errorBackoff", "maxSeconds"],
 ]) {

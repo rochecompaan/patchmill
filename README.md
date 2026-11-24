@@ -57,6 +57,8 @@ change the skills, as [Skills](#skills) describes. The
 ## Requirements
 
 - A git repository with an `origin` remote on GitHub, Forgejo, or Gitea.
+- Git 2.38 or later (included in the Nix package). `patchmill doctor` checks the
+  version.
 - The `gh` or `tea` CLI, logged in to that host.
 - Node.js 24 or later (included in the Nix package).
 - An account with a model provider that Pi supports, by subscription or API key.
@@ -74,8 +76,10 @@ enabled, install from GitHub:
 nix profile install github:rochecompaan/patchmill
 ```
 
-The Nix package includes Node.js, but you must provide Git and the authenticated
-`gh` or `tea` CLI separately.
+The Nix package includes Node.js and Git, but you must provide the authenticated
+`gh` or `tea` CLI separately. Its Git comes first on `PATH`. If your Git
+configuration names a system credential helper by a short name, for example
+`libsecret`, give its full path instead.
 
 ### npm
 
@@ -145,6 +149,12 @@ for a merge, the runner waits. The wait grows to `run.idleBackoff` limits. After
 an error, it waits with the `run.errorBackoff` limits. Three Needs Info stops in
 a row also count as an error, so that a broken provider does not move each ready
 issue to `needs-info` without a pause.
+
+Before new work, a pass looks for a Done issue whose open pull request now
+conflicts with the base branch. It resolves that conflict first: an agent merges
+the base into the issue branch, and Patchmill checks the pushed result. A failed
+resolution stops with Needs Info. The same pull request is not tried again until
+its head or the base changes, and at most once each `run.conflictRetryMinutes`.
 
 ```sh
 patchmill run
@@ -421,6 +431,7 @@ Each key is optional. Patchmill rejects unknown keys by name.
   },
   "run": {
     "triageIntervalMinutes": 5,
+    "conflictRetryMinutes": 30,
     "idleBackoff": { "initialSeconds": 60, "maxSeconds": 900 },
     "errorBackoff": { "initialSeconds": 30, "maxSeconds": 1800 }
   }

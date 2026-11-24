@@ -105,6 +105,12 @@ through any resumptions to a terminal outcome. _Avoid_: Run attempt
 **Run attempt**: One process entry into the run-once workflow for an Issue run.
 A later Run attempt may resume the same Issue run. _Avoid_: Issue run
 
+**Conflict resolution**: An implementation session for a Done issue whose open
+implementation pull request conflicts with the base branch. The conflict search
+selects it, or its attempt record resumes it. Its agent merges the base into the
+Issue branch without a force push, and changes nothing else. It ends at Done or
+Needs Info. _Avoid_: Rebase run, conflict phase
+
 **Interactive Issue run**: An Issue run that takes human input through a console
 instead of issue comments. It uses the same Run-once workflow.
 
@@ -165,6 +171,11 @@ not sent after a crash, a timeout, or an abort. _Avoid_: Retry, re-run
 **Normalized run outcome**: The small runner-facing result of one Run attempt —
 completed, no work, deferred, cancelled, or failed — produced from a rich
 Run-once workflow result. _Avoid_: Pipeline status
+
+**Provider failure**: An assistant message that Pi recorded with
+`stopReason: "error"`, because the model provider refused or failed the request.
+Its text is the provider's error message, or a fixed text when that is empty. An
+aborted reply is not a Provider failure. _Avoid_: auth error, Pi crash
 
 **Pi session log**: A raw, potentially sensitive Pi execution transcript used as
 evidence and as input when normalizing usage. It is not a runner policy or audit

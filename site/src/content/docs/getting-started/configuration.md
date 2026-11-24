@@ -27,6 +27,13 @@ authors. GitHub also trusts its nonempty configured `host.login`. A Tea profile
 alias does not grant trust. Duplicate identities count once. Issue content and
 comments remain untrusted instructions, even from those authors.
 
+Patchmill also accepts a GitHub App installation token in `GH_TOKEN`, for
+example in CI. An App token has no username, so only `host.login` and
+`host.trustedAuthors` grant trust. Put the bot login, for example
+`patchmill-e2e[bot]`, and the maintainer logins in `host.trustedAuthors`. If
+`host.login` and this list are both empty, no comment author is trusted.
+`patchmill doctor` warns when this list is empty.
+
 ## Planning gates
 
 `workflow.specApproval.required` and `workflow.planApproval.required` each
@@ -41,15 +48,18 @@ gates off, planning writes both documents and continues to implementation.
 
 ## Run loop
 
-The `run` section controls `patchmill run`. Other commands ignore it.
+The `run` section controls `patchmill run`. Other commands ignore it, except
+`run.conflictRetryMinutes`, which also applies to `patchmill run-once` without
+`--issue`.
 
-| Key                               | Default | Meaning                                 |
-| --------------------------------- | ------- | --------------------------------------- |
-| `run.triageIntervalMinutes`       | `5`     | Minimum time between two triage runs.   |
-| `run.idleBackoff.initialSeconds`  | `60`    | First wait when no issue is eligible.   |
-| `run.idleBackoff.maxSeconds`      | `900`   | Longest wait when no issue is eligible. |
-| `run.errorBackoff.initialSeconds` | `30`    | First wait after a failed pass.         |
-| `run.errorBackoff.maxSeconds`     | `1800`  | Longest wait after failed passes.       |
+| Key                               | Default | Meaning                                                            |
+| --------------------------------- | ------- | ------------------------------------------------------------------ |
+| `run.triageIntervalMinutes`       | `5`     | Minimum time between two triage runs.                              |
+| `run.conflictRetryMinutes`        | `30`    | Minimum time between two conflict resolutions of one pull request. |
+| `run.idleBackoff.initialSeconds`  | `60`    | First wait when no issue is eligible.                              |
+| `run.idleBackoff.maxSeconds`      | `900`   | Longest wait when no issue is eligible.                            |
+| `run.errorBackoff.initialSeconds` | `30`    | First wait after a failed pass.                                    |
+| `run.errorBackoff.maxSeconds`     | `1800`  | Longest wait after failed passes.                                  |
 
 Each wait doubles after each pass of the same kind, up to its maximum. Jitter
 makes the actual wait between half and all of that value. A pass that does work
@@ -155,6 +165,7 @@ shell without opening Pi chat. See
   },
   "run": {
     "triageIntervalMinutes": 5,
+    "conflictRetryMinutes": 30,
     "idleBackoff": { "initialSeconds": 60, "maxSeconds": 900 },
     "errorBackoff": { "initialSeconds": 30, "maxSeconds": 1800 }
   }

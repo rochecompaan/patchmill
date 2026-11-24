@@ -151,6 +151,7 @@ export async function preparePhasePrompt(
   facts: Facts,
   sessionNumber: number,
   signal?: AbortSignal,
+  conflictResolution?: boolean,
 ) {
   const { host, repoRoot } = deps;
   const skill = resolvePhaseSkill(config, repoRoot, phase);
@@ -162,6 +163,7 @@ export async function preparePhasePrompt(
     facts,
     skill,
     interactive: !!deps.human,
+    ...(conflictResolution ? { conflictResolution } : {}),
     timeoutMinutes: config.pi.timeoutMinutes,
     commandLimits: commandLimits(config.pi),
     trusted: trustedAuthors(config, (await host.checkCli()).login),

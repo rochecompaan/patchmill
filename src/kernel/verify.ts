@@ -22,6 +22,8 @@ export type VerifyInput = {
   logPath: string;
   uncommitted: boolean;
   unpushed: number | "no-remote-branch";
+  /** Failed checks of a merge conflict resolution; see merge-conflicts.ts. */
+  conflictGaps?: string[];
 };
 
 export function closesIssue(
@@ -154,7 +156,7 @@ export function verifyOutcome(input: VerifyInput): Outcome {
       return { kind: "advance" };
     }
   } else {
-    const missing = pullRequestGaps(input);
+    const missing = [...pullRequestGaps(input), ...(input.conflictGaps ?? [])];
     if (missing.length > 0 && missingBlock && !result.ok) {
       reason = `${result.reason} The repository does not prove completion. ${missing.join(" ")} Log: ${input.logPath}`;
     } else if (missing.length > 0) {
