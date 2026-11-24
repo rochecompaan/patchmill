@@ -30,6 +30,10 @@ export type PatchmillConfig = {
     commandTimeoutMinutes: number;
     /** Longest timeout of an agent `bash` call. 0 turns it off. */
     maxCommandTimeoutMinutes: number;
+    /** Quiet time before a Stall stop in an unattended implementation session. 0 turns it off. */
+    stallStopMinutes: number;
+    /** The Stall that ends the Run attempt. 0 turns the count off. */
+    maxStalls: number;
   };
   workflow: {
     stateTracking: "labels" | "local";
@@ -72,6 +76,8 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
     timeoutMinutes: 90,
     commandTimeoutMinutes: 20,
     maxCommandTimeoutMinutes: 25,
+    stallStopMinutes: 10,
+    maxStalls: 3,
   },
   workflow: {
     stateTracking: "labels",
@@ -110,6 +116,8 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "pi.timeoutMinutes", kind: "number" },
   { path: "pi.commandTimeoutMinutes", kind: "number" },
   { path: "pi.maxCommandTimeoutMinutes", kind: "number" },
+  { path: "pi.stallStopMinutes", kind: "number" },
+  { path: "pi.maxStalls", kind: "number" },
   { path: "workflow.stateTracking", kind: "string" },
   { path: "workflow.specApproval.required", kind: "boolean" },
   { path: "workflow.planApproval.required", kind: "boolean" },
@@ -149,6 +157,18 @@ function checkRun(run: RunConfig) {
 const MAX_COMMAND_TIMEOUT_MINUTES = 35791;
 
 function checkPi(pi: PatchmillConfig["pi"]) {
+  if (
+    !Number.isFinite(pi.stallStopMinutes) ||
+    pi.stallStopMinutes < 0 ||
+    pi.stallStopMinutes > MAX_COMMAND_TIMEOUT_MINUTES
+  )
+    throw new ConfigError(
+      `Invalid value for pi.stallStopMinutes: use a number from 0 to ${MAX_COMMAND_TIMEOUT_MINUTES}`,
+    );
+  if (!Number.isInteger(pi.maxStalls) || pi.maxStalls < 0 || pi.maxStalls > 100)
+    throw new ConfigError(
+      "Invalid value for pi.maxStalls: use a whole number from 0 to 100",
+    );
   for (const key of [
     "commandTimeoutMinutes",
     "maxCommandTimeoutMinutes",

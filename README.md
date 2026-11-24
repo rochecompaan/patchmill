@@ -422,7 +422,9 @@ Each key is optional. Patchmill rejects unknown keys by name.
     "agentDir": ".patchmill/pi-agent",
     "timeoutMinutes": 90,
     "commandTimeoutMinutes": 20,
-    "maxCommandTimeoutMinutes": 25
+    "maxCommandTimeoutMinutes": 25,
+    "stallStopMinutes": 10,
+    "maxStalls": 3
   },
   "workflow": {
     "stateTracking": "labels",
@@ -449,6 +451,11 @@ These keys change the most:
   that sets none. `pi.maxCommandTimeoutMinutes` (default 25) is the longest
   timeout that a call can get. `0` turns a limit off. The default must not be
   longer than an enabled cap.
+- `pi.stallStopMinutes` (default 10) is the quiet time after which Patchmill
+  stops the turn of an unattended implementation session and asks the agent to
+  continue another way. A running `bash` call inside its timeout is not quiet.
+  `pi.maxStalls` (default 3) is the Stall that stops the Run attempt at Needs
+  Info. A second Stall of the same command also stops it. `0` turns a limit off.
 - `git.baseBranch: null` uses the default branch of the remote.
 - `run` sets the triage interval and the wait limits of `patchmill run`.
 
