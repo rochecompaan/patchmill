@@ -262,14 +262,16 @@ test(E2E, { timeout: 30_000 }, async (t) => {
       [
         "--test",
         "--test-force-exit",
+        // TAP has no colors, also when the environment forces them.
+        "--test-reporter=tap",
         `--test-name-pattern=${E2E}`,
         import.meta.filename,
       ],
       { env, encoding: "utf8", timeout: 25_000 },
     );
     assert.equal(child.status, 0, child.stdout + child.stderr);
-    assert.match(child.stdout, /pass 1\n/);
-    assert.match(child.stdout, /fail 0\n/);
+    assert.match(child.stdout, /^# pass 1$/m);
+    assert.match(child.stdout, /^# fail 0$/m);
     return;
   }
   const {
