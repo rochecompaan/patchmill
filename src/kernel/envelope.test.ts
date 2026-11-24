@@ -199,6 +199,7 @@ const input: RunEnvelopeInput & { dependencies: IssueDependency[] } = {
   phase: "planning",
   skill: { name: "plan-work", path: "/skills/plan work/SKILL.md" },
   timeoutMinutes: 37,
+  commandLimits: { defaultSeconds: 1200, maxSeconds: 1500 },
   trusted: ["maintainer"],
 };
 const labels = {
@@ -440,4 +441,51 @@ test("templates load from the package root when cwd is outside the package", () 
   } finally {
     process.chdir(cwd);
   }
+});
+
+test("implementation states the command timeout limits", () => {
+  const rows: [number, number, string | undefined][] = [
+    [
+      1200,
+      1500,
+      "- Command timeout: bash calls get a 20-minute timeout by default. Full builds or test suites can ask for up to 25 minutes.",
+    ],
+    [
+      0,
+      1500,
+      "- Command timeout: bash calls have no default timeout. A call can ask for up to 25 minutes.",
+    ],
+    [
+      1200,
+      0,
+      "- Command timeout: bash calls get a 20-minute timeout by default. A call can ask for a longer timeout.",
+    ],
+    [0, 0, undefined],
+    [
+      90,
+      1500,
+      "- Command timeout: bash calls get a 1.5-minute timeout by default. Full builds or test suites can ask for up to 25 minutes.",
+    ],
+  ];
+  for (const [defaultSeconds, maxSeconds, line] of rows) {
+    const text = renderRunEnvelope({
+      ...input,
+      phase: "implementation",
+      commandLimits: { defaultSeconds, maxSeconds },
+    });
+    const lines = text.split("\n");
+    if (line === undefined) assert.doesNotMatch(text, /Command timeout/);
+    else
+      assert.equal(
+        lines[lines.findIndex((l) => l.startsWith("- Time limit:")) + 1],
+        line,
+      );
+  }
+});
+
+test("planning has no command timeout line", () => {
+  assert.doesNotMatch(
+    renderRunEnvelope({ ...input, phase: "planning" }),
+    /Command timeout/,
+  );
 });

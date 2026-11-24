@@ -13,6 +13,7 @@ Facts:
 - Planning stage: spec
 - Gate: required; publish the spec PR and stop until it is merged
 - Time limit: 37 minutes
+- Command timeout: bash calls get a 20-minute timeout by default. Full builds or test suites can ask for up to 25 minutes.
 
 Return only the fields `status` and `summary` in a final `json` block. Use
 `done`, `needs-input`, or `failed` for `status`. Use a string for `summary`.

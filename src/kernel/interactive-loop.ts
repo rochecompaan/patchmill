@@ -163,6 +163,7 @@ export async function preparePhasePrompt(
     skill,
     interactive: !!deps.human,
     timeoutMinutes: config.pi.timeoutMinutes,
+    commandLimits: commandLimits(config.pi),
     trusted: trustedAuthors(config, (await host.checkCli()).login),
   });
   await fs.writeFile(promptPath, envelope);
