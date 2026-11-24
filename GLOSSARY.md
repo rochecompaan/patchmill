@@ -181,6 +181,11 @@ aborted reply is not a Provider failure. _Avoid_: auth error, Pi crash
 evidence and as input when normalizing usage. It is not a runner policy or audit
 source after ingestion. _Avoid_: Event ledger
 
+**Unpriced usage**: Usage that Pi recorded with non-zero tokens and a cost of
+exactly zero, for example from a subscription-billed model. Cost reports show it
+as unpriced, and a dollar sum that leaves it out as partial. A cost that Pi did
+not record is unavailable, not unpriced. _Avoid_: free usage, $0 usage
+
 **Command timeout**: The time limit that Patchmill gives one agent `bash` call
 in a phase session, Console session, or Web session of an Issue run, or in a
 subagent session that one of them starts. A call without a timeout gets the
