@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { done, setupRun, spec } from "../../test-support/run-once-fixture.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
+import type { RunOnceOptions } from "./run-once.ts";
 
 type Result = {
   finishedAt: string;
@@ -24,9 +25,11 @@ async function gated(t: TestContext) {
   ]);
   c.config.workflow.specApproval.required = true;
   let minute = 0;
-  const run = (overrides = {}) => {
+  // Later runs name issue 9: they check its gate stop, not selection, and
+  // automatic selection skips an issue that waits on its planning PR.
+  const run = (overrides = {}, options: RunOnceOptions = { issue: 9 }) => {
     const at = new Date(2026, 9, 15, 12, ++minute);
-    return c.run({}, { now: () => at, ...overrides });
+    return c.run(options, { now: () => at, ...overrides });
   };
   const comments = () => c.host.state().issues[0]!.comments;
   const results = async (): Promise<Result[]> => {
@@ -59,7 +62,7 @@ async function gated(t: TestContext) {
     return files[index]!.path;
   };
   // Run 1 publishes the planning PR, run 2 announces the gate wait.
-  assert.equal((await run()).status, "stopped");
+  assert.equal((await run({}, {})).status, "stopped");
   assert.equal(comments().length, 1);
   return { c, run, comments, results, resultFile };
 }

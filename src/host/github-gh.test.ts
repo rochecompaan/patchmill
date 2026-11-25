@@ -763,7 +763,14 @@ test("enumerates all GitHub issue pages, excluding PRs, so oldest selection and 
   const { selectTriageCandidates } = await import("../kernel/triage.ts");
   const { DEFAULT_CONFIG } = await import("../config/config.ts");
   const workflow = new LabelWorkflowState(host, DEFAULT_CONFIG.labels);
-  const selection = await selectRunIssue({ host, workflow, warn: () => {} });
+  const selection = await selectRunIssue({
+    host,
+    workflow,
+    readFacts: async () => {
+      throw new Error("no facts");
+    },
+    warn: () => {},
+  });
   assert.equal(
     selection.kind === "selected" ? selection.issue.number : undefined,
     201,

@@ -312,6 +312,9 @@ test("selection resumes in-progress issues and explicit selection still requires
       host: c.host,
       workflow,
       ...(issue !== undefined ? { issue } : {}),
+      readFacts: async () => {
+        throw new Error("no facts");
+      },
       warn: () => {},
     });
     return result.kind === "selected" ? result.issue.number : undefined;
