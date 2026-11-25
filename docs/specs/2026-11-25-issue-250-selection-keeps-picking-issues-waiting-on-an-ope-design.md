@@ -122,7 +122,8 @@ For each skipped candidate, selection calls its `warn` callback with:
 planning pull request #<pr> is waiting for review; skipping it.
 ```
 
-The existing callers add the prefix `Warning: Issue #<n>: `. The full line is:
+The existing callers add the prefix `Warning: Issue #<n>:` and one space. The
+full line is:
 
 ```text
 Warning: Issue #229: planning pull request #248 is waiting for review; skipping it.
@@ -298,4 +299,25 @@ None. The visual explanation is inline.
   plan (see the plan's record).
 - Final body SHA-256:
   `6a5c2224fea0cd36e61480fe2b03a210d1ce2f300772c6ccee5c40ec65c876e7`.
+- Outcome: `ready`.
+
+### Review 3 — post-review edits (spec and plan)
+
+- Scope: the specification and the plan together.
+- Reviewer: `reviewer`, model `claude-bridge/claude-opus-5-5`, thinking `high`.
+  Base revision `be9fa9517cac3e848e1b905acc18ae59b8898ad5`.
+- Edits reviewed: one blank line that ends each body before this record, and a
+  markdownlint MD038 fix in spec D6 (the warning prefix code span).
+- Reviewed body SHA-256: spec
+  `12cade1fb5d6214e249f03295ea2095e32e081fa51c44b79feef97a5e3eba69d`, plan
+  `4a10359660092a929e386c8c340d2e2fdf29c049d44173c2b8c6c7672ba39e19`.
+- Survey: the reviewer confirmed that no other body change exists, and that D6
+  still matches the `warn` prefix in `run-once.ts` and `interactive-start.ts`
+  and the plan's Global Constraints.
+- Findings: none.
+- Inspection limits: no tests were run; the review covered only these edits.
+- Final body SHA-256: spec
+  `12cade1fb5d6214e249f03295ea2095e32e081fa51c44b79feef97a5e3eba69d`, plan
+  `4a10359660092a929e386c8c340d2e2fdf29c049d44173c2b8c6c7672ba39e19`. The plan
+  was compared with the spec at that hash.
 - Outcome: `ready`.
