@@ -126,15 +126,16 @@ Stall policy, so without a cap a triage session stops after 90 minutes.
 Patchmill sets `timeoutMs` and `checkpointBeforeDeadlineMs` in
 `<agentDir>/extensions/subagent/config.json` before each session, and keeps the
 other keys of that file. Subagents get the Session cap, or the largest deadline
-that pi-subagents accepts (about 24.8 days) when no cap is set. A child gets a
-"checkpoint and stop" message 5 minutes before its deadline. The managed
-`reviewer` and `patchmill-implementation` agents carry the same `timeoutMs`, so
-a resume or a chain step of these agents gets it too. Other agents keep the
-pi-subagents default of 30 minutes on a resume and in an async chain or parallel
-step. Patchmill owns these two keys and replaces an operator value for them.
-`checkpointBeforeDeadlineMs` is a fail-closed key of pi-subagents: while it is
-in the file, an invalid value of another key there stops pi-subagents from
-loading, instead of a logged fallback.
+that pi-subagents accepts (about 24.8 days) when no cap is set. A single async
+child gets a "checkpoint and stop" message 5 minutes before its deadline. A
+foreground child, a resumed run, and an async chain or parallel step get no such
+message. The managed `reviewer` and `patchmill-implementation` agents carry the
+same `timeoutMs`, so a resume or a chain step of these agents gets it too. Other
+agents keep the pi-subagents default of 30 minutes on a resume and in an async
+chain or parallel step. Patchmill owns these two keys and replaces an operator
+value for them. `checkpointBeforeDeadlineMs` is a fail-closed key of
+pi-subagents: while it is in the file, an invalid value of another key there
+stops pi-subagents from loading, instead of a logged fallback.
 
 Upgrade note: a configuration that `patchmill init` wrote earlier has
 `"timeoutMinutes": 90`. That value keeps a 90-minute cap, which now also limits

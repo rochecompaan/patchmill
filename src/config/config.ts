@@ -31,7 +31,7 @@ export type PatchmillConfig = {
     commandTimeoutMinutes: number;
     /** Longest timeout of an agent `bash` call. 0 turns it off. */
     maxCommandTimeoutMinutes: number;
-    /** Quiet time before a Stall stop in an unattended implementation session. 0 turns it off. */
+    /** Quiet time before a Stall stop in an unattended planning or implementation session. 0 turns it off. */
     stallStopMinutes: number;
     /** The Stall that ends the Run attempt. 0 turns the count off. */
     maxStalls: number;

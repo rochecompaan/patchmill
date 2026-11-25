@@ -71,3 +71,22 @@ for (const content of ["not json", "[]"]) {
     assert.equal(await readFile(a.file, "utf8"), content);
   });
 }
+
+test("concurrent provisionSubagentLimits calls all succeed", async (t) => {
+  const a = await agentDir(t);
+  const results = await Promise.allSettled(
+    [1, 2, 3].map(() => provisionSubagentLimits(a.dir, null)),
+  );
+  assert.deepEqual(
+    results.map((result) => result.status),
+    ["fulfilled", "fulfilled", "fulfilled"],
+  );
+  assert.equal(
+    JSON.parse(await readFile(a.file, "utf8")).timeoutMs,
+    2_147_483_647,
+  );
+  const { readdir } = await import("node:fs/promises");
+  assert.deepEqual(await readdir(join(a.dir, "extensions", "subagent")), [
+    "config.json",
+  ]);
+});

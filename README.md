@@ -508,10 +508,11 @@ Patchmill does not move the state.
   these two keys, and keeps the other keys. Because `checkpointBeforeDeadlineMs`
   is a fail-closed key, an invalid value of another key in that file stops
   pi-subagents from loading. Subagents get the Session cap, or the largest
-  pi-subagents deadline (about 24.8 days) without a cap, and a "checkpoint and
-  stop" message 5 minutes before it. Agents that Patchmill does not manage keep
-  the 30-minute pi-subagents default on a resume and in an async chain or
-  parallel step.
+  pi-subagents deadline (about 24.8 days) without a cap. A single async child
+  gets a "checkpoint and stop" message 5 minutes before it; a foreground child,
+  a resumed run, and an async chain or parallel step do not. Agents that
+  Patchmill does not manage keep the 30-minute pi-subagents default on a resume
+  and in an async chain or parallel step.
 - A lock file stops two runs in the same clone from working on one issue.
   Separate clones can still race. Do not delete the lock file or its folder,
   even after a crash. To clear a stale claim, run `patchmill release --issue N`.

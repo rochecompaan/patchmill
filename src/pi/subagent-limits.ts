@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 /** pi-subagents accepts a `timeoutMs` of at most 2^31 - 1 ms. */
@@ -63,8 +64,13 @@ export async function writeAtomically(
 ): Promise<boolean> {
   if (existing === content) return false;
   await mkdir(dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.tmp`;
-  await writeFile(temporary, content);
-  await rename(temporary, file);
+  // A unique name, so concurrent writers in one process do not share it.
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, content);
+    await rename(temporary, file);
+  } finally {
+    await rm(temporary, { force: true });
+  }
   return true;
 }
