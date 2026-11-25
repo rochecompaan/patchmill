@@ -20,6 +20,8 @@ import type { Facts } from "./facts.ts";
 import { parsePlanningBranch } from "./names.ts";
 import { planningGateComment } from "./comments.ts";
 import { readStallBlock } from "./stall-block.ts";
+import { provisionSubagentLimits } from "../pi/subagent-limits.ts";
+import { provisionReviewerAgent } from "../cli/commands/init/agent-dir.ts";
 import {
   commandLimits,
   commandLimitsEnv,
@@ -158,8 +160,8 @@ export async function preparePhasePrompt(
   const skill = resolvePhaseSkill(config, repoRoot, phase);
   const promptPath = join(runDir, "prompt.md");
   const limits = commandLimits(config.pi);
-  // Only an unattended implementation session gets the Stall policy.
-  const stallPolicy = phase === "implementation" && !deps.human;
+  // An unattended planning or implementation session gets the Stall policy.
+  const stallPolicy = !deps.human;
   const stallStop =
     stallPolicy &&
     (config.pi.stallStopMinutes > 0 ||
@@ -167,10 +169,7 @@ export async function preparePhasePrompt(
       limits.maxSeconds > 0)
       ? { minutes: config.pi.stallStopMinutes, maxStalls: config.pi.maxStalls }
       : undefined;
-  const previousStalls =
-    phase === "implementation"
-      ? await readStallBlock(dirname(runDir))
-      : undefined;
+  const previousStalls = await readStallBlock(dirname(runDir));
   const envelope = renderRunEnvelope({
     repository: await host.repository(),
     issue,
@@ -179,13 +178,23 @@ export async function preparePhasePrompt(
     skill,
     interactive: !!deps.human,
     ...(conflictResolution ? { conflictResolution } : {}),
-    timeoutMinutes: config.pi.timeoutMinutes ?? 90,
+    timeoutMinutes: config.pi.timeoutMinutes,
     commandLimits: limits,
     ...(stallStop ? { stallStop } : {}),
     ...(previousStalls ? { previousStalls } : {}),
     trusted: trustedAuthors(config, (await host.checkCli()).login),
   });
   await fs.writeFile(promptPath, envelope);
+  // Children follow the Session cap, also when init or the Console never ran.
+  await provisionSubagentLimits(
+    resolve(repoRoot, config.pi.agentDir),
+    config.pi.timeoutMinutes,
+  );
+  await provisionReviewerAgent(
+    repoRoot,
+    config.pi.agentDir,
+    config.pi.timeoutMinutes,
+  );
   const launcher = rpcModeLauncher({
     command: deps.piCommand,
     agentDir: resolve(repoRoot, config.pi.agentDir),
@@ -237,7 +246,9 @@ export async function preparePhasePrompt(
     promptPath,
     logPath: join(runDir, `session-${sessionNumber}.log`),
     aggregateLogPath: join(runDir, "pi.log"),
-    timeoutMs: (config.pi.timeoutMinutes ?? 90) * 60_000,
+    ...(config.pi.timeoutMinutes !== null
+      ? { timeoutMs: config.pi.timeoutMinutes * 60_000 }
+      : {}),
     ...(signal ? { signal } : {}),
   };
   return { launch, launcher };

@@ -502,8 +502,7 @@ export async function runOneIssue(
           break;
         }
         // The resume record is used once, by an attempt that did not pause.
-        if (phase === "implementation")
-          await consumeStallBlock(issueDir, runDir);
+        await consumeStallBlock(issueDir, runDir);
         if (run.stallBlock)
           await writeStallBlock(issueDir, { runId, stalls: run.stalls ?? [] });
         const after = await collect(await workflow.issue(issueNumber), facts);
