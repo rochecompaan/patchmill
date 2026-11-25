@@ -44,7 +44,7 @@ test("discovers design and explicit show-me siblings from configured pack paths"
     loaded.find((skill) => skill.name === "show-me")!.disableModelInvocation,
     true,
   );
-  await provisionAgentDir(root, "agent", paths);
+  await provisionAgentDir(root, "agent", null, paths);
   const worker = await readFile(
     join(root, "agent/agents/patchmill-implementation.md"),
     "utf8",
@@ -106,7 +106,7 @@ test("console discovers the whole configured pack and provisions worker skill in
       .sort(),
     ["implementation", "planning", "review"],
   );
-  await provisionAgentDir(root, "agent", paths);
+  await provisionAgentDir(root, "agent", null, paths);
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = join(root, "agent");
   t.after(() => {

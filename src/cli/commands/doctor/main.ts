@@ -39,7 +39,11 @@ export async function main(
     const config = await loadConfig(repoRoot);
     if (
       fix &&
-      (await provisionReviewerAgent(repoRoot, config.pi.agentDir)) === "written"
+      (await provisionReviewerAgent(
+        repoRoot,
+        config.pi.agentDir,
+        config.pi.timeoutMinutes,
+      )) === "written"
     )
       output.stdout(
         `[fixed] reviewer: wrote ${join(resolve(repoRoot, config.pi.agentDir), "agents", "reviewer.md")}`,

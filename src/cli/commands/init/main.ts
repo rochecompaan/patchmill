@@ -111,8 +111,16 @@ export async function main(
     output.stdout(
       `Skills: ${counts.written} written, ${counts.unchanged} unchanged`,
     );
-    const reviewer = await provisionReviewerAgent(repoRoot, config.pi.agentDir);
-    await provisionAgentDir(repoRoot, config.pi.agentDir);
+    const reviewer = await provisionReviewerAgent(
+      repoRoot,
+      config.pi.agentDir,
+      config.pi.timeoutMinutes,
+    );
+    await provisionAgentDir(
+      repoRoot,
+      config.pi.agentDir,
+      config.pi.timeoutMinutes,
+    );
     output.stdout(`Agent directory: ${reviewer}`);
     const added = await ensureLocalExcludes(
       repoRoot,

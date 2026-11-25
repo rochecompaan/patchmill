@@ -159,6 +159,7 @@ test("fresh init resolves a command-capable reviewer in the isolated agent direc
     await checkReviewerRole({
       repoRoot: f.root,
       agentDir: ".patchmill/pi-agent",
+      timeoutMinutes: null,
     }),
     { ok: true },
   );

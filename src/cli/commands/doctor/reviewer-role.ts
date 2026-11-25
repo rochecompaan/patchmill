@@ -1,7 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { resolveSubagentLaunchContract } from "pi-subagents/preflight";
-import { REVIEWER_AGENT } from "../init/agent-dir.ts";
+import { reviewerAgent } from "../init/agent-dir.ts";
 
 export type ReviewerRoleCheck =
   | { ok: true }
@@ -18,6 +18,7 @@ const FORBIDDEN_TOOLS = ["edit", "write", "subagent"];
 export async function checkReviewerRole(input: {
   repoRoot: string;
   agentDir: string;
+  timeoutMinutes: number | null;
 }): Promise<ReviewerRoleCheck> {
   const agentDir = resolve(input.repoRoot, input.agentDir);
   const managed = resolve(agentDir, "agents", "reviewer.md");
@@ -32,7 +33,7 @@ export async function checkReviewerRole(input: {
       message: `Missing reviewer: ${managed}. Run patchmill doctor --fix.`,
     };
   }
-  if (content !== REVIEWER_AGENT)
+  if (content !== reviewerAgent(input.timeoutMinutes))
     return {
       ok: false,
       repairable: true,
