@@ -5,20 +5,76 @@
 import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import fs from "node:fs/promises";
+import { join } from "node:path";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function runRpc({ step, script, sideEffects }) {
+export async function runRpc({ step, script, sideEffects, sessionDir }) {
   await fs.writeFile(`${script}.pid`, String(process.pid));
   const out = (record) => process.stdout.write(`${JSON.stringify(record)}\n`);
   const dialogs = new Map();
   const prompted = Promise.withResolvers();
   let prompts = 0;
   let settles = 0;
+  // The step that answers the current turn, and the end of a hanging turn.
+  let current = step;
+  let hanging;
+  let aborted = false;
   const handle = (command) => {
     appendFileSync(`${script}.commands.log`, `${JSON.stringify(command)}\n`);
     if (command.type === "extension_ui_response") {
       dialogs.get(command.id)?.(command);
+      return;
+    }
+    // Exit with the command still unanswered.
+    if (command.type === step.exitOn) process.exit(3);
+    if (command.type === "abort") {
+      aborted = true;
+      if (current.ignoreAbort) return;
+      const end = hanging;
+      hanging = undefined;
+      // Pi answers abort after the turn is idle.
+      if (end) {
+        const settle = ++settles;
+        report(settle, 0);
+        out({ type: "agent_settled" });
+        end();
+      }
+      out({
+        id: command.id,
+        type: "response",
+        command: "abort",
+        success: true,
+      });
+      return;
+    }
+    if (
+      command.type === "prompt" &&
+      prompts > 0 &&
+      aborted &&
+      current.recovery
+    ) {
+      aborted = false;
+      current = current.recovery;
+      const recovery = current;
+      if (recovery.promptError) {
+        out({
+          id: command.id,
+          type: "response",
+          command: "prompt",
+          success: false,
+          error: recovery.promptError,
+        });
+        return;
+      }
+      out({
+        id: command.id,
+        type: "response",
+        command: "prompt",
+        success: true,
+        data: { disposition: "started" },
+      });
+      void recoveryTurn(recovery);
       return;
     }
     // Exit with the command still unanswered.
@@ -109,6 +165,49 @@ export async function runRpc({ step, script, sideEffects }) {
       statusText: `${settle}:${count}`,
     });
 
+  const update = () =>
+    out({ type: "message_update", message: { role: "assistant" } });
+  const appendEntries = async (entries) => {
+    if (!entries?.length) return;
+    await fs.appendFile(
+      join(sessionDir, "fake.jsonl"),
+      entries.map((entry) => `${JSON.stringify(entry)}\n`).join(""),
+    );
+  };
+  // After the side effects, a hanging turn writes nothing until `abort`.
+  const hang = () =>
+    new Promise((resolve) => {
+      hanging = resolve;
+    });
+  const startCommandChild = async () => {
+    const child = spawn("sleep", ["600"], { detached: true, stdio: "ignore" });
+    await fs.writeFile(`${script}.command.pid`, String(child.pid));
+    child.unref();
+  };
+  // The turn after the recovery prompt. Its answer comes from `step.recovery`.
+  const recoveryTurn = async (recovery) => {
+    if (recovery.delayStartMs) {
+      // A late report for the aborted settle must not finish the session.
+      report(settles, 0);
+      await sleep(recovery.delayStartMs);
+    }
+    out({ type: "agent_start" });
+    update();
+    await sideEffects(recovery);
+    await appendEntries(recovery.sessionEntries);
+    update();
+    if (recovery.commandChild) await startCommandChild();
+    if (recovery.hang) return hang();
+    const lines = [];
+    if (recovery.stdout !== undefined) lines.push(recovery.stdout);
+    if (recovery.result !== undefined && recovery.result !== null)
+      lines.push(`\`\`\`json\n${JSON.stringify(recovery.result)}\n\`\`\``);
+    message(lines.join("\n"));
+    const settle = ++settles;
+    report(settle, 0);
+    out({ type: "agent_settled" });
+  };
+
   // A later prompt is the Result reminder. Its answer comes from `step.reminder`.
   const reminderTurn = async () => {
     const reminder = step.reminder ?? {};
@@ -154,7 +253,11 @@ export async function runRpc({ step, script, sideEffects }) {
   await prompted.promise;
   if (step.handled || step.promptError) return;
   out({ type: "agent_start" });
+  update();
   await sideEffects();
+  update();
+  if (step.commandChild) await startCommandChild();
+  if (step.hang) return hang();
   if (step.stderr !== undefined) console.error(step.stderr);
   const lines = [];
   if (step.stdout !== undefined) lines.push(step.stdout);

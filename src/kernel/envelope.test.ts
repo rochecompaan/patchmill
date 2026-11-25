@@ -538,3 +538,99 @@ test("renders the merge conflict fact after the pull request line", () => {
     /Merge conflict/,
   );
 });
+
+test("an unattended implementation envelope states the Stall stop", () => {
+  const text = renderRunEnvelope({
+    ...input,
+    phase: "implementation",
+    stallStop: { minutes: 10, maxStalls: 3 },
+  });
+  assert.ok(
+    text.includes(
+      "\n- Stall stop: when the session and its subagents show no activity for 10 minutes, outside a running bash call, Patchmill stops the turn and asks you to continue another way. After 3 stalls, or a second stall of the same command, the run stops as blocked.",
+    ),
+  );
+  const uncounted = renderRunEnvelope({
+    ...input,
+    phase: "implementation",
+    stallStop: { minutes: 10, maxStalls: 0 },
+  });
+  assert.ok(
+    uncounted.includes(
+      "continue another way. A second stall of the same command stops the run as blocked.",
+    ),
+  );
+});
+
+test("with Stall stops off, the envelope states that Command timeouts count", () => {
+  const text = renderRunEnvelope({
+    ...input,
+    phase: "implementation",
+    stallStop: { minutes: 0, maxStalls: 3 },
+  });
+  assert.ok(
+    text.includes(
+      "\n- Stalls: a command that times out is a stall. After 3 stalls, or a second timeout of the same command, the run stops as blocked.",
+    ),
+  );
+  assert.ok(!text.includes("Stall stop:"));
+});
+
+test("no Stall fact for planning, an interactive run, or without a policy", () => {
+  for (const variant of [
+    { phase: "planning" as const, stallStop: { minutes: 10, maxStalls: 3 } },
+    {
+      phase: "implementation" as const,
+      interactive: true,
+      stallStop: { minutes: 10, maxStalls: 3 },
+    },
+    { phase: "implementation" as const },
+  ])
+    assert.ok(
+      !/Stall stop:|- Stalls:/.test(
+        renderRunEnvelope({ ...input, ...variant }),
+      ),
+      JSON.stringify(variant),
+    );
+});
+
+test("previous stalls name the stalled commands, also in an interactive run", () => {
+  const previousStalls = [
+    {
+      number: 1,
+      kind: "stall-stop" as const,
+      calls: [
+        {
+          session: "implementation session",
+          tool: "bg_wait",
+          startedAt: "2026-11-24T10:00:00Z",
+          runningMs: 1,
+        },
+        {
+          session: "p/3f2a/run-0/session.jsonl",
+          run: "3f2a",
+          tool: "bash",
+          command: "npm test",
+          startedAt: "2026-11-24T10:00:00Z",
+          runningMs: 1,
+        },
+      ],
+      quietMs: 600_000,
+      tried: [],
+    },
+  ];
+  for (const interactive of [false, true]) {
+    const text = renderRunEnvelope({
+      ...input,
+      phase: "implementation",
+      interactive,
+      previousStalls,
+    });
+    assert.ok(
+      text.includes(
+        "\n- Previous stalls: the last Run attempt stopped after repeated stalls. Stalled commands: `bg_wait` (implementation session), `npm test` (subagent run 3f2a). Do not run these commands again unchanged.",
+      ),
+      text,
+    );
+  }
+});

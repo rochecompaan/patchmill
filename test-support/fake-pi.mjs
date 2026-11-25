@@ -31,25 +31,25 @@ await fs.writeFile(
       .map((entry) => `${JSON.stringify(entry)}\n`)
       .join(""),
 );
-async function sideEffects() {
-  for (const { args, allowFailure } of step.git ?? []) {
+async function sideEffects(s = step) {
+  for (const { args, allowFailure } of s.git ?? []) {
     try {
       await promisify(execFile)("git", args);
     } catch (error) {
       if (!allowFailure) throw error;
     }
   }
-  for (const [path, content] of Object.entries(step.writeFiles ?? {})) {
+  for (const [path, content] of Object.entries(s.writeFiles ?? {})) {
     await fs.mkdir(dirname(path), { recursive: true });
     await fs.writeFile(path, content);
   }
   const git = promisify(execFile);
-  if (step.commit) {
+  if (s.commit) {
     await git("git", ["add", "-A"]);
-    await git("git", ["commit", "-m", step.commit]);
+    await git("git", ["commit", "-m", s.commit]);
   }
-  if (step.push) await git("git", ["push", "-u", "origin", "HEAD"]);
-  if (step.pullRequest) {
+  if (s.push) await git("git", ["push", "-u", "origin", "HEAD"]);
+  if (s.pullRequest) {
     const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
     if (!stateFile) throw new Error("PATCHMILL_FAKE_HOST_STATE is required");
     const { stdout } = await git("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -64,7 +64,7 @@ async function sideEffects() {
         pr.headBranch === headBranch && pr.headRepository === headRepository,
     );
     if (existing) {
-      Object.assign(existing, step.pullRequest, { headBranch });
+      Object.assign(existing, s.pullRequest, { headBranch });
     } else {
       const number =
         Math.max(0, ...state.pullRequests.map((pr) => pr.number)) + 1;
@@ -76,23 +76,23 @@ async function sideEffects() {
         body: "",
         headRepository,
         baseBranch: state.repository.defaultBranch,
-        ...step.pullRequest,
+        ...s.pullRequest,
         headBranch,
       });
     }
     writeFileSync(stateFile, JSON.stringify(state));
   }
-  if (step.issuePatch) {
+  if (s.issuePatch) {
     const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
     const state = JSON.parse(readFileSync(stateFile, "utf8"));
-    Object.assign(state.issues[0], step.issuePatch);
+    Object.assign(state.issues[0], s.issuePatch);
     writeFileSync(stateFile, JSON.stringify(state));
   }
 }
 
 if (process.argv.includes("--mode")) {
   const { runRpc } = await import("./fake-pi-rpc.mjs");
-  await runRpc({ step, script, sideEffects });
+  await runRpc({ step, script, sideEffects, sessionDir });
 } else {
   await sideEffects();
   if (step.stdout !== undefined) console.log(step.stdout);

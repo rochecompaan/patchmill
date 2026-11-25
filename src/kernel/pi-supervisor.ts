@@ -1,5 +1,6 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import { promisify } from "node:util";
 import { piCommandArgs, type PiCommandSpec } from "../cli/pi-cli.ts";
 
 export type PiSessionOptions = {
@@ -36,6 +37,74 @@ export function piArgs(options: PiSessionOptions): string[] {
     ...options.extensionPaths.flatMap((path) => ["-e", path]),
     "@" + options.promptPath,
   ];
+}
+
+type Proc = { pid: number; ppid: number; pgid: number };
+
+/** Linux: read `/proc/<pid>/stat`. The fields after the last `)` start with state, ppid, pgrp. */
+async function procTable(): Promise<Proc[]> {
+  const names = await fs.readdir("/proc");
+  const table: Proc[] = [];
+  for (const name of names) {
+    if (!/^\d+$/.test(name)) continue;
+    try {
+      const stat = await fs.readFile(`/proc/${name}/stat`, "utf8");
+      const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      table.push({
+        pid: Number(name),
+        ppid: Number(fields[1]),
+        pgid: Number(fields[2]),
+      });
+    } catch {
+      // The process ended while the table was read.
+    }
+  }
+  return table;
+}
+
+async function psTable(): Promise<Proc[]> {
+  const { stdout } = await promisify(execFile)("ps", [
+    "-A",
+    "-o",
+    "pid=,ppid=,pgid=",
+  ]);
+  return stdout
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/).map(Number))
+    .filter((row) => row.length === 3 && row.every(Number.isFinite))
+    .map(([pid, ppid, pgid]) => ({ pid: pid!, ppid: ppid!, pgid: pgid! }));
+}
+
+/**
+ * The process groups of the descendants of `pid`, except its own group and
+ * the caller's group. Linux reads `/proc`, other systems run `ps`. Any failure
+ * gives an empty list.
+ */
+export async function descendantGroups(pid: number): Promise<number[]> {
+  try {
+    const table =
+      process.platform === "linux" ? await procTable() : await psTable();
+    const own = table.find((row) => row.pid === pid)?.pgid ?? pid;
+    const self = table.find((row) => row.pid === process.pid)?.pgid;
+    const children = new Map<number, Proc[]>();
+    for (const row of table)
+      children.set(row.ppid, [...(children.get(row.ppid) ?? []), row]);
+    const groups = new Set<number>();
+    const queue = [pid];
+    const seen = new Set(queue);
+    while (queue.length) {
+      for (const row of children.get(queue.shift()!) ?? []) {
+        if (seen.has(row.pid)) continue;
+        seen.add(row.pid);
+        queue.push(row.pid);
+        if (row.pgid !== own && row.pgid !== self && row.pgid > 1)
+          groups.add(row.pgid);
+      }
+    }
+    return [...groups];
+  } catch {
+    return [];
+  }
 }
 
 export function signalGroup(pid: number, signal: NodeJS.Signals | 0): boolean {

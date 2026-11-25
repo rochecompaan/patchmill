@@ -463,3 +463,123 @@ for (const [kind, answer] of [
     if (kind === "failed") assert.match(await f.log(), /Reminder rejected/);
   });
 }
+
+test("onRecord sees each parsed record", async (t) => {
+  const f = await fake(t, [{ result: done }]);
+  const types: string[] = [];
+  await runPiRpc({
+    ...f.options,
+    onRecord: (record) => types.push(record.type),
+  });
+  for (const type of [
+    "response",
+    "agent_start",
+    "message_update",
+    "message_end",
+    "agent_settled",
+  ])
+    assert.ok(types.includes(type), type);
+});
+
+test("piRpcArgs uses --session when sessionFile is set", () => {
+  const args = piRpcArgs({
+    command: { command: "pi" },
+    cwd: "/w",
+    agentDir: "/a",
+    sessionDir: "/s",
+    promptPath: "p.md",
+    logPath: "l",
+    extensionPaths: [],
+    timeoutMs: 1,
+    sessionFile: "/s/main.jsonl",
+  });
+  assert.deepEqual(args.slice(0, 6), [
+    "--mode",
+    "rpc",
+    "--session-dir",
+    "/s",
+    "--session",
+    "/s/main.jsonl",
+  ]);
+});
+
+test("recover aborts the turn and sends the message as a new prompt", async (t) => {
+  const f = await fake(t, [
+    { hang: true, recovery: { result: done, delayStartMs: 50 } },
+  ]);
+  const session = startPiRpc(f.options);
+  await waitFor(async () =>
+    (await f.commands()).some((command) => command.type === "prompt"),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(await session.recover("Continue.", 1000), "continued");
+  const result = await session.done;
+  assert.equal(parseAgentResult(result.stdout).ok, true);
+  const commands = await f.commands();
+  const abort = commands.findIndex((command) => command.type === "abort");
+  const prompt = commands.findLastIndex((command) => command.type === "prompt");
+  assert.ok(abort >= 0 && prompt > abort);
+  assert.equal(commands[prompt]!.message, "Continue.");
+  assert.equal(commands[prompt]!.streamingBehavior, "steer");
+});
+
+test("a rejected recovery prompt finishes the session", async (t) => {
+  const f = await fake(t, [{ hang: true, recovery: { promptError: "busy" } }]);
+  const session = startPiRpc(f.options);
+  await waitFor(async () =>
+    (await f.commands()).some((command) => command.type === "prompt"),
+  );
+  assert.equal(await session.recover("Continue.", 1000), "continued");
+  const result = await session.done;
+  assert.equal(result.exitCode, 1);
+  assert.match(await f.log(), /busy/);
+});
+
+test("recover returns unresponsive when Pi ignores abort", async (t) => {
+  const f = await fake(t, [{ hang: true, ignoreAbort: true }]);
+  const session = startPiRpc(f.options);
+  await waitFor(async () =>
+    (await f.commands()).some((command) => command.type === "prompt"),
+  );
+  assert.equal(await session.recover("Continue.", 100), "unresponsive");
+  await session.stop();
+  const result = await session.done;
+  assert.equal(result.aborted, false);
+  assert.equal(result.timedOut, false);
+});
+
+test(
+  "stop kills a command in its own process group",
+  { timeout: 10_000 },
+  async (t) => {
+    const f = await fake(t, [
+      {
+        hang: true,
+        ignoreAbort: true,
+        ignoreSigterm: true,
+        commandChild: true,
+      },
+    ]);
+    const session = startPiRpc({ ...f.options, graceMs: 100 });
+    let commandPid = 0;
+    await waitFor(async () => {
+      commandPid = Number(await fs.readFile(`${f.script}.command.pid`, "utf8"));
+      return commandPid > 0;
+    });
+    t.after(() => {
+      if (signalGroup(commandPid, 0)) signalGroup(commandPid, "SIGKILL");
+    });
+    assert.equal(signalGroup(commandPid, 0), true);
+    await session.stop();
+    await session.done;
+    await waitFor(async () => !signalGroup(commandPid, 0));
+  },
+);
+
+test("appendLogs keeps the earlier log", async (t) => {
+  const f = await fake(t, [{ stdout: "first" }, { stdout: "second" }]);
+  await runPiRpc(f.options);
+  await runPiRpc({ ...f.options, appendLogs: true });
+  const log = await f.log();
+  assert.ok(log.includes("first") && log.includes("second"));
+});

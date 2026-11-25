@@ -24,6 +24,8 @@ export type VerifyInput = {
   unpushed: number | "no-remote-branch";
   /** Failed checks of a merge conflict resolution; see merge-conflicts.ts. */
   conflictGaps?: string[];
+  /** The reason when the session reached the Stall limit. */
+  stallBlock?: string;
 };
 
 export function closesIssue(
@@ -96,6 +98,7 @@ export function verifyOutcome(input: VerifyInput): Outcome {
   const { result, session, facts } = input;
   const missingBlock = missingResultBlock(input);
   const failures: string[] = [];
+  if (input.stallBlock) failures.push(input.stallBlock);
   if (session.timedOut) failures.push("The session timed out.");
   if (session.aborted) failures.push("The session was aborted.");
   if (!result.ok) {

@@ -371,3 +371,57 @@ test("invalid command timeout values are rejected", () => {
         `${key}=${String(value)}`,
       );
 });
+
+test("stall keys default to 10 and 3", () => {
+  const { pi } = parseConfig({});
+  assert.equal(pi.stallStopMinutes, 10);
+  assert.equal(pi.maxStalls, 3);
+});
+
+test("stall keys accept 0", () => {
+  const { pi } = parseConfig({ pi: { stallStopMinutes: 0, maxStalls: 0 } });
+  assert.equal(pi.stallStopMinutes, 0);
+  assert.equal(pi.maxStalls, 0);
+});
+
+test("pi.stallStopMinutes accepts 0.01", () => {
+  assert.equal(
+    parseConfig({ pi: { stallStopMinutes: 0.01 } }).pi.stallStopMinutes,
+    0.01,
+  );
+});
+
+test("pi.stallStopMinutes rejects -1 and 35792", () => {
+  for (const value of [-1, 35792, Number.NaN])
+    assert.throws(
+      () => parseConfig({ pi: { stallStopMinutes: value } }),
+      (error: unknown) =>
+        error instanceof ConfigError &&
+        error.message.includes("pi.stallStopMinutes"),
+      String(value),
+    );
+});
+
+test("pi.maxStalls rejects 1.5, -1 and 101", () => {
+  for (const value of [1.5, -1, 101])
+    assert.throws(
+      () => parseConfig({ pi: { maxStalls: value } }),
+      (error: unknown) =>
+        error instanceof ConfigError && error.message.includes("pi.maxStalls"),
+      String(value),
+    );
+});
+
+test("a stall stop shorter than the command cap is accepted", () => {
+  const { pi } = parseConfig({
+    pi: { stallStopMinutes: 5, maxCommandTimeoutMinutes: 25 },
+  });
+  assert.equal(pi.stallStopMinutes, 5);
+});
+
+test("a string stall key gives a type error", () => {
+  assert.throws(
+    () => parseConfig({ pi: { maxStalls: "3" } }),
+    /Invalid type for pi\.maxStalls/,
+  );
+});

@@ -124,6 +124,14 @@ request gets the cap. Set a value to `0` to turn that limit off. The default
 must not be longer than an enabled cap. The limits also apply in subagent
 sessions.
 
+`pi.stallStopMinutes` defaults to 10. When an unattended implementation session
+and its subagent sessions show no activity for this time, Patchmill stops the
+turn and asks the agent to continue another way. A running `bash` call inside
+its timeout is not quiet. `pi.maxStalls` defaults to 3. A Command timeout and a
+stall stop both count as a Stall. The `pi.maxStalls`-th Stall, or a second Stall
+of the same command, stops the Run attempt at Needs Info. Set a value to `0` to
+turn that limit off.
+
 Run `patchmill auth` to configure provider credentials and choose a default
 model in `pi.agentDir`. The command verifies the provider and returns to the
 shell without opening Pi chat. See
@@ -157,7 +165,9 @@ shell without opening Pi chat. See
     "agentDir": ".patchmill/pi-agent",
     "timeoutMinutes": 90,
     "commandTimeoutMinutes": 20,
-    "maxCommandTimeoutMinutes": 25
+    "maxCommandTimeoutMinutes": 25,
+    "stallStopMinutes": 10,
+    "maxStalls": 3
   },
   "workflow": {
     "specApproval": { "required": false },

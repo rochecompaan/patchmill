@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import type { PiCommandSpec } from "../cli/pi-cli.ts";
 import type { Phase } from "./phase.ts";
 import { COMMAND_TIMEOUT_EXTENSION_PATH } from "../pi/command-timeout-extension.ts";
-import { runPiRpc } from "./pi-rpc.ts";
+import { runPiRpc, type PiRpcOptions } from "./pi-rpc.ts";
+import { superviseStalls, type StallNotice } from "./stall-supervisor.ts";
+import type { Stall, StallLimits } from "./stall-watch.ts";
 import type { PiSession } from "./pi-supervisor.ts";
 import {
   hasResultBlock,
@@ -33,12 +35,18 @@ export type PhaseLaunch = {
   aggregateLogPath: string;
   timeoutMs: number;
   signal?: AbortSignal;
+  /** Receives each Stall of a launch with a Stall policy. */
+  onStall?: (notice: StallNotice) => Promise<void>;
 };
 export type PhaseRun = {
   planningApproval?: "pr" | "no-pr";
   result: ParsedResult;
   session: Pick<PiSession, "exitCode" | "timedOut" | "aborted"> &
     Partial<Pick<PiSession, "signal">>;
+  /** The Stalls of a launch with a Stall policy. */
+  stalls?: Stall[];
+  /** The blocked reason when the launch reached the Stall limit. */
+  stallBlock?: string;
 };
 export type PhaseLauncher = (launch: PhaseLaunch) => Promise<PhaseRun>;
 
@@ -60,10 +68,12 @@ export function rpcModeLauncher(options: {
   extensionPaths: string[];
   /** Added to Pi's environment, for example the Command timeout limits. */
   env: Record<string, string>;
+  /** The Stall policy of an unattended implementation session. */
+  stall?: { limits: StallLimits };
 }): PhaseLauncher {
   return async (launch) => {
     let reminded = false;
-    const session = await runPiRpc({
+    const rpc: PiRpcOptions = {
       command: options.command,
       cwd: launch.worktree,
       agentDir: options.agentDir,
@@ -88,8 +98,25 @@ export function rpcModeLauncher(options: {
         return RESULT_REMINDER;
       },
       ...(launch.signal ? { signal: launch.signal } : {}),
+    };
+    if (!options.stall) {
+      const session = await runPiRpc(rpc);
+      return {
+        result: parseAgentResult(session.stdout, { reminded }),
+        session,
+      };
+    }
+    const supervised = await superviseStalls({
+      rpc,
+      limits: options.stall.limits,
+      onStall: launch.onStall ?? (async () => {}),
     });
-    const result = parseAgentResult(session.stdout, { reminded });
-    return { result, session };
+    const { session } = supervised;
+    return {
+      result: parseAgentResult(session.stdout, { reminded }),
+      session,
+      ...(supervised.stalls.length ? { stalls: supervised.stalls } : {}),
+      ...(supervised.block ? { stallBlock: supervised.block.reason } : {}),
+    };
   };
 }

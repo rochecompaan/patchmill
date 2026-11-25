@@ -2,6 +2,8 @@ import type { Issue } from "../host/types.ts";
 import type { Facts } from "./facts.ts";
 import type { Derived, Phase } from "./phase.ts";
 import type { PiUsage } from "./pi-cost.ts";
+import type { StallNotice } from "./stall-supervisor.ts";
+import { callTool, callWhere, durationText } from "./stall-text.ts";
 import {
   cleanValue,
   renderTerminalDocument,
@@ -178,6 +180,32 @@ export function formatPhaseComplete(
     ? `task ${(usage.outputTokens / 1000).toFixed(1)}k total ${(totalOutputTokens / 1000).toFixed(1)}k`
     : "unavailable";
   return `   tokens: ${tokens}   time elapsed: ${Math.max(0, Math.round(elapsedSeconds))}s`;
+}
+
+/** One progress line for a Stall. */
+export function formatStall(notice: StallNotice, maxStalls: number): string {
+  const { stall } = notice;
+  const of = maxStalls > 0 ? ` of ${maxStalls}` : "";
+  const calls = stall.calls.length
+    ? ` (${stall.calls
+        .map((call) =>
+          call.session === "implementation session"
+            ? callTool(call)
+            : `${callTool(call)} in ${callWhere(call)}`,
+        )
+        .join("; ")})`
+    : "";
+  const what =
+    stall.kind === "stall-stop"
+      ? `no activity for ${durationText(stall.quietMs)}${calls}`
+      : `command timed out after ${durationText(stall.quietMs)}${calls}`;
+  const action = {
+    recorded: "The agent continues.",
+    recovering: "Recovering in the same session.",
+    restarted: "Pi did not answer the stop; restarted it on the same session.",
+    blocked: "Stall limit reached; stopping the run.",
+  }[notice.action];
+  return `   Stall ${stall.number}${of}: ${what}. ${action}`;
 }
 
 export function formatRunStart(issue: Issue): string {
