@@ -29,6 +29,13 @@ selection refuses them, including `--interactive`, `--dry-run`, and resumed
 in-progress issues. Closing the last blocker makes the issue eligible on the
 next selection without another triage run.
 
+Automatic selection, including `--interactive` and `--dry-run`, also skips an
+issue that waits for an open planning pull request to merge. It prints
+`Warning: Issue #N: planning pull request #M is waiting for review; skipping it.`
+and tries the next issue. If facts for the issue cannot be read, selection takes
+the issue, so the run reports the problem. `--issue N` still runs a waiting
+issue and reports the gate wait.
+
 ## Claim and release
 
 The kernel holds an exclusive OS lock on `<runsDir>/issue-N/lock` throughout the
