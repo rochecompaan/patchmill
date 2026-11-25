@@ -193,16 +193,27 @@ configured default, and a longer request gets the configured cap. When it fires,
 Pi stops that command, and the agent continues. _Avoid_: Session timeout, stall
 stop
 
-**Stall**: A Command timeout or a Stall stop in an unattended implementation
-session or one of its subagent sessions. A few Stalls are recoverable. The
-configured maximum, or a second Stall of the same command, stops the Run attempt
-at Needs Info. _Avoid_: Hang, timeout
+**Stall**: A Command timeout or a Stall stop in an unattended planning or
+implementation session or one of its subagent sessions. A few Stalls are
+recoverable. The configured maximum, or a second Stall of the same command,
+stops the Run attempt at Needs Info. _Avoid_: Hang, timeout
 
-**Stall stop**: Patchmill stops the current turn of an unattended implementation
-session after the session and its subagent sessions show no activity for the
-configured time, outside a running `bash` call. Unless it is the last allowed
-Stall, the agent continues in the same session. _Avoid_: Session timeout,
-Command timeout
+**Stall stop**: Patchmill stops the current turn of an unattended planning or
+implementation session after the session and its subagent sessions show no
+activity for the configured time, outside a running `bash` call. Unless it is
+the last allowed Stall, the agent continues in the same session. _Avoid_:
+Session timeout, Command timeout
+
+**Session cap**: The optional wall-clock limit of one phase session or triage
+session, set by `pi.timeoutMinutes`. There is none by default. A triage session
+without one gets a built-in backstop. Subagents of a capped session get the same
+limit as their default deadline. _Avoid_: Session timeout, time limit
+
+**Cap checkpoint**: The message that Patchmill sends to a capped Pi RPC phase
+session 5 minutes before its Session cap, at most once per Pi process. It tells
+the agent to start no new work, wait for its subagents, and hand off. The first
+spawn of a Console worker gets the pi-subagents checkpoint instead. _Avoid_:
+Timeout warning
 
 **Budget window**: A daily or weekly period in the configured timezone. All
 committed model usage that occurred in the period counts toward its selection

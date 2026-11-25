@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue #371 — Limits at a glance</title>
+    <style>
+      :root {
+        --bg: #f7f7f5;
+        --fg: #1d1d1b;
+        --muted: #5c5c57;
+        --line: #d4d4cf;
+        --accent: #2f6f4f;
+        --warn: #9a5b00;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0 0 4px;
+      }
+      p.meta {
+        color: var(--muted);
+        margin: 0 0 24px;
+      }
+      h2 {
+        font-size: 1.15rem;
+        margin: 32px 0 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #eeeeea;
+      }
+      .off {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .cap {
+        color: var(--warn);
+        font-weight: 600;
+      }
+      .timeline {
+        background: #fff;
+        border: 1px solid var(--line);
+        padding: 16px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 90px 1fr;
+        align-items: center;
+        gap: 8px;
+        margin: 10px 0;
+      }
+      .bar {
+        position: relative;
+        height: 28px;
+        background: #e9efe9;
+        border-radius: 4px;
+      }
+      .seg {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 4px;
+      }
+      .parent {
+        left: 0;
+        width: 80%;
+        background: #b9d3c3;
+      }
+      .child {
+        left: 15%;
+        width: 85%;
+        background: #d8c8a8;
+      }
+      .mark {
+        position: absolute;
+        top: -4px;
+        bottom: -4px;
+        width: 3px;
+        background: var(--fg);
+      }
+      .mark span {
+        position: absolute;
+        top: 34px;
+        left: -30px;
+        width: 90px;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      ul {
+        padding-left: 20px;
+      }
+      @media (max-width: 600px) {
+        table,
+        thead,
+        tbody,
+        tr,
+        th,
+        td {
+          display: block;
+        }
+        thead {
+          display: none;
+        }
+        tr {
+          margin-bottom: 12px;
+          border: 1px solid var(--line);
+          background: #fff;
+        }
+        td {
+          border: none;
+          border-bottom: 1px solid var(--line);
+        }
+        td::before {
+          content: attr(data-h);
+          display: block;
+          font-weight: 600;
+          color: var(--muted);
+          font-size: 0.85rem;
+        }
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Limits at a glance</h1>
+      <p class="meta">
+        Issue #371 · Companion of
+        <code
+          >2026-11-25-issue-371-replace-wall-clock-session-and-subagent-timeouts-design.md</code
+        >
+      </p>
+
+      <h2>What stops each session</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Session</th>
+            <th><code>pi.timeoutMinutes: null</code> (default)</th>
+            <th>Cap set</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-h="Session">Unattended implementation</td>
+            <td data-h="Default">
+              <span class="off">No deadline.</span> Stall policy ends a hang.
+            </td>
+            <td data-h="Cap set">
+              <span class="cap">Cap</span>, Cap checkpoint 5 min before, Stall
+              policy.
+            </td>
+          </tr>
+          <tr>
+            <td data-h="Session">Unattended planning</td>
+            <td data-h="Default">
+              <span class="off">No deadline.</span> Stall policy (new) ends a
+              hang.
+            </td>
+            <td data-h="Cap set">
+              <span class="cap">Cap</span>, Cap checkpoint, Stall policy.
+            </td>
+          </tr>
+          <tr>
+            <td data-h="Session">Interactive planning and implementation</td>
+            <td data-h="Default">
+              <span class="off">No deadline.</span> The maintainer is present.
+            </td>
+            <td data-h="Cap set">
+              <span class="cap">Cap</span>. A first Console worker spawn gets
+              the pi-subagents checkpoint; a resume gets none.
+            </td>
+          </tr>
+          <tr>
+            <td data-h="Session">Triage (print mode)</td>
+            <td data-h="Default">
+              <span class="cap">Built-in 90-minute backstop.</span>
+            </td>
+            <td data-h="Cap set">
+              <span class="cap">Cap</span>, no checkpoint.
+            </td>
+          </tr>
+          <tr>
+            <td data-h="Session">Subagent child</td>
+            <td data-h="Default">
+              <span class="off">2,147,483,647 ms</span> (largest value
+              pi-subagents accepts). Checkpoint 5 min before. The managed agents
+              <code>reviewer</code> and <code>patchmill-implementation</code>
+              carry the same deadline in frontmatter, so resumes and chain steps
+              get it too.
+            </td>
+            <td data-h="Cap set">
+              <span class="cap">Cap</span> from the child's start. Checkpoint 5
+              min before.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Why the parent's cap is always first</h2>
+      <div
+        class="timeline"
+        role="img"
+        aria-label="The parent starts first and its cap ends before the child's deadline. The Cap checkpoint comes 5 minutes before the parent's cap."
+      >
+        <div class="row">
+          <strong>Parent</strong>
+          <div class="bar">
+            <div class="seg parent"></div>
+            <div class="mark" style="left: 70%"><span>checkpoint</span></div>
+            <div class="mark" style="left: 80%"><span>cap</span></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 36px">
+          <strong>Child</strong>
+          <div class="bar">
+            <div class="seg child"></div>
+            <div class="mark" style="left: 99%">
+              <span>child deadline</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul>
+        <li>
+          A child gets the same length of deadline, but it starts later, so it
+          never ends before its parent by default.
+        </li>
+        <li>
+          The Cap checkpoint asks the parent to wait for its children and hand
+          off before the cap.
+        </li>
+        <li>
+          With no cap, neither has a deadline in practice. The Stall policy
+          watches the parent and its child sessions together.
+        </li>
+      </ul>
+
+      <h2>Config values</h2>
+      <ul>
+        <li><code>null</code>: no cap (default).</li>
+        <li>A number greater than 0 and at most 35791: the cap in minutes.</li>
+        <li>Anything else: <code>ConfigError</code>.</li>
+      </ul>
+    </main>
+  </body>
+</html>
