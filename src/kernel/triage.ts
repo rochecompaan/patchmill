@@ -227,7 +227,7 @@ export async function runTriage(
         // Keep raw model output in the session log, not in the CLI display.
         onOutput: () => {},
         extensionPaths: [],
-        timeoutMs: config.pi.timeoutMinutes * 60_000,
+        timeoutMs: (config.pi.timeoutMinutes ?? 90) * 60_000,
         ...(options.signal ? { signal: options.signal } : {}),
       });
       const interrupted =

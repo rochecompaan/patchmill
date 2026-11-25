@@ -179,7 +179,7 @@ export async function preparePhasePrompt(
     skill,
     interactive: !!deps.human,
     ...(conflictResolution ? { conflictResolution } : {}),
-    timeoutMinutes: config.pi.timeoutMinutes,
+    timeoutMinutes: config.pi.timeoutMinutes ?? 90,
     commandLimits: limits,
     ...(stallStop ? { stallStop } : {}),
     ...(previousStalls ? { previousStalls } : {}),
@@ -236,7 +236,7 @@ export async function preparePhasePrompt(
     promptPath,
     logPath: join(runDir, `session-${sessionNumber}.log`),
     aggregateLogPath: join(runDir, "pi.log"),
-    timeoutMs: config.pi.timeoutMinutes * 60_000,
+    timeoutMs: (config.pi.timeoutMinutes ?? 90) * 60_000,
     ...(signal ? { signal } : {}),
   };
   return { launch, launcher };
