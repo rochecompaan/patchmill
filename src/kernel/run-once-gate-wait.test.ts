@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { done, setupRun, spec } from "../../test-support/run-once-fixture.ts";
+import {
+  done,
+  merge,
+  setupRun,
+  spec,
+  type Scenario,
+} from "../../test-support/run-once-fixture.ts";
+import { prepareInteractiveRun } from "./interactive-start.ts";
 import { fakeHuman } from "../../test-support/fake-human.ts";
 import type { RunOnceOptions } from "./run-once.ts";
 
@@ -13,7 +20,7 @@ type Result = {
 };
 
 // An unattended gate wait that repeats unchanged is announced once.
-async function gated(t: TestContext) {
+async function gated(t: TestContext, extraSteps: unknown[] = []) {
   const c = await setupRun(t, [
     {
       writeFiles: { [spec]: "design" },
@@ -22,6 +29,7 @@ async function gated(t: TestContext) {
       pullRequest: { draft: false, body: "Refs #9" },
       result: done,
     },
+    ...extraSteps,
   ]);
   c.config.workflow.specApproval.required = true;
   let minute = 0;
@@ -138,4 +146,97 @@ test("an interactive gate wait is not affected", async (t) => {
   const human = fakeHuman(g.c);
   await g.run({ human });
   assert.equal(g.comments().length, 3);
+});
+
+const skipWarning =
+  /Warning: Issue #9: planning pull request #\d+ is waiting for review; skipping it\./;
+
+function skipWarnings(c: Scenario) {
+  return c.output.filter((line) => skipWarning.test(line));
+}
+
+// Issue 10 is newer than issue 9. It is appended, so issues[0] stays issue 9.
+async function addNewerIssue(c: Scenario) {
+  await c.mutate((state) => {
+    state.issues.push({
+      ...state.issues[0]!,
+      number: 10,
+      title: "Add logout",
+      url: "https://example.invalid/10",
+      labels: ["agent-ready"],
+      createdAt: "2026-10-16",
+      comments: [],
+    });
+  });
+}
+
+test("a waiting issue yields to newer ready work, in dry-run and in a run", async (t) => {
+  const { c } = await gated(t, [
+    { result: { status: "needs-input", summary: "Question" } },
+  ]);
+  await addNewerIssue(c);
+  c.output.length = 0;
+  const dryRun = await c.run({ dryRun: true });
+  assert.equal(dryRun.status, "dry-run");
+  assert.equal("issue" in dryRun ? dryRun.issue : undefined, 10);
+  assert.equal(skipWarnings(c).length, 1);
+  c.output.length = 0;
+  const run = await c.run();
+  assert.equal(run.status, "stopped");
+  assert.equal("issue" in run ? run.issue : undefined, 10);
+  assert.equal(skipWarnings(c).length, 1);
+});
+
+test("after the merge, the waiting issue is selected first again", async (t) => {
+  const { c } = await gated(t);
+  await addNewerIssue(c);
+  const pull = c.host
+    .state()
+    .pullRequests.find((p) => p.state === "open" && p.body.includes("#9"))!;
+  await merge(c, pull.headBranch);
+  c.output.length = 0;
+  const dryRun = await c.run({ dryRun: true });
+  assert.equal("issue" in dryRun ? dryRun.issue : undefined, 9);
+  assert.equal(skipWarnings(c).length, 0);
+});
+
+test("only waiting issues report no eligible issue", async (t) => {
+  const { c } = await gated(t);
+  c.output.length = 0;
+  assert.deepEqual(await c.run(), { status: "no-work" });
+  assert.ok(c.output.some((line) => line.includes("No eligible issue")));
+  assert.equal(skipWarnings(c).length, 1);
+});
+
+test("interactive automatic selection skips a waiting issue", async (t) => {
+  const { c } = await gated(t);
+  const reports: string[] = [];
+  const start = await prepareInteractiveRun({
+    config: c.config,
+    deps: c.deps,
+    report: (line) => reports.push(line),
+    sweep: async () => {},
+  });
+  assert.deepEqual(start, { kind: "none" });
+  assert.equal(reports.filter((line) => skipWarning.test(line)).length, 1);
+});
+
+// Spec D8: only an explicit run retries a failed gate-wait publication.
+test("an automatic pass does not retry a failed gate publication", async (t) => {
+  const g = await gated(t);
+  const comment = g.c.host.commentIssue.bind(g.c.host);
+  g.c.host.commentIssue = async () => {
+    throw new Error("comment failed");
+  };
+  const failed = await g.run();
+  assert.ok(
+    failed.status === "stopped" && failed.publicationErrors?.length,
+    JSON.stringify(failed),
+  );
+  g.c.host.commentIssue = comment;
+  assert.deepEqual(await g.c.run(), { status: "no-work" });
+  assert.equal(g.comments().length, 1);
+  await g.run();
+  assert.equal(g.comments().length, 2);
+  assert.match(g.comments()[1]!.body, /Waiting for it to be merged/);
 });
