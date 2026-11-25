@@ -912,3 +912,30 @@ test("a stale last message after a failed guidance resume is not used", async (t
   });
   assert.equal(resumes(f).length, 0);
 });
+
+test("no cap: spawn gets maxRuntimeMs 2147483647 and no Patchmill deadline", async (t) => {
+  const f = await fixture(t);
+  const { timeoutMs: _, ...launch } = f.launch;
+  const pending = f.launcher.run(launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  const spawn = f.bus.requests.find((request) => request.method === "spawn");
+  assert.equal(spawn?.params.maxRuntimeMs, 2_147_483_647);
+  await delay(100);
+  assert.ok(!f.bus.requests.some((request) => request.method === "stop"));
+  await writeFile(join(f.launch.sessionDir, "output.md"), text);
+  f.bus.complete("run-1", { results: [{ output: "fallback" }] });
+  const run = await pending;
+  assert.equal(run.session.timedOut, false);
+  assert.deepEqual(run.result, { ok: true, result: done });
+});
+
+test("cap: spawn gets the cap as maxRuntimeMs", async (t) => {
+  const f = await fixture(t);
+  const pending = f.launcher.run(f.launch);
+  await waitUntil(() => f.launcher.active() !== undefined);
+  const spawn = f.bus.requests.find((request) => request.method === "spawn");
+  assert.equal(spawn?.params.maxRuntimeMs, 1_000);
+  await writeFile(join(f.launch.sessionDir, "output.md"), text);
+  f.bus.complete("run-1", { results: [{ output: "fallback" }] });
+  await pending;
+});
