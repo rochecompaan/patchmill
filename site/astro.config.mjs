@@ -56,6 +56,7 @@ export default defineConfig({
               label: "Overview",
               slug: "getting-started/overview",
             },
+            { label: "Factory floor", slug: "getting-started/factory-floor" },
             { label: "Quickstart", slug: "getting-started/quickstart" },
             {
               label: "Configuration",

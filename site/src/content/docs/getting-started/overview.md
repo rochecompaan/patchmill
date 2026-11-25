@@ -25,6 +25,7 @@ issue. It does not mean that the pull request merged.
 
 ## Start here
 
-Read the [quickstart](/getting-started/quickstart/),
+Read the [factory floor](/getting-started/factory-floor/) for a picture of the
+whole flow. Then read the [quickstart](/getting-started/quickstart/),
 [configuration](/getting-started/configuration/), and
 [Run-once guide](/using-patchmill/run-once/).
