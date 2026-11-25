@@ -12,6 +12,7 @@ import {
   hasReply,
   runTriage,
   selectTriageCandidates,
+  triageTimeoutMs,
   type TriageOptions,
   type TriageProgressEvent,
 } from "./triage.ts";
@@ -846,4 +847,9 @@ test("a dry run does not call the pre-write check", async (t) => {
     }),
     [{ issue: 9, status: "ready", applied: false }],
   );
+});
+
+test("triageTimeoutMs gives a 90-minute backstop without a cap, else the cap", () => {
+  assert.equal(triageTimeoutMs(null), 5_400_000);
+  assert.equal(triageTimeoutMs(2), 120_000);
 });

@@ -82,7 +82,7 @@ test("the stall limit stops with needs-info and keeps the work", async (t) => {
   assert.equal(outcome.label, "needsInfo");
   assert.match(
     outcome.summary,
-    /^The implementation stopped: the same command stalled twice\./,
+    /^The implementation session stopped: the same command stalled twice\./,
   );
   assert.ok(c.host.state().issues[0]!.labels.includes("needs-info"));
   const record = JSON.parse(

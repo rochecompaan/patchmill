@@ -4,7 +4,13 @@ import {
   limitCommandTimeout,
   type CommandLimits,
 } from "../pi/command-timeout-extension.ts";
-import { blockReason, callTool, recoveryPrompt } from "./stall-text.ts";
+import type { Phase } from "./phase.ts";
+import {
+  blockReason,
+  callTool,
+  recoveryPrompt,
+  topSession,
+} from "./stall-text.ts";
 
 export type StallLimits = {
   /** Quiet time before a Stall stop. 0 = off. */
@@ -14,7 +20,7 @@ export type StallLimits = {
   command: CommandLimits;
 };
 export type StallCall = {
-  /** "implementation session" or the subagent session path relative to the session directory. */
+  /** "planning session", "implementation session", or the subagent session path relative to the session directory. */
   session: string;
   /** The pi-subagents run ID from that path, for a subagent session. */
   run?: string;
@@ -33,7 +39,7 @@ export type Stall = {
   calls: StallCall[];
   /** stall-stop: Quiet time; command-timeout: call duration. */
   quietMs: number;
-  /** Tool calls of the implementation session after the previous recovery, at most 5. */
+  /** Tool calls of the top-level session after the previous recovery, at most 5. */
   tried: string[];
 };
 export type StallDecision =
@@ -42,7 +48,6 @@ export type StallDecision =
   | { kind: "block"; stalls: Stall[]; reason: string };
 export type StallWatch = ReturnType<typeof createStallWatch>;
 
-const TOP = "implementation session";
 const EXEMPT_MARGIN_MS = 60_000;
 const MAX_TRIED = 5;
 const TIMEOUT = /^Command timed out after (\d+(?:\.\d+)?) seconds/;
@@ -90,7 +95,7 @@ function runOf(relative: string): string | undefined {
 }
 
 /**
- * The Stall rules for one unattended implementation session: Activity, Quiet
+ * The Stall rules for one unattended phase session: Activity, Quiet
  * time, Command timeouts, the Stall count, the same-command rule and the text
  * of the recovery prompt and the blocked reason. It reads the session files
  * under `sessionDir` and has no timers.
@@ -98,10 +103,13 @@ function runOf(relative: string): string | undefined {
 export function createStallWatch(options: {
   sessionDir: string;
   limits: StallLimits;
+  phase: Phase;
   /** Monotonic milliseconds. */
   now: () => number;
 }) {
   const { sessionDir, limits, now } = options;
+  const TOP = topSession(options.phase);
+  const stopped = `The ${TOP} stopped`;
   const files = new Map<string, FileState>();
   const open = new Map<string, OpenCall>();
   const listed = new Set<string>();
@@ -149,12 +157,9 @@ export function createStallWatch(options: {
       tried: [...tried],
     };
     stalls.push(full);
-    if (repeat)
-      return block(
-        "The implementation stopped: the same command stalled twice.",
-      );
+    if (repeat) return block(`${stopped}: the same command stalled twice.`);
     if (limits.maxStalls > 0 && full.number >= limits.maxStalls)
-      return block(`The implementation stopped after ${full.number} stalls.`);
+      return block(`${stopped} after ${full.number} stalls.`);
     if (stall.kind === "command-timeout")
       return { kind: "recorded", stall: full };
     const text = (restart: boolean) =>
@@ -320,7 +325,7 @@ export function createStallWatch(options: {
   };
 
   return {
-    /** Each RPC record of the implementation Pi process. Only `message_update` is Activity. */
+    /** Each RPC record of the phase Pi process. Only `message_update` is Activity. */
     record(record: { type?: unknown }): void {
       if (record.type === "message_update") lastActivity = now();
     },
@@ -368,13 +373,13 @@ export function createStallWatch(options: {
     /** Turn the last Stall into the Stall limit, for example when Pi cannot restart. */
     fail(cause: string): Extract<StallDecision, { kind: "block" }> {
       return block(
-        `The implementation stopped: Patchmill could not restart Pi after a stall (${cause}).`,
+        `${stopped}: Patchmill could not restart Pi after a stall (${cause}).`,
       );
     },
     stalls(): readonly Stall[] {
       return stalls;
     },
-    /** The top-level session file of the implementation session, when it exists. */
+    /** The top-level session file of the phase session, when it exists. */
     sessionFile(): string | undefined {
       return topFile ? join(sessionDir, topFile) : undefined;
     },

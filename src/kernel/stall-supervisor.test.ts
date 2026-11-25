@@ -35,6 +35,7 @@ async function setup(
   t: TestContext,
   recoverWith: ("continued" | "unresponsive" | "pending")[] = [],
   limits: Partial<StallLimits> = {},
+  rpc: Partial<PiRpcOptions> = {},
 ) {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-supervise-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
@@ -81,8 +82,10 @@ async function setup(
       extensionPaths: [],
       timeoutMs: 5_400_000,
       onOutput: () => {},
+      ...rpc,
     },
     limits: { ...LIMITS, ...limits },
+    phase: "implementation",
     clock: { now: clock.now, every: clock.every },
     start,
     onStall: async (notice) => {
@@ -159,6 +162,7 @@ test("an unresponsive Pi restarts on the session file with the remaining time", 
   assert.equal(restarted.sessionFile, s.sessionFile);
   assert.equal(restarted.appendLogs, true);
   assert.equal(restarted.timeoutMs, 5_400_000 - 615_000);
+  assert.equal(restarted.checkpointNow, undefined);
   assert.equal(restarted.promptPath, join(s.dir, "recovery-1.md"));
   assert.match(
     await fs.readFile(restarted.promptPath, "utf8"),
@@ -179,7 +183,7 @@ test("no session file means the stall blocks", async (t) => {
   const result = await s.running;
   assert.match(
     result.block?.reason ?? "",
-    /^The implementation stopped: Patchmill could not restart Pi after a stall \(no session file\)/,
+    /^The implementation session stopped: Patchmill could not restart Pi after a stall \(no session file\)/,
   );
   assert.equal(s.sessions.length, 1);
   assert.equal(s.notices.at(-1)?.action, "blocked");
@@ -239,4 +243,52 @@ test("polling stops when the session ends", async (t) => {
   s.sessions[0]!.end();
   await s.running;
   assert.equal(s.clock.intervals, 0);
+});
+
+test("a restart without a deadline starts with no timeoutMs", async (t) => {
+  const s = await setup(t, ["unresponsive"], {}, { timeoutMs: undefined });
+  await s.writeSession();
+  await s.advance(15_000);
+  await s.advance(600_000);
+  assert.equal(s.sessions.length, 2);
+  const restarted = s.sessions[1]!.options;
+  assert.equal(restarted.timeoutMs, undefined);
+  assert.equal(restarted.checkpointNow, undefined);
+  s.sessions[1]!.end();
+  const result = await s.running;
+  assert.equal(result.block, undefined);
+});
+
+test("a late restart gets checkpointNow", async (t) => {
+  const s = await setup(
+    t,
+    ["unresponsive"],
+    {},
+    { timeoutMs: 700_000, checkpointBeforeMs: 300_000 },
+  );
+  await s.writeSession();
+  await s.advance(15_000);
+  await s.advance(600_000);
+  const restarted = s.sessions[1]!.options;
+  assert.equal(restarted.timeoutMs, 85_000);
+  assert.equal(restarted.checkpointNow, true);
+  s.sessions[1]!.end();
+  await s.running;
+});
+
+test("an early restart gets no checkpointNow", async (t) => {
+  const s = await setup(
+    t,
+    ["unresponsive"],
+    {},
+    { timeoutMs: 1_000_000, checkpointBeforeMs: 300_000 },
+  );
+  await s.writeSession();
+  await s.advance(15_000);
+  await s.advance(600_000);
+  const restarted = s.sessions[1]!.options;
+  assert.equal(restarted.timeoutMs, 385_000);
+  assert.equal(restarted.checkpointNow, undefined);
+  s.sessions[1]!.end();
+  await s.running;
 });

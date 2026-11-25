@@ -190,7 +190,7 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
         id = await client.spawnWorker({
           task: launch.envelope,
           cwd: launch.worktree,
-          timeoutMs: launch.timeoutMs,
+          timeoutMs: launch.timeoutMs ?? 2_147_483_647,
           output: outputPath,
         });
       }

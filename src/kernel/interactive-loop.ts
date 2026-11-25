@@ -199,6 +199,7 @@ export async function preparePhasePrompt(
               maxStalls: config.pi.maxStalls,
               command: limits,
             },
+            phase,
           },
         }
       : {}),
