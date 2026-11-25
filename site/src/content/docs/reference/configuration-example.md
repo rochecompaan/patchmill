@@ -30,7 +30,7 @@ Unknown keys fail by name. Copy only the values that your repository needs.
   },
   "pi": {
     "agentDir": ".patchmill/pi-agent",
-    "timeoutMinutes": 90,
+    "timeoutMinutes": null,
     "commandTimeoutMinutes": 20,
     "maxCommandTimeoutMinutes": 25,
     "stallStopMinutes": 10,
