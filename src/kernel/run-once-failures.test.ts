@@ -292,7 +292,8 @@ test("an abort that makes the run throw pauses without publishing", async (t) =>
     callsAtAbort = c.host.state().calls.length;
     throw new Error("fetch failed");
   };
-  const outcome = await c.run({ signal: controller.signal });
+  // Named, so the first fetch is the run's own and not selection's.
+  const outcome = await c.run({ issue: 9, signal: controller.signal });
   assert.deepEqual(outcome, {
     status: "paused",
     issue: 9,

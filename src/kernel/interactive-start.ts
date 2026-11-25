@@ -1,4 +1,5 @@
 import type { PatchmillConfig } from "../config/config.ts";
+import { collectFacts } from "./facts.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
 import type { RunOnceDeps } from "./run-once.ts";
@@ -34,6 +35,7 @@ export async function prepareInteractiveRun(input: {
     host: deps.host,
     workflow: deps.workflow,
     ...(input.issue !== undefined ? { issue: input.issue } : {}),
+    readFacts: (issue) => collectFacts({ ...deps, config }, issue),
     warn: (issue, message) => report(`Warning: Issue #${issue}: ${message}`),
   });
   if (selection.kind === "refused")

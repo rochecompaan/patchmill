@@ -4,19 +4,29 @@ import {
   type WorkflowState,
 } from "./workflow-state.ts";
 import type { Host } from "../host/types.ts";
+import type { FactsResult } from "./facts.ts";
+import { derivedStop } from "./interactive-loop.ts";
+import { derivePhase } from "./phase.ts";
 
 export type RunIssueSelection =
   | { kind: "selected"; issue: TrackedIssue }
   | { kind: "none" }
   | { kind: "refused"; issue: number; reason: string };
 
+/**
+ * The issue that runs next. Automatic selection takes the oldest open Ready or
+ * In Progress issue that has no open dependency and does not wait on an open
+ * Planning pull request. `readFacts` must be read-only; selection calls it
+ * only in automatic selection, after the dependency check passes.
+ */
 export async function selectRunIssue(input: {
   host: Host;
   workflow: WorkflowState;
   issue?: number;
+  readFacts: (issue: TrackedIssue) => Promise<FactsResult>;
   warn: (issue: number, message: string) => void;
 }): Promise<RunIssueSelection> {
-  const { host, workflow, issue: explicit, warn } = input;
+  const { host, workflow, issue: explicit, readFacts, warn } = input;
   let issues: TrackedIssue[];
   try {
     issues =
@@ -45,7 +55,16 @@ export async function selectRunIssue(input: {
       const open = (await host.listIssueDependencies(issue.number)).filter(
         (dependency) => dependency.state === "open",
       );
-      if (!open.length) return { kind: "selected", issue };
+      if (!open.length) {
+        if (explicit !== undefined) return { kind: "selected", issue };
+        const pullRequest = await waitingPullRequest(host, readFacts, issue);
+        if (pullRequest === undefined) return { kind: "selected", issue };
+        warn(
+          issue.number,
+          `planning pull request #${pullRequest} is waiting for review; skipping it.`,
+        );
+        continue;
+      }
       let repository: string | undefined;
       if (explicit !== undefined) {
         try {
@@ -85,4 +104,34 @@ export async function selectRunIssue(input: {
         issue: explicit,
         reason: "Issue is missing or closed.",
       };
+}
+
+/**
+ * The number of the open Planning pull request that the issue waits on, from
+ * the run's own decision. Unreadable facts are not a wait, so the run reports
+ * them.
+ */
+async function waitingPullRequest(
+  host: Host,
+  readFacts: (issue: TrackedIssue) => Promise<FactsResult>,
+  issue: TrackedIssue,
+): Promise<number | undefined> {
+  try {
+    const result = await readFacts(issue);
+    if (result.kind !== "facts") return undefined;
+    const { facts } = result;
+    const derived = derivePhase(facts);
+    if (derived.kind !== "stop" || derived.label !== "inProgress")
+      return undefined;
+    if (facts.pullRequest?.state !== "open") return undefined;
+    const stop = derivedStop(
+      facts,
+      issue.number,
+      await host.repository(),
+      "inProgress",
+    );
+    return stop.label === "inProgress" ? facts.pullRequest.number : undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -90,7 +90,8 @@ for (const row of [
       );
       assert.doesNotMatch(pull.body, /\b(?:closes|fixes|resolves) #9/i);
       const calls = await count(c);
-      const waiting = await c.run();
+      // Automatic selection skips the waiting issue; name it to see its gate.
+      const waiting = await c.run({ issue: 9 });
       assert.equal(waiting.status, "stopped");
       assert.equal(
         await count(c),
@@ -327,7 +328,7 @@ test("an in-flight legacy spec branch stays at its gate and passes after merge",
       baseBranch: "main",
     });
   });
-  assert.equal((await c.run()).status, "stopped");
+  assert.equal((await c.run({ issue: 9 })).status, "stopped");
   assert.equal(await count(c), 0);
   assert.equal(await c.git(["ls-remote", "--heads", "origin", specBranch]), "");
   await merge(c, legacySpecBranch);
@@ -335,7 +336,7 @@ test("an in-flight legacy spec branch stays at its gate and passes after merge",
   assert.equal(await count(c), 1);
   assert.equal(c.host.state().pullRequests.at(-1)!.headBranch, planBranch);
   await c.git(["push", "origin", "--delete", legacySpecBranch]);
-  assert.equal((await c.run()).status, "stopped");
+  assert.equal((await c.run({ issue: 9 })).status, "stopped");
   assert.equal(await count(c), 1);
   assert.deepEqual(
     c.host.state().pullRequests.map((p) => p.headBranch),
@@ -368,7 +369,7 @@ test("a new commit on an open spec branch keeps its PR at the gate", async (t) =
   await c.git(["fetch", "origin", specBranch], cwd);
   await c.git(["checkout", "--detach", "FETCH_HEAD"], cwd);
   await c.seed({ [spec]: "revised spec" }, specBranch);
-  assert.equal((await c.run()).status, "stopped");
+  assert.equal((await c.run({ issue: 9 })).status, "stopped");
   assert.deepEqual(c.host.state().pullRequests, [pull]);
   assert.match(c.host.state().issues[0]!.comments.at(-1)!.body, /merge/i);
   assert.equal(await count(c), 1);

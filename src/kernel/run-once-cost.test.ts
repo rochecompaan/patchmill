@@ -179,7 +179,7 @@ test("planning PR gets one cost section and a gated rerun does not double-count"
   );
   assert.ok(first.startsWith("Spec details\n\nRefs #9"));
 
-  assert.equal((await c.run()).status, "stopped");
+  assert.equal((await c.run({ issue: 9 })).status, "stopped");
   const second = c.host.state().pullRequests[0]!.body;
   assert.equal(second, first);
   assert.equal(second.split("<!-- patchmill-run-cost:start -->").length - 1, 1);

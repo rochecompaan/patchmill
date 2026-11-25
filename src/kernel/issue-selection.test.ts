@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { FakeHost, writeFakeHostState } from "../../test-support/fake-host.ts";
 import { DEFAULT_CONFIG } from "../config/config.ts";
-import type { Issue, IssueDependency } from "../host/types.ts";
+import type { Issue, IssueDependency, PullRequest } from "../host/types.ts";
+import type { FactsResult } from "./facts.ts";
 import { LabelWorkflowState } from "./label-workflow.ts";
 import { selectRunIssue } from "./issue-selection.ts";
 
@@ -22,7 +23,41 @@ function issue(number: number, labels = ["agent-ready"]): Issue {
     comments: [],
   };
 }
-async function setup(t: TestContext, dependencies: IssueDependency[] = []) {
+function facts(pullRequest?: Partial<PullRequest>): FactsResult {
+  const branch = "agent/issue-9-spec";
+  return {
+    kind: "facts",
+    facts: {
+      stage: "spec",
+      branch,
+      remoteBranchExists: true,
+      worktree: "/worktree",
+      baseBranch: "main",
+      expectedSpecPath: "docs/specs/spec.md",
+      expectedPlanPath: "docs/plans/plan.md",
+      ...(pullRequest
+        ? {
+            pullRequest: {
+              number: 48,
+              url: "https://example.invalid/pulls/48",
+              state: "open",
+              draft: false,
+              body: "Refs #9",
+              headRepository: "fixture/repo",
+              headBranch: branch,
+              baseBranch: "main",
+              ...pullRequest,
+            },
+          }
+        : {}),
+    },
+  };
+}
+async function setup(
+  t: TestContext,
+  dependencies: IssueDependency[] = [],
+  observed: Record<number, FactsResult | Error> = {},
+) {
   const root = await mkdtemp(join(tmpdir(), "patchmill-selection-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const stateFile = join(root, "host.json");
@@ -32,15 +67,24 @@ async function setup(t: TestContext, dependencies: IssueDependency[] = []) {
   });
   const host = new FakeHost(stateFile);
   const warnings: string[] = [];
+  const readIssues: number[] = [];
+  const readFacts = async (issue: { number: number }) => {
+    readIssues.push(issue.number);
+    const found = observed[issue.number];
+    if (found instanceof Error) throw found;
+    return found ?? facts();
+  };
   return {
     host,
     stateFile,
     warnings,
+    readIssues,
     select: (n?: number) =>
       selectRunIssue({
         host,
         workflow: new LabelWorkflowState(host, DEFAULT_CONFIG.labels),
         ...(n === undefined ? {} : { issue: n }),
+        readFacts,
         warn: (n, reason) => warnings.push(`#${n}: ${reason}`),
       }),
   };
@@ -101,6 +145,9 @@ for (const failure of ["repository", "blocker"] as const) {
         host: f.host,
         workflow,
         issue: 9,
+        readFacts: async () => {
+          throw new Error("no facts");
+        },
         warn: () => {},
       }),
       {
@@ -124,7 +171,16 @@ test("automatic selection does not read blocker workflow issues or repository", 
     throw new Error("unexpected lookup");
   };
   assert.equal(
-    (await selectRunIssue({ host: f.host, workflow, warn: () => {} })).kind,
+    (
+      await selectRunIssue({
+        host: f.host,
+        workflow,
+        readFacts: async () => {
+          throw new Error("no facts");
+        },
+        warn: () => {},
+      })
+    ).kind,
     "selected",
   );
   assert.equal(reads, 0);
@@ -201,4 +257,74 @@ test("explicit selection retains its label override but not a dependency overrid
   writeFakeHostState(f.stateFile, state);
   assert.equal((await f.select(1)).kind, "refused");
   assert.equal((await f.select(999)).kind, "refused");
+});
+
+const waiting = "planning pull request #48 is waiting for review; skipping it.";
+
+function selectedNumber(selection: Awaited<ReturnType<typeof selectRunIssue>>) {
+  return selection.kind === "selected" ? selection.issue.number : undefined;
+}
+
+test("automatic selection skips an issue that waits on an open planning pull request", async (t) => {
+  const f = await setup(t, [], { 9: facts({}) });
+  assert.equal(selectedNumber(await f.select()), 10);
+  assert.deepEqual(f.warnings, [`#9: ${waiting}`]);
+});
+
+test("a merged planning pull request is not skipped", async (t) => {
+  const f = await setup(t, [], { 9: facts({ state: "merged" }) });
+  assert.equal(selectedNumber(await f.select()), 9);
+  assert.deepEqual(f.warnings, []);
+});
+
+test("a closed-unmerged planning pull request is still selected", async (t) => {
+  const f = await setup(t, [], { 9: facts({ state: "closed" }) });
+  assert.equal(selectedNumber(await f.select()), 9);
+  assert.deepEqual(f.warnings, []);
+});
+
+test("a planning pull request with a closing reference is still selected", async (t) => {
+  const f = await setup(t, [], { 9: facts({ body: "Closes #9" }) });
+  assert.equal(selectedNumber(await f.select()), 9);
+  assert.deepEqual(f.warnings, []);
+});
+
+test("a wrong-target planning pull request is still selected", async (t) => {
+  const f = await setup(t, [], { 9: facts({ baseBranch: "release" }) });
+  assert.equal(selectedNumber(await f.select()), 9);
+  assert.deepEqual(f.warnings, []);
+});
+
+for (const unreadable of [
+  new Error("fetch failed"),
+  { kind: "ambiguous-branches" as const, branches: ["a", "b"] },
+]) {
+  test(`unreadable facts select the candidate without a warning: ${unreadable instanceof Error ? "error" : unreadable.kind}`, async (t) => {
+    const f = await setup(t, [], { 9: unreadable });
+    assert.equal(selectedNumber(await f.select()), 9);
+    assert.deepEqual(f.warnings, []);
+  });
+}
+
+test("only waiting candidates report no eligible issue", async (t) => {
+  const f = await setup(t, [], { 9: facts({}), 10: facts({}) });
+  assert.deepEqual(await f.select(), { kind: "none" });
+  assert.deepEqual(f.warnings, [`#9: ${waiting}`, `#10: ${waiting}`]);
+});
+
+test("explicit selection of a waiting issue does not read facts", async (t) => {
+  const f = await setup(t, [], { 9: facts({}) });
+  assert.equal(selectedNumber(await f.select(9)), 9);
+  assert.deepEqual(f.readIssues, []);
+  assert.deepEqual(f.warnings, []);
+});
+
+test("a blocked candidate is not read", async (t) => {
+  const f = await setup(
+    t,
+    [{ repository: "fixture/repo", number: 1, state: "open" }],
+    { 10: facts({}) },
+  );
+  assert.deepEqual(await f.select(), { kind: "none" });
+  assert.deepEqual(f.readIssues, [10]);
 });

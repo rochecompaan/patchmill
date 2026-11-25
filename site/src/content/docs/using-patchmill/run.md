@@ -35,8 +35,11 @@ The result of the pass decides what happens next:
 | The run threw, or a label or comment update failed | Wait with the error backoff.     |
 | The third Needs Info stop in a row, and later ones | Wait with the error backoff.     |
 
-A planning gate wait posts its waiting comment once. Later passes do not post
-the same comment again. A failed triage is logged, and the pass still runs.
+A planning gate wait posts its waiting comment once. Later passes skip the
+waiting issue and take other ready work. If the waiting comment or label update
+fails, later passes do not retry it. The run output and the run's `result.json`
+record the error. To retry, run `patchmill run-once --issue N`. A failed triage
+is logged, and the pass still runs.
 
 The Needs Info rule stops a broken provider or Pi installation from moving each
 ready issue to `needs-info` without a pause. Issues still move to `needs-info`:

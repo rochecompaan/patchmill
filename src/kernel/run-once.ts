@@ -181,6 +181,7 @@ export async function runOneIssue(
         host,
         workflow,
         ...(options.issue !== undefined ? { issue: options.issue } : {}),
+        readFacts: (issue) => collectFacts({ ...deps, config }, issue),
         warn: (issue, message) =>
           output.stderr(`Warning: Issue #${issue}: ${message}`),
       });
