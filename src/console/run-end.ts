@@ -1,4 +1,5 @@
 import type { CleanupResult } from "../kernel/merged-cleanup.ts";
+import type { RetroEnd } from "../kernel/retro-record.ts";
 import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 
@@ -8,6 +9,8 @@ export type RunEndInput = {
   /** The last snapshot, when any arrived. */
   snapshot?: RunSnapshot;
   settled: { outcome: RunOnceOutcome } | { error: string };
+  /** `false`: the console cannot run a Retro, so none is offered. */
+  offerRetro?: boolean;
 };
 export type EndedRun = {
   issue: number;
@@ -27,7 +30,31 @@ export type EndedRun = {
   message: string;
   /** The Console agent explains the problem at once. */
   explain: boolean;
+  /** Set when the run is an Issue run end: the message offers a Retro. */
+  retroEnd?: RetroEnd;
 };
+
+export const RETRO_OFFER = "Offer a Retro with `patchmill_offer_retro`.";
+
+/** The Issue run end of a settled run, from the snapshot only. */
+function retroEndOf(
+  snapshot: RunSnapshot | undefined,
+  settled: RunEndInput["settled"],
+  outcome: EndedRun["outcome"],
+): RetroEnd | undefined {
+  if ("error" in settled || !snapshot) return undefined;
+  const pullRequest = snapshot.facts?.pullRequest;
+  if (outcome === "merged" && pullRequest)
+    return { kind: "merged", pullRequest: pullRequest.number };
+  const result = settled.outcome;
+  if (
+    result.status === "stopped" &&
+    result.label === "needsInfo" &&
+    snapshot.session > 0
+  )
+    return { kind: "needs-info", runId: snapshot.runId };
+  return undefined;
+}
 
 const QUIT_OR_SWITCH =
   "You can quit the session now. To work on another issue, run `/patchmill-issue <number>`.";
@@ -161,11 +188,16 @@ export function describeRunEnd(input: RunEndInput): EndedRun | undefined {
   const summary = summaryOf(input);
   const cleanup =
     end.outcome === "merged" ? (snapshot?.cleanup ?? "skipped") : undefined;
+  const retroEnd =
+    input.offerRetro === false
+      ? undefined
+      : retroEndOf(snapshot, settled, end.outcome);
   const message = [
     `Issue #${issue} run ended: ${end.sentence}`,
     `Summary: ${summary}`,
     ...(end.cleanup ? [`Cleanup: ${end.cleanup}`] : []),
     `Next: ${end.next}`,
+    ...(retroEnd ? [RETRO_OFFER] : []),
   ].join("\n");
   return {
     issue,
@@ -176,5 +208,6 @@ export function describeRunEnd(input: RunEndInput): EndedRun | undefined {
     ...(cleanup ? { cleanup } : {}),
     message,
     explain: end.explain,
+    ...(retroEnd ? { retroEnd } : {}),
   };
 }

@@ -9,6 +9,12 @@ import type { AgentResult } from "../kernel/result.ts";
 import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { costLine } from "../kernel/pi-cost.ts";
+import { finishRetro, type RetroScope } from "../kernel/retro-record.ts";
+import {
+  claimConsoleRetro,
+  consoleRetroInstructions,
+  type ConsoleRetro,
+} from "./retro-offer.ts";
 import type { WorkerLauncher } from "./worker-launcher.ts";
 import type { ConsoleSession } from "./planning-usage.ts";
 import { collectPlanningDialogFacts } from "./planning-dialog-facts.ts";
@@ -41,6 +47,10 @@ type Dependencies = {
   runStatus?: Pick<RunStatus, "show" | "clear">;
   /** Post the end-of-run message. The Web session posts its own closing line. */
   announceRunEnd?: boolean;
+  /** Called with each described run end, also when no message is posted. */
+  onRunEnd?: (ended: EndedRun) => void;
+  /** Without it, no Retro is offered. */
+  retro?: ConsoleRetro;
 };
 const aborted: PhaseRun = {
   result: { ok: false, reason: "Console shut down." },
@@ -53,6 +63,7 @@ export class ConsoleController implements HumanChannel {
   private active: Promise<void> | undefined;
   private snapshot: RunSnapshot | undefined;
   private ended: EndedRun | undefined;
+  private retroScope: RetroScope | undefined;
   private planning: PlanningConversation;
   private waiting: Wait | undefined;
   private continuation: ((answer: "continue" | "quit") => void) | undefined;
@@ -74,6 +85,7 @@ export class ConsoleController implements HumanChannel {
     if (refusal) throw new Error(refusal);
     this.snapshot = undefined;
     this.ended = undefined;
+    this.retroScope = undefined;
     if (issue !== undefined)
       this.deps.runStatus?.show({ issue, label: "preparing" });
     this.active = Promise.resolve()
@@ -123,13 +135,20 @@ export class ConsoleController implements HumanChannel {
         ...(issue === undefined ? {} : { issue }),
         ...(this.snapshot ? { snapshot: this.snapshot } : {}),
         settled,
+        offerRetro: !!this.deps.retro,
       });
       if (!ended) {
         if ("error" in settled) this.notify(settled.error);
         return;
       }
+
       this.ended = ended;
       this.deps.runStatus?.show(ended);
+      try {
+        this.deps.onRunEnd?.(ended);
+      } catch {
+        /* The hook must not break the end-of-run display. */
+      }
       if (this.deps.announceRunEnd === false) {
         reply = ended.summary;
         if ("error" in settled) this.notify(settled.error);
@@ -138,13 +157,61 @@ export class ConsoleController implements HumanChannel {
       reply = ended.message;
       this.deps.pi.sendMessage(
         { customType: "patchmill", content: ended.message, display: true },
-        { triggerTurn: ended.explain },
+        { triggerTurn: ended.explain || !!ended.retroEnd },
       );
     } catch {
       /* Display only. The Pi context may already be closed. */
     } finally {
       this.reportNext(reply);
     }
+  }
+
+  /** The Issue run end that a Retro can cover, when the ended run has one. */
+  retroOffer() {
+    return this.deps.retro && !this.active ? this.ended?.retroEnd : undefined;
+  }
+
+  private async claimRetro() {
+    const end = this.retroOffer();
+    const runDir = this.snapshot?.runDir;
+    if (!end || !runDir || !this.deps.retro || !this.ended)
+      return { ok: false as const, text: "No Issue run end offers a Retro." };
+    return claimConsoleRetro(this.deps.retro, { runDir, end });
+  }
+
+  /** Claims the Retro and returns its instructions for the Console agent. */
+  async startRetro(): Promise<string> {
+    const claim = await this.claimRetro();
+    if (!claim.ok) return claim.text;
+    this.retroScope = claim.scope;
+    try {
+      return await consoleRetroInstructions(
+        this.deps.retro!,
+        claim,
+        this.ended!.issue,
+      );
+    } catch (error) {
+      this.retroScope = undefined;
+      const reason = error instanceof Error ? error.message : String(error);
+      await finishRetro(claim.scope, "failed", reason).catch(() => {});
+      return `The Retro could not start: ${reason}`;
+    }
+  }
+
+  /** Records a skipped Retro, so a later sweep does not run one either. */
+  async skipRetro(): Promise<string> {
+    const claim = await this.claimRetro();
+    if (!claim.ok) return claim.text;
+    await finishRetro(claim.scope, "skipped", "The maintainer skipped it.");
+    return "The Retro is skipped.";
+  }
+
+  async finishRetro(summary: string): Promise<string> {
+    const scope = this.retroScope;
+    if (!scope) return "No Retro is running.";
+    this.retroScope = undefined;
+    await finishRetro(scope, "done", summary);
+    return `The Retro is done. Findings: ${scope.findings}`;
   }
 
   runPlanning(launch: PhaseLaunch, feedback?: string): Promise<PhaseRun> {

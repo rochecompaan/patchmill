@@ -302,7 +302,7 @@ test("tools confirm submissions, preserve declined planning, and expose status",
     },
   })(api);
   await api.fire("session_start");
-  assert.equal(api.tools.size, 4);
+  assert.equal(api.tools.size, 6);
   assert.equal(api.tools.has("patchmill_start_issue_run"), false);
   assert.equal(
     await api.callTool(

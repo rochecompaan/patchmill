@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 import type { Facts } from "../kernel/facts.ts";
-import { describeRunEnd, type RunEndInput } from "./run-end.ts";
+import { describeRunEnd, RETRO_OFFER, type RunEndInput } from "./run-end.ts";
 
 const restart =
   "quit, and run `patchmill run-once --interactive --issue 9` to start again.";
@@ -22,7 +22,7 @@ function ended(extra: Partial<RunSnapshot> = {}, pr?: string): RunSnapshot {
     ...(pr
       ? {
           facts: {
-            pullRequest: { state: pr, url: "https://x/pr/1" },
+            pullRequest: { number: 1, state: pr, url: "https://x/pr/1" },
           } as unknown as Facts,
         }
       : {}),
@@ -54,6 +54,7 @@ const rows: Row[] = [
       "Summary: The pull request is merged.",
       "Cleanup: finished. The worktrees and branches are removed.",
       "Next: You can quit the session now. To work on another issue, run `/patchmill-issue <number>`.",
+      RETRO_OFFER,
     ].join("\n"),
   },
   {
@@ -70,6 +71,7 @@ const rows: Row[] = [
       "Summary: The pull request is merged.",
       "Cleanup: did not finish. The cleanup messages above say what was kept and why. Patchmill tries again at its next run start.",
       `Next: ${explain} After that, you can quit, or ${switchHint}`,
+      RETRO_OFFER,
     ].join("\n"),
   },
   ...(["skipped", undefined] as const).map(
@@ -87,6 +89,7 @@ const rows: Row[] = [
         "Summary: The pull request is merged.",
         "Cleanup: did not run, because the host did not confirm the merge yet. Patchmill cleans up at its next run start.",
         "Next: You can quit the session now. To work on another issue, run `/patchmill-issue <number>`.",
+        RETRO_OFFER,
       ].join("\n"),
     }),
   ),
@@ -126,6 +129,7 @@ const rows: Row[] = [
         `Issue #9 run ended: stopped (${words}).`,
         "Summary: Checks failed.",
         `Next: ${explain} After that, ${restart}`,
+        ...(label === "needsInfo" ? [RETRO_OFFER] : []),
       ].join("\n"),
     }),
   ),
@@ -227,4 +231,66 @@ test("returns undefined when no issue is known", () => {
     undefined,
   );
   assert.equal(describeRunEnd({ settled: { error: "boom" } }), undefined);
+});
+
+test("a merged run and a needsInfo stop offer a Retro", () => {
+  assert.deepEqual(
+    describeRunEnd({
+      snapshot: ended({ cleanup: "cleaned" }, "merged"),
+      settled: completed,
+    })!.retroEnd,
+    { kind: "merged", pullRequest: 1 },
+  );
+  assert.deepEqual(
+    describeRunEnd({
+      snapshot: ended({ runId: "20261126-084012-e932" }),
+      settled: {
+        outcome: {
+          status: "stopped",
+          issue: 9,
+          label: "needsInfo",
+          summary: "",
+        },
+      },
+    })!.retroEnd,
+    { kind: "needs-info", runId: "20261126-084012-e932" },
+  );
+});
+
+test("PR ready, paused, gate wait, failed and a stop without sessions offer none", () => {
+  const cases: RunEndInput[] = [
+    { snapshot: ended({}, "open"), settled: completed },
+    {
+      snapshot: ended(),
+      settled: { outcome: { status: "paused", issue: 9, summary: "" } },
+    },
+    {
+      snapshot: ended(),
+      settled: {
+        outcome: {
+          status: "stopped",
+          issue: 9,
+          label: "inProgress",
+          summary: "",
+        },
+      },
+    },
+    { snapshot: ended({}, "merged"), settled: { error: "boom" } },
+    {
+      snapshot: ended({ session: 0 }),
+      settled: {
+        outcome: {
+          status: "stopped",
+          issue: 9,
+          label: "needsInfo",
+          summary: "",
+        },
+      },
+    },
+  ];
+  for (const input of cases) {
+    const result = describeRunEnd(input)!;
+    assert.equal(result.retroEnd, undefined);
+    assert.ok(!result.message.includes(RETRO_OFFER));
+  }
 });

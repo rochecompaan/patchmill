@@ -15,6 +15,9 @@ import { createPatchmillExtension } from "./extension.ts";
 import { createStartRun } from "./start.ts";
 import type { EventBus, SubagentsClient } from "./subagents-client.ts";
 import { acquireConsoleLock, CONSOLE_SESSION_BUSY } from "./console-lock.ts";
+import { Type } from "typebox";
+import type { ConsoleRetro } from "./retro-offer.ts";
+import { RETRO_OFFER, type EndedRun } from "./run-end.ts";
 
 /** The Pi extension for Web session processes. It has the extension of this
  * module: `.ts` from source, `.js` from `dist`. */
@@ -58,6 +61,7 @@ export function createWebSessionExtension(options: {
   startRun: StartRun;
   client?: (events: EventBus) => SubagentsClient;
   refusal?: string;
+  retro?: ConsoleRetro;
 }): ExtensionFactory {
   return (pi) => {
     let shutdownPi: (() => void) | undefined;
@@ -79,28 +83,85 @@ export function createWebSessionExtension(options: {
       return;
     }
     let started = false;
+    let running = false;
     let stopRun: (() => Promise<void>) | undefined;
+    let snapshot: RunSnapshot | undefined;
+    let outcome: RunOnceOutcome | undefined;
+    let decided = false;
     const startRun: StartRun = (issue, human, observe) => {
       started = true;
-      let snapshot: RunSnapshot | undefined;
+      running = true;
+      decided = false;
+      snapshot = undefined;
+      outcome = undefined;
       const run = options.startRun(issue, human, (next) => {
         snapshot = next;
         observe(next);
       });
+      // This handler runs before the controller settles and calls onRunEnd.
       void run
         .then(
-          (outcome) => say(closingLine(outcome, snapshot)),
+          (value) => {
+            outcome = value;
+          },
           // The console controller already shows the error.
           () => undefined,
         )
-        .finally(() => shutdownPi?.());
+        .finally(() => {
+          running = false;
+          // A run end that the controller did not describe closes at once.
+          setImmediate(() => {
+            if (!decided) shutdownPi?.();
+          });
+        });
       return run;
     };
+    const onRunEnd = (ended: EndedRun) => {
+      decided = true;
+      const closing = outcome ? closingLine(outcome, snapshot) : undefined;
+      if (ended.retroEnd && outcome) {
+        // Pi keeps running: the agent offers the Retro, then ends the session.
+        pi.sendMessage(
+          {
+            customType: "patchmill",
+            content: `${closing}\n${RETRO_OFFER}`,
+            display: true,
+          },
+          { triggerTurn: true },
+        );
+        return;
+      }
+      if (closing !== undefined) say(closing);
+      shutdownPi?.();
+    };
+    pi.registerTool({
+      name: "patchmill_end_session",
+      label: "End the Web session",
+      description:
+        "End this Web session. It refuses while an Issue run is active.",
+      promptGuidelines: [
+        "In a Web session, call `patchmill_end_session` after the maintainer skips the Retro, or after `patchmill_finish_retro`.",
+      ],
+      parameters: Type.Object({}),
+      async execute() {
+        const content = (text: string) => ({
+          content: [{ type: "text" as const, text }],
+          details: {},
+        });
+        if (running)
+          return content("An Issue run is active. The session stays open.");
+        say("The Web session is finished.");
+        shutdownPi?.();
+        return content("The Web session ends now.");
+      },
+    });
     createPatchmillExtension({
       firstIssue: options.issue,
       startRun,
-      // The Web session exits after the run and posts its own closing line.
+      // The Web session posts its own closing line, then exits or offers a Retro.
       announceRunEnd: false,
+      onRunEnd,
+      ...(options.retro ? { retro: options.retro } : {}),
       ...(options.client ? { client: options.client } : {}),
       registerShutdown: (shutdown) => {
         stopRun = shutdown;
@@ -148,6 +209,7 @@ export default async function webSessionExtension(
   createWebSessionExtension({
     issue,
     startRun: createStartRun(config, deps),
+    retro: { config, repoRoot, host: deps.host, now: deps.now },
     ...(consoleLock ? {} : { refusal: CONSOLE_SESSION_BUSY(issue) }),
   })(pi);
 }
