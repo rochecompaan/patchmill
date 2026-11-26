@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import {
-  CAP_CHECKPOINT_MESSAGE,
+  CAP_WARNING_MESSAGE,
   piRpcArgs,
   runPiRpc,
   startPiRpc,
@@ -589,66 +589,66 @@ test("appendLogs keeps the earlier log", async (t) => {
   assert.ok(log.includes("first") && log.includes("second"));
 });
 
-const checkpoints = (commands: Record<string, unknown>[]) =>
+const capWarnings = (commands: Record<string, unknown>[]) =>
   commands.filter(
     (c) =>
       c.type === "prompt" &&
       c.streamingBehavior === "steer" &&
-      c.message === CAP_CHECKPOINT_MESSAGE,
+      c.message === CAP_WARNING_MESSAGE,
   );
 
 test(
-  "sends one Cap checkpoint steer before the deadline",
+  "sends one Cap warning steer before the deadline",
   { timeout: 5000 },
   async (t) => {
     const f = await fake(t, [{ stdout: "ready", sleepMs: 5000 }]);
     const result = await runPiRpc({
       ...f.options,
       timeoutMs: 600,
-      checkpointBeforeMs: 300,
+      warnBeforeMs: 300,
     });
     assert.equal(result.timedOut, true);
-    assert.equal(checkpoints(await f.commands()).length, 1);
+    assert.equal(capWarnings(await f.commands()).length, 1);
   },
 );
 
 test(
-  "no Cap checkpoint when the cap is not longer than the lead",
+  "no Cap warning when the cap is not longer than the lead",
   { timeout: 5000 },
   async (t) => {
     const f = await fake(t, [{ stdout: "ready", sleepMs: 5000 }]);
     const result = await runPiRpc({
       ...f.options,
       timeoutMs: 300,
-      checkpointBeforeMs: 300,
+      warnBeforeMs: 300,
     });
     assert.equal(result.timedOut, true);
-    assert.equal(checkpoints(await f.commands()).length, 0);
+    assert.equal(capWarnings(await f.commands()).length, 0);
   },
 );
 
-test("no deadline and no Cap checkpoint without timeoutMs", async (t) => {
+test("no deadline and no Cap warning without timeoutMs", async (t) => {
   const f = await fake(t, [{ result: done, sleepMs: 400 }]);
   const { timeoutMs: _, ...options } = f.options;
-  const result = await runPiRpc({ ...options, checkpointBeforeMs: 1 });
+  const result = await runPiRpc({ ...options, warnBeforeMs: 1 });
   assert.equal(result.timedOut, false);
   assert.equal(result.exitCode, 0);
   assert.equal(parseAgentResult(result.stdout).ok, true);
-  assert.equal(checkpoints(await f.commands()).length, 0);
+  assert.equal(capWarnings(await f.commands()).length, 0);
 });
 
-test("checkpointNow sends the Cap checkpoint right after the prompt", async (t) => {
+test("warnNow sends the Cap warning right after the prompt", async (t) => {
   const f = await fake(t, [{ result: done, sleepMs: 300 }]);
-  const result = await runPiRpc({ ...f.options, checkpointNow: true });
+  const result = await runPiRpc({ ...f.options, warnNow: true });
   assert.equal(result.exitCode, 0);
   assert.equal(parseAgentResult(result.stdout).ok, true);
   const commands = await f.commands();
-  assert.equal(checkpoints(commands).length, 1);
+  assert.equal(capWarnings(commands).length, 1);
   assert.equal(commands[0]!.type, "prompt");
-  assert.equal(commands[1], checkpoints(commands)[0]);
+  assert.equal(commands[1], capWarnings(commands)[0]);
 });
 
-test("a handled Cap checkpoint does not end the session", async (t) => {
+test("a handled Cap warning does not end the session", async (t) => {
   const f = await fake(t, [
     {
       result: done,
@@ -660,9 +660,9 @@ test("a handled Cap checkpoint does not end the session", async (t) => {
   const result = await runPiRpc({
     ...f.options,
     timeoutMs: 5000,
-    checkpointBeforeMs: 4900,
+    warnBeforeMs: 4900,
   });
   assert.equal(result.timedOut, false);
-  assert.equal(checkpoints(await f.commands()).length, 1);
+  assert.equal(capWarnings(await f.commands()).length, 1);
   assert.equal(result.stdout, "background turn 2\n");
 });

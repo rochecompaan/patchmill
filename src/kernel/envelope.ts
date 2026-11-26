@@ -180,7 +180,7 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
   });
 }
 
-/** The Session cap line. A cap above the Cap checkpoint lead also names it. */
+/** The Session cap line. A cap above the Cap warning lead also names it. */
 function timeLimitFact(minutes: number | null): string {
   if (minutes === null) return "";
   return minutes > 5

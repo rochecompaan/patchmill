@@ -510,7 +510,7 @@ test("no Time limit line without a cap", () => {
   assert.match(text, /\n- Gate: [^\n]*\n- Command timeout:/);
 });
 
-test("Time limit with checkpoint text for a 90-minute cap", () => {
+test("Time limit with Cap warning text for a 90-minute cap", () => {
   const text = renderRunEnvelope({ ...input, timeoutMinutes: 90 });
   assert.ok(
     text.includes(

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
-  CAP_CHECKPOINT_MS,
+  CAP_WARNING_MS,
   startPiRpc,
   type PiRpcOptions,
   type PiRpcSession,
@@ -47,7 +47,7 @@ export function defaultPollMs(stopAfterMs: number): number {
  * aborts the turn and continues the same session with a recovery prompt. When
  * Pi does not answer the abort, Pi is stopped and restarted on the same
  * session file with the remaining time of the Session cap, if one applies. A
- * restart inside the Cap checkpoint lead sends the checkpoint at once. The
+ * restart inside the Cap warning lead sends the warning at once. The
  * Stall limit stops Pi and returns the reason in `block`.
  */
 export async function superviseStalls(options: {
@@ -76,7 +76,7 @@ export async function superviseStalls(options: {
   });
   const deadline =
     rpc.timeoutMs !== undefined ? clock.now() + rpc.timeoutMs : undefined;
-  const lead = rpc.checkpointBeforeMs ?? CAP_CHECKPOINT_MS;
+  const lead = rpc.warnBeforeMs ?? CAP_WARNING_MS;
   const onRecord = (record: { type?: unknown }) => watch.record(record);
   let session = start({ ...rpc, onRecord });
   let block: { reason: string } | undefined;
@@ -110,7 +110,7 @@ export async function superviseStalls(options: {
       `recovery-${restarts}.md`,
     );
     await fs.writeFile(promptPath, prompt);
-    const { timeoutMs: _cap, checkpointNow: _now, ...rest } = rpc;
+    const { timeoutMs: _cap, warnNow: _now, ...rest } = rpc;
     session = start({
       ...rest,
       onRecord,
@@ -119,7 +119,7 @@ export async function superviseStalls(options: {
       appendLogs: true,
       ...(remaining !== undefined ? { timeoutMs: remaining } : {}),
       ...(remaining !== undefined && rpc.timeoutMs! > lead && remaining <= lead
-        ? { checkpointNow: true }
+        ? { warnNow: true }
         : {}),
     });
   };

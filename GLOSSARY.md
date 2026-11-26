@@ -209,11 +209,11 @@ session, set by `pi.timeoutMinutes`. There is none by default. A triage session
 without one gets a built-in backstop. Subagents of a capped session get the same
 limit as their default deadline. _Avoid_: Session timeout, time limit
 
-**Cap checkpoint**: The message that Patchmill sends to a capped Pi RPC phase
+**Cap warning**: The message that Patchmill sends to a capped Pi RPC phase
 session 5 minutes before its Session cap, at most once per Pi process. It tells
 the agent to start no new work, wait for its subagents, and hand off. The first
-spawn of a Console worker gets the pi-subagents checkpoint instead. _Avoid_:
-Timeout warning
+spawn of a Console worker gets the pi-subagents checkpoint instead. _Avoid_: Cap
+checkpoint, timeout warning
 
 **Budget window**: A daily or weekly period in the configured timezone. All
 committed model usage that occurred in the period counts toward its selection

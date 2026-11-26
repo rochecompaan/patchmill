@@ -162,7 +162,7 @@ test("an unresponsive Pi restarts on the session file with the remaining time", 
   assert.equal(restarted.sessionFile, s.sessionFile);
   assert.equal(restarted.appendLogs, true);
   assert.equal(restarted.timeoutMs, 5_400_000 - 615_000);
-  assert.equal(restarted.checkpointNow, undefined);
+  assert.equal(restarted.warnNow, undefined);
   assert.equal(restarted.promptPath, join(s.dir, "recovery-1.md"));
   assert.match(
     await fs.readFile(restarted.promptPath, "utf8"),
@@ -253,42 +253,42 @@ test("a restart without a deadline starts with no timeoutMs", async (t) => {
   assert.equal(s.sessions.length, 2);
   const restarted = s.sessions[1]!.options;
   assert.equal(restarted.timeoutMs, undefined);
-  assert.equal(restarted.checkpointNow, undefined);
+  assert.equal(restarted.warnNow, undefined);
   s.sessions[1]!.end();
   const result = await s.running;
   assert.equal(result.block, undefined);
 });
 
-test("a late restart gets checkpointNow", async (t) => {
+test("a late restart gets warnNow", async (t) => {
   const s = await setup(
     t,
     ["unresponsive"],
     {},
-    { timeoutMs: 700_000, checkpointBeforeMs: 300_000 },
+    { timeoutMs: 700_000, warnBeforeMs: 300_000 },
   );
   await s.writeSession();
   await s.advance(15_000);
   await s.advance(600_000);
   const restarted = s.sessions[1]!.options;
   assert.equal(restarted.timeoutMs, 85_000);
-  assert.equal(restarted.checkpointNow, true);
+  assert.equal(restarted.warnNow, true);
   s.sessions[1]!.end();
   await s.running;
 });
 
-test("an early restart gets no checkpointNow", async (t) => {
+test("an early restart gets no warnNow", async (t) => {
   const s = await setup(
     t,
     ["unresponsive"],
     {},
-    { timeoutMs: 1_000_000, checkpointBeforeMs: 300_000 },
+    { timeoutMs: 1_000_000, warnBeforeMs: 300_000 },
   );
   await s.writeSession();
   await s.advance(15_000);
   await s.advance(600_000);
   const restarted = s.sessions[1]!.options;
   assert.equal(restarted.timeoutMs, 385_000);
-  assert.equal(restarted.checkpointNow, undefined);
+  assert.equal(restarted.warnNow, undefined);
   s.sessions[1]!.end();
   await s.running;
 });

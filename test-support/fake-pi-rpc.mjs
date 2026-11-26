@@ -79,7 +79,7 @@ export async function runRpc({ step, script, sideEffects, sessionDir }) {
     }
     // Exit with the command still unanswered.
     if (command.type === step.exitOn) process.exit(3);
-    // A steer outside a recovery, such as the Cap checkpoint. Pi queues it
+    // A steer outside a recovery, such as the Cap warning. Pi queues it
     // for the running turn; `steerDisposition` changes the answer.
     if (
       command.type === "prompt" &&
