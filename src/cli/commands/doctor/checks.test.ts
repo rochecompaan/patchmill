@@ -41,7 +41,7 @@ async function fixture(t: TestContext) {
     await mkdir(join(repoRoot, path), { recursive: true });
     await writeFile(join(repoRoot, path, "SKILL.md"), "fixture");
   }
-  await provisionReviewerAgent(repoRoot, config.pi.agentDir);
+  await provisionReviewerAgent(repoRoot, config.pi.agentDir, null);
   const state = join(repoRoot, "host.json");
   writeFakeHostState(state, { labels: Object.values(config.labels) });
   const host = new FakeHost(state);

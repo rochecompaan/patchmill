@@ -16,11 +16,12 @@ export type RunEnvelopeInput = {
   phase: Phase;
   facts: Facts;
   skill: { name: string; path: string };
-  timeoutMinutes: number;
-  /** The Command timeout limits, stated in the implementation envelope. */
+  /** The Session cap in minutes, or null for no cap and no Time limit line. */
+  timeoutMinutes: number | null;
+  /** The Command timeout limits, stated in an implementation or unattended planning envelope. */
   commandLimits: CommandLimits;
   /**
-   * The Stall policy of an unattended implementation session. `minutes` 0
+   * The Stall policy of an unattended phase session. `minutes` 0
    * means Stall stops are off and only Command timeouts count.
    */
   stallStop?: { minutes: number; maxStalls: number };
@@ -166,17 +167,25 @@ export function renderRunEnvelope(input: RunEnvelopeInput): string {
             ? "required; submit for approval and the PR choice"
             : "required; submit for approval only, no PR option: a planning PR would carry the earlier unmerged document. Write later documents on this implementation branch"
           : `required; publish the ${facts.stage} PR and stop until it is merged`,
-    timeoutMinutes: String(input.timeoutMinutes),
+    timeLimit: timeLimitFact(input.timeoutMinutes),
     commandTimeout:
-      input.phase === "implementation"
+      (input.phase === "implementation" || !input.interactive
         ? commandTimeoutFact(input.commandLimits) +
-          (input.interactive ? "" : stallFact(input.stallStop)) +
-          (input.previousStalls?.length
-            ? `\n${previousStallsFact(input.previousStalls)}`
-            : "")
-        : "",
+          (input.interactive ? "" : stallFact(input.stallStop))
+        : "") +
+      (input.previousStalls?.length
+        ? `\n${previousStallsFact(input.previousStalls)}`
+        : ""),
     issue: renderIssue(input.issue, input.trusted),
   });
+}
+
+/** The Session cap line. A cap above the Cap warning lead also names it. */
+function timeLimitFact(minutes: number | null): string {
+  if (minutes === null) return "";
+  return minutes > 5
+    ? `\n- Time limit: ${minutes} minutes. About 5 minutes before the end, Patchmill asks you to stop new work and hand off.`
+    : `\n- Time limit: ${minutes} minutes`;
 }
 
 function mergeConflictFact(input: RunEnvelopeInput): string {

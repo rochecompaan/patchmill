@@ -87,6 +87,7 @@ test("rpcModeLauncher with a Stall policy stops at the Stall limit without a rem
         maxStalls: 2,
         command: { defaultSeconds: 0, maxSeconds: 0 },
       },
+      phase: "implementation",
     },
   })({
     phase: "implementation",
@@ -104,7 +105,7 @@ test("rpcModeLauncher with a Stall policy stops at the Stall limit without a rem
   });
   assert.match(
     run.stallBlock ?? "",
-    /^The implementation stopped after 2 stalls\./,
+    /^The implementation session stopped after 2 stalls\./,
   );
   assert.equal(run.stalls?.length, 2);
   assert.equal(run.session.aborted, false);

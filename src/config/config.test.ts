@@ -425,3 +425,38 @@ test("a string stall key gives a type error", () => {
     /Invalid type for pi\.maxStalls/,
   );
 });
+
+test("pi.timeoutMinutes defaults to null: no Session cap", () => {
+  assert.equal(DEFAULT_CONFIG.pi.timeoutMinutes, null);
+  assert.equal(parseConfig({}).pi.timeoutMinutes, null);
+});
+
+for (const value of [null, 0.5, 35791]) {
+  test(`pi.timeoutMinutes accepts ${value}`, () => {
+    assert.equal(
+      parseConfig({ pi: { timeoutMinutes: value } }).pi.timeoutMinutes,
+      value,
+    );
+  });
+}
+
+for (const value of [0, -1, 35792, Infinity]) {
+  test(`pi.timeoutMinutes rejects ${value}`, () => {
+    assert.throws(
+      () => parseConfig({ pi: { timeoutMinutes: value } }),
+      (error: unknown) =>
+        error instanceof ConfigError &&
+        error.message ===
+          "Invalid value for pi.timeoutMinutes: use null for no cap, or a number greater than 0 and at most 35791",
+    );
+  });
+}
+
+test("pi.timeoutMinutes rejects a string with an error that names it", () => {
+  assert.throws(
+    () => parseConfig({ pi: { timeoutMinutes: "90" } }),
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      error.message.includes("pi.timeoutMinutes"),
+  );
+});

@@ -33,7 +33,8 @@ export type PhaseLaunch = {
   sessionDir: string;
   logPath: string;
   aggregateLogPath: string;
-  timeoutMs: number;
+  /** The Session cap in milliseconds. Without it, no deadline applies. */
+  timeoutMs?: number;
   signal?: AbortSignal;
   /** Receives each Stall of a launch with a Stall policy. */
   onStall?: (notice: StallNotice) => Promise<void>;
@@ -68,8 +69,8 @@ export function rpcModeLauncher(options: {
   extensionPaths: string[];
   /** Added to Pi's environment, for example the Command timeout limits. */
   env: Record<string, string>;
-  /** The Stall policy of an unattended implementation session. */
-  stall?: { limits: StallLimits };
+  /** The Stall policy of an unattended phase session. */
+  stall?: { limits: StallLimits; phase: Phase };
 }): PhaseLauncher {
   return async (launch) => {
     let reminded = false;
@@ -89,7 +90,9 @@ export function rpcModeLauncher(options: {
         ...options.extensionPaths,
       ],
       env: options.env,
-      timeoutMs: launch.timeoutMs,
+      ...(launch.timeoutMs !== undefined
+        ? { timeoutMs: launch.timeoutMs }
+        : {}),
       // Keep the agent protocol in the logs, not the operator's terminal.
       onOutput: () => {},
       remind: (stdout) => {
@@ -109,6 +112,7 @@ export function rpcModeLauncher(options: {
     const supervised = await superviseStalls({
       rpc,
       limits: options.stall.limits,
+      phase: options.stall.phase,
       onStall: launch.onStall ?? (async () => {}),
     });
     const { session } = supervised;

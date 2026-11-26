@@ -25,12 +25,13 @@ export type PatchmillConfig = {
   skills: { triage: string; planning: string; implementation: string };
   pi: {
     agentDir: string;
-    timeoutMinutes: number;
+    /** The Session cap in minutes, or null for no cap. */
+    timeoutMinutes: number | null;
     /** Default timeout of an agent `bash` call. 0 turns it off. */
     commandTimeoutMinutes: number;
     /** Longest timeout of an agent `bash` call. 0 turns it off. */
     maxCommandTimeoutMinutes: number;
-    /** Quiet time before a Stall stop in an unattended implementation session. 0 turns it off. */
+    /** Quiet time before a Stall stop in an unattended planning or implementation session. 0 turns it off. */
     stallStopMinutes: number;
     /** The Stall that ends the Run attempt. 0 turns the count off. */
     maxStalls: number;
@@ -73,7 +74,7 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
   },
   pi: {
     agentDir: ".patchmill/pi-agent",
-    timeoutMinutes: 90,
+    timeoutMinutes: null,
     commandTimeoutMinutes: 20,
     maxCommandTimeoutMinutes: 25,
     stallStopMinutes: 10,
@@ -93,7 +94,13 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
 };
 export class ConfigError extends Error {}
 
-type Kind = "string" | "number" | "boolean" | "string[]" | "string|null";
+type Kind =
+  | "string"
+  | "number"
+  | "boolean"
+  | "string[]"
+  | "string|null"
+  | "number|null";
 const schema: { path: string; kind: Kind }[] = [
   { path: "cleanupHook", kind: "string" },
   { path: "host.provider", kind: "string" },
@@ -113,7 +120,7 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "skills.planning", kind: "string" },
   { path: "skills.implementation", kind: "string" },
   { path: "pi.agentDir", kind: "string" },
-  { path: "pi.timeoutMinutes", kind: "number" },
+  { path: "pi.timeoutMinutes", kind: "number|null" },
   { path: "pi.commandTimeoutMinutes", kind: "number" },
   { path: "pi.maxCommandTimeoutMinutes", kind: "number" },
   { path: "pi.stallStopMinutes", kind: "number" },
@@ -157,6 +164,15 @@ function checkRun(run: RunConfig) {
 const MAX_COMMAND_TIMEOUT_MINUTES = 35791;
 
 function checkPi(pi: PatchmillConfig["pi"]) {
+  if (
+    pi.timeoutMinutes !== null &&
+    (!Number.isFinite(pi.timeoutMinutes) ||
+      pi.timeoutMinutes <= 0 ||
+      pi.timeoutMinutes > MAX_COMMAND_TIMEOUT_MINUTES)
+  )
+    throw new ConfigError(
+      `Invalid value for pi.timeoutMinutes: use null for no cap, or a number greater than 0 and at most ${MAX_COMMAND_TIMEOUT_MINUTES}`,
+    );
   if (
     !Number.isFinite(pi.stallStopMinutes) ||
     pi.stallStopMinutes < 0 ||
@@ -205,6 +221,8 @@ function matches(value: unknown, kind: Kind): boolean {
   }
   if (kind === "string|null")
     return value === null || typeof value === "string";
+  if (kind === "number|null")
+    return value === null || typeof value === "number";
   return typeof value === kind;
 }
 

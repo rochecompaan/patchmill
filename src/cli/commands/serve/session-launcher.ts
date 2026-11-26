@@ -54,7 +54,12 @@ export function createSessionLauncher(input: {
       };
     if (prepared.kind === "cancelled" || signal.aborted) return cancelled;
     const skillPaths = consoleSkillPaths(config, repoRoot);
-    await provisionAgentDir(repoRoot, config.pi.agentDir, skillPaths);
+    await provisionAgentDir(
+      repoRoot,
+      config.pi.agentDir,
+      config.pi.timeoutMinutes,
+      skillPaths,
+    );
     const lock = await acquireConsoleLock(repoRoot, runsDir, issue);
     if (!lock) return { kind: "refused", reason: CONSOLE_SESSION_BUSY(issue) };
     let sessionFile: string | undefined;

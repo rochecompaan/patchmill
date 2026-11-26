@@ -18,6 +18,14 @@ import { parseJsonBlock } from "./result.ts";
 import type { TrackedIssue } from "./workflow-state.ts";
 import type { WorkflowStatus } from "./workflow-state.ts";
 
+/** The Session cap of a triage session without a configured one. */
+export const TRIAGE_BACKSTOP_MINUTES = 90;
+
+/** Triage has no Stall policy, so it keeps a backstop when no cap is set. */
+export function triageTimeoutMs(timeoutMinutes: number | null): number {
+  return (timeoutMinutes ?? TRIAGE_BACKSTOP_MINUTES) * 60_000;
+}
+
 export type TriageResult = {
   status: WorkflowStatus;
   comment: string;
@@ -227,7 +235,7 @@ export async function runTriage(
         // Keep raw model output in the session log, not in the CLI display.
         onOutput: () => {},
         extensionPaths: [],
-        timeoutMs: config.pi.timeoutMinutes * 60_000,
+        timeoutMs: triageTimeoutMs(config.pi.timeoutMinutes),
         ...(options.signal ? { signal: options.signal } : {}),
       });
       const interrupted =

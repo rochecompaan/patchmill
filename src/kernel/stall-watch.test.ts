@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test, type TestContext } from "node:test";
+import type { Phase } from "./phase.ts";
 import {
   createStallWatch,
   type StallDecision,
@@ -17,13 +18,18 @@ const LIMITS: StallLimits = {
 const TOP = "main.jsonl";
 const CHILD = join("parent", "3f2a", "run-0", "session.jsonl");
 
-async function setup(t: TestContext, limits: Partial<StallLimits> = {}) {
+async function setup(
+  t: TestContext,
+  limits: Partial<StallLimits> = {},
+  phase: Phase = "implementation",
+) {
   const dir = await fs.mkdtemp(join(tmpdir(), "patchmill-stall-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   let now = 0;
   const watch = createStallWatch({
     sessionDir: dir,
     limits: { ...LIMITS, ...limits },
+    phase,
     now: () => now,
   });
   const append = async (file: string, entry: unknown) => {
@@ -293,7 +299,7 @@ test("the same command twice blocks", async (t) => {
   const decision = only(await s.poll(), "block");
   assert.match(
     decision.reason,
-    /^The implementation stopped: the same command stalled twice\./,
+    /^The implementation session stopped: the same command stalled twice\./,
   );
   assert.equal(decision.stalls.length, 2);
   assert.deepEqual(await s.poll(), []);
@@ -320,7 +326,10 @@ test("the third stall blocks, also when it is a command timeout", async (t) => {
     true,
   );
   const decision = only(await s.poll(), "block");
-  assert.match(decision.reason, /^The implementation stopped after 3 stalls\./);
+  assert.match(
+    decision.reason,
+    /^The implementation session stopped after 3 stalls\./,
+  );
   assert.match(decision.reason, /Command timeout after 20 min/);
 });
 
@@ -351,7 +360,7 @@ test("fail turns the last stall into a block", async (t) => {
   const decision = s.watch.fail("no session file");
   assert.match(
     decision.reason,
-    /^The implementation stopped: Patchmill could not restart Pi after a stall \(no session file\)\./,
+    /^The implementation session stopped: Patchmill could not restart Pi after a stall \(no session file\)\./,
   );
   assert.equal(decision.stalls.length, 1);
 });
@@ -402,4 +411,26 @@ test("sessionFile names the top-level session file", async (t) => {
   await s.user(TOP, "top");
   await s.poll();
   assert.equal(s.watch.sessionFile(), join(s.dir, TOP));
+});
+
+test("a planning watch names the planning session", async (t) => {
+  const s = await setup(t, {}, "planning");
+  await s.call(TOP, "b1", "bash", { command: "npm  test" });
+  await s.result(
+    TOP,
+    "b1",
+    "bash",
+    "Command timed out after 1200 seconds",
+    true,
+  );
+  const recorded = only(await s.poll(), "recorded");
+  assert.equal(recorded.stall.calls[0]!.session, "planning session");
+  await s.call(TOP, "b2", "bash", { command: "npm test", timeout: 1 });
+  await s.poll();
+  s.at(61_000 + 600_000);
+  const decision = only(await s.poll(), "block");
+  assert.match(
+    decision.reason,
+    /^The planning session stopped: the same command stalled twice\./,
+  );
 });

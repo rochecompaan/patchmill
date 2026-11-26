@@ -1,3 +1,4 @@
+import { MAX_SUBAGENT_TIMEOUT_MS } from "../pi/subagent-limits.ts";
 import {
   SubagentsTransport,
   SubagentsRpcError,
@@ -73,7 +74,8 @@ export class SubagentsClient {
   async spawnWorker(input: {
     task: string;
     cwd: string;
-    timeoutMs: number;
+    /** The Session cap. Without it, the largest deadline pi-subagents accepts. */
+    timeoutMs?: number;
     output: string;
   }): Promise<string> {
     const data = await this.request<AsyncId>("spawn", {
@@ -82,7 +84,7 @@ export class SubagentsClient {
       context: "fork",
       cwd: input.cwd,
       output: input.output,
-      maxRuntimeMs: input.timeoutMs,
+      maxRuntimeMs: input.timeoutMs ?? MAX_SUBAGENT_TIMEOUT_MS,
     });
     return data.details.asyncId;
   }

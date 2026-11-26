@@ -234,7 +234,7 @@ test("run envelope substitutes context and ordered facts with expected artifact 
     "Plan: expected: docs/plans/2026-10-15-issue-9-x-plan.md",
     "Pull request: none",
     "Gate: required; publish the spec PR",
-    "Time limit: 37 minutes",
+    "Time limit: 37 minutes. About 5 minutes before the end",
   ];
   let previous = -1;
   for (const fact of ordered) {
@@ -477,17 +477,51 @@ test("implementation states the command timeout limits", () => {
     if (line === undefined) assert.doesNotMatch(text, /Command timeout/);
     else
       assert.equal(
-        lines[lines.findIndex((l) => l.startsWith("- Time limit:")) + 1],
+        lines.find((l) => l.startsWith("- Command timeout:")),
         line,
       );
   }
 });
 
-test("planning has no command timeout line", () => {
-  assert.doesNotMatch(
-    renderRunEnvelope({ ...input, phase: "planning" }),
-    /Command timeout/,
+test("interactive planning has no command timeout or Stall line", () => {
+  const text = renderRunEnvelope({
+    ...input,
+    phase: "planning",
+    interactive: true,
+    stallStop: { minutes: 10, maxStalls: 3 },
+  });
+  assert.doesNotMatch(text, /Command timeout/);
+  assert.doesNotMatch(text, /Stall stop/);
+});
+
+test("unattended planning gets the Command timeout and Stall facts", () => {
+  const text = renderRunEnvelope({
+    ...input,
+    phase: "planning",
+    stallStop: { minutes: 10, maxStalls: 3 },
+  });
+  assert.match(text, /\n- Command timeout: bash calls get a 20-minute/);
+  assert.match(text, /\n- Stall stop: when the session and its subagents/);
+});
+
+test("no Time limit line without a cap", () => {
+  const text = renderRunEnvelope({ ...input, timeoutMinutes: null });
+  assert.doesNotMatch(text, /Time limit/);
+  assert.match(text, /\n- Gate: [^\n]*\n- Command timeout:/);
+});
+
+test("Time limit with Cap warning text for a 90-minute cap", () => {
+  const text = renderRunEnvelope({ ...input, timeoutMinutes: 90 });
+  assert.ok(
+    text.includes(
+      "\n- Time limit: 90 minutes. About 5 minutes before the end, Patchmill asks you to stop new work and hand off.\n",
+    ),
   );
+});
+
+test("plain Time limit for a 5-minute cap", () => {
+  const text = renderRunEnvelope({ ...input, timeoutMinutes: 5 });
+  assert.ok(text.includes("\n- Time limit: 5 minutes\n"));
 });
 
 test("renders the merge conflict fact after the pull request line", () => {
@@ -576,9 +610,14 @@ test("with Stall stops off, the envelope states that Command timeouts count", ()
   assert.ok(!text.includes("Stall stop:"));
 });
 
-test("no Stall fact for planning, an interactive run, or without a policy", () => {
+test("no Stall fact for an interactive run or without a policy", () => {
   for (const variant of [
-    { phase: "planning" as const, stallStop: { minutes: 10, maxStalls: 3 } },
+    {
+      phase: "planning" as const,
+      interactive: true,
+      stallStop: { minutes: 10, maxStalls: 3 },
+    },
+    { phase: "planning" as const },
     {
       phase: "implementation" as const,
       interactive: true,
@@ -619,10 +658,15 @@ test("previous stalls name the stalled commands, also in an interactive run", ()
       tried: [],
     },
   ];
-  for (const interactive of [false, true]) {
+  for (const [phase, interactive] of [
+    ["implementation", false],
+    ["implementation", true],
+    ["planning", false],
+    ["planning", true],
+  ] as const) {
     const text = renderRunEnvelope({
       ...input,
-      phase: "implementation",
+      phase,
       interactive,
       previousStalls,
     });

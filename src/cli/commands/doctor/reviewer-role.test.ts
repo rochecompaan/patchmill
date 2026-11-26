@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { runCommand } from "../../../process/command.ts";
-import { provisionReviewerAgent, REVIEWER_AGENT } from "../init/agent-dir.ts";
+import { provisionReviewerAgent, reviewerAgent } from "../init/agent-dir.ts";
 import { checkReviewerRole } from "./reviewer-role.ts";
 
 const agentDir = "custom/agent";
@@ -34,7 +34,8 @@ async function fixture(t: TestContext) {
   return { base, root, home, managed };
 }
 
-const check = (repoRoot: string) => checkReviewerRole({ repoRoot, agentDir });
+const check = (repoRoot: string, timeoutMinutes: number | null = null) =>
+  checkReviewerRole({ repoRoot, agentDir, timeoutMinutes });
 
 async function settings(root: string, content: string) {
   await writeFile(join(root, agentDir, "settings.json"), content);
@@ -42,13 +43,13 @@ async function settings(root: string, content: string) {
 
 test("passes for the provisioned reviewer", async (t) => {
   const f = await fixture(t);
-  await provisionReviewerAgent(f.root, agentDir);
+  await provisionReviewerAgent(f.root, agentDir, null);
   assert.deepEqual(await check(f.root), { ok: true });
 });
 
 test("passes through a symlinked repository path", async (t) => {
   const f = await fixture(t);
-  await provisionReviewerAgent(f.root, agentDir);
+  await provisionReviewerAgent(f.root, agentDir, null);
   const link = join(f.base, "link");
   await symlink(f.root, link);
   assert.deepEqual(await check(link), { ok: true });
@@ -69,7 +70,7 @@ test("missing is repairable", async (t) => {
 test("stale is repairable", async (t) => {
   const f = await fixture(t);
   await mkdir(join(f.root, agentDir, "agents"), { recursive: true });
-  await writeFile(f.managed, `${REVIEWER_AGENT}\n`);
+  await writeFile(f.managed, `${reviewerAgent(null)}\n`);
   const result = await check(f.root);
   assert.ok(!result.ok);
   assert.equal(result.repairable, true);
@@ -78,7 +79,7 @@ test("stale is repairable", async (t) => {
 
 test("a project definition shadows the managed reviewer", async (t) => {
   const f = await fixture(t);
-  await provisionReviewerAgent(f.root, agentDir);
+  await provisionReviewerAgent(f.root, agentDir, null);
   const shadow = join(f.root, ".pi/agents/reviewer.md");
   await mkdir(join(f.root, ".pi/agents"), { recursive: true });
   await writeFile(shadow, SHADOW);
@@ -92,7 +93,7 @@ test("a project definition shadows the managed reviewer", async (t) => {
 
 test("a home definition shadows the managed reviewer", async (t) => {
   const f = await fixture(t);
-  await provisionReviewerAgent(f.root, agentDir);
+  await provisionReviewerAgent(f.root, agentDir, null);
   const shadow = join(f.home, ".agents/reviewer.md");
   await mkdir(join(f.home, ".agents"), { recursive: true });
   await writeFile(shadow, SHADOW);
@@ -104,7 +105,7 @@ test("a home definition shadows the managed reviewer", async (t) => {
 
 test("an agentOverrides tools entry fails the tools check", async (t) => {
   const f = await fixture(t);
-  await provisionReviewerAgent(f.root, agentDir);
+  await provisionReviewerAgent(f.root, agentDir, null);
   await settings(
     f.root,
     JSON.stringify({
@@ -119,7 +120,7 @@ test("an agentOverrides tools entry fails the tools check", async (t) => {
 
 test("a disabled reviewer is not resolved", async (t) => {
   const f = await fixture(t);
-  await provisionReviewerAgent(f.root, agentDir);
+  await provisionReviewerAgent(f.root, agentDir, null);
   await settings(
     f.root,
     JSON.stringify({
@@ -136,10 +137,19 @@ test("restores PI_CODING_AGENT_DIR", async (t) => {
   const f = await fixture(t);
   restoreEnv(t, "PI_CODING_AGENT_DIR");
   process.env.PI_CODING_AGENT_DIR = "/earlier";
-  await provisionReviewerAgent(f.root, agentDir);
+  await provisionReviewerAgent(f.root, agentDir, null);
   assert.deepEqual(await check(f.root), { ok: true });
   assert.equal(process.env.PI_CODING_AGENT_DIR, "/earlier");
   await settings(f.root, "{");
   await assert.rejects(check(f.root));
   assert.equal(process.env.PI_CODING_AGENT_DIR, "/earlier");
+});
+
+test("a reviewer written for another cap is stale", async (t) => {
+  const f = await fixture(t);
+  await provisionReviewerAgent(f.root, agentDir, 120);
+  const result = await check(f.root, null);
+  assert.ok(!result.ok);
+  assert.equal(result.repairable, true);
+  assert.match(result.message, /Stale reviewer/);
 });

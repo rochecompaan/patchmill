@@ -55,7 +55,16 @@ export type PiRpcOptions = Omit<PiSessionOptions, "onOutput"> & {
   sessionFile?: string;
   /** Append to `logPath` instead of replacing it, for a restart. */
   appendLogs?: boolean;
+  /** The lead of the Cap warning before `timeoutMs`. */
+  warnBeforeMs?: number;
+  /** Send the Cap warning right after the prompt, for a late restart. */
+  warnNow?: boolean;
 };
+
+/** How long before the Session cap Patchmill sends the Cap warning. */
+export const CAP_WARNING_MS = 300_000;
+export const CAP_WARNING_MESSAGE =
+  "Patchmill ends this session in 5 minutes. Start no new work. Wait for running subagents, commit and push your work, and end with the result.";
 
 const REPORT_WAIT_MS = 15_000;
 type Pending = {
@@ -204,6 +213,20 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
     return escalation;
   };
   const waitForExit = (ms: number) => Promise.race([exited.promise, sleep(ms)]);
+  let warned = false;
+  // A steer, as for a recovery, so it also reaches a session that waits for
+  // background work. Its answer never finishes the session.
+  const warn = () => {
+    if (warned || finished || interruption || closed) return;
+    warned = true;
+    send("prompt", {
+      message: CAP_WARNING_MESSAGE,
+      streamingBehavior: "steer",
+    }).then(
+      () => undefined,
+      () => undefined,
+    );
+  };
   const interrupt = (kind?: "aborted" | "timedOut") => {
     if (closed) return Promise.resolve();
     if (kind) result[kind] = true;
@@ -384,7 +407,12 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
         pending.clear();
         exited.resolve();
       });
-      later(options.timeoutMs, () => void interrupt("timedOut"));
+      const lead = options.warnBeforeMs ?? CAP_WARNING_MS;
+      if (options.timeoutMs !== undefined) {
+        later(options.timeoutMs, () => void interrupt("timedOut"));
+        if (!options.warnNow && options.timeoutMs > lead)
+          later(options.timeoutMs - lead, warn);
+      }
       void send("prompt", { message: prompt }).then(
         (response) => {
           const outcome = promptOutcome(response);
@@ -396,6 +424,7 @@ export function startPiRpc(options: PiRpcOptions): PiRpcSession {
         },
         () => undefined,
       );
+      if (options.warnNow) warn();
       await exited.promise;
       if (child.pid && signalGroup(child.pid, 0)) await escalate();
       if (interruption) await interruption;

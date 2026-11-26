@@ -3,7 +3,12 @@ import type { Facts } from "./facts.ts";
 import type { Derived, Phase } from "./phase.ts";
 import type { PiUsage } from "./pi-cost.ts";
 import type { StallNotice } from "./stall-supervisor.ts";
-import { callTool, callWhere, durationText } from "./stall-text.ts";
+import {
+  callTool,
+  callWhere,
+  durationText,
+  isTopSession,
+} from "./stall-text.ts";
 import {
   cleanValue,
   renderTerminalDocument,
@@ -189,7 +194,7 @@ export function formatStall(notice: StallNotice, maxStalls: number): string {
   const calls = stall.calls.length
     ? ` (${stall.calls
         .map((call) =>
-          call.session === "implementation session"
+          isTopSession(call.session)
             ? callTool(call)
             : `${callTool(call)} in ${callWhere(call)}`,
         )

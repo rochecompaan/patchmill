@@ -3,7 +3,12 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { piRpcArgs, runPiRpc, startPiRpc } from "./pi-rpc.ts";
+import {
+  CAP_WARNING_MESSAGE,
+  piRpcArgs,
+  runPiRpc,
+  startPiRpc,
+} from "./pi-rpc.ts";
 import { jsonlRecords } from "./pi-rpc-protocol.ts";
 import { signalGroup, type PiSessionOptions } from "./pi-supervisor.ts";
 import { hasResultBlock, parseAgentResult } from "./result.ts";
@@ -582,4 +587,82 @@ test("appendLogs keeps the earlier log", async (t) => {
   await runPiRpc({ ...f.options, appendLogs: true });
   const log = await f.log();
   assert.ok(log.includes("first") && log.includes("second"));
+});
+
+const capWarnings = (commands: Record<string, unknown>[]) =>
+  commands.filter(
+    (c) =>
+      c.type === "prompt" &&
+      c.streamingBehavior === "steer" &&
+      c.message === CAP_WARNING_MESSAGE,
+  );
+
+test(
+  "sends one Cap warning steer before the deadline",
+  { timeout: 5000 },
+  async (t) => {
+    const f = await fake(t, [{ stdout: "ready", sleepMs: 5000 }]);
+    const result = await runPiRpc({
+      ...f.options,
+      timeoutMs: 600,
+      warnBeforeMs: 300,
+    });
+    assert.equal(result.timedOut, true);
+    assert.equal(capWarnings(await f.commands()).length, 1);
+  },
+);
+
+test(
+  "no Cap warning when the cap is not longer than the lead",
+  { timeout: 5000 },
+  async (t) => {
+    const f = await fake(t, [{ stdout: "ready", sleepMs: 5000 }]);
+    const result = await runPiRpc({
+      ...f.options,
+      timeoutMs: 300,
+      warnBeforeMs: 300,
+    });
+    assert.equal(result.timedOut, true);
+    assert.equal(capWarnings(await f.commands()).length, 0);
+  },
+);
+
+test("no deadline and no Cap warning without timeoutMs", async (t) => {
+  const f = await fake(t, [{ result: done, sleepMs: 400 }]);
+  const { timeoutMs: _, ...options } = f.options;
+  const result = await runPiRpc({ ...options, warnBeforeMs: 1 });
+  assert.equal(result.timedOut, false);
+  assert.equal(result.exitCode, 0);
+  assert.equal(parseAgentResult(result.stdout).ok, true);
+  assert.equal(capWarnings(await f.commands()).length, 0);
+});
+
+test("warnNow sends the Cap warning right after the prompt", async (t) => {
+  const f = await fake(t, [{ result: done, sleepMs: 300 }]);
+  const result = await runPiRpc({ ...f.options, warnNow: true });
+  assert.equal(result.exitCode, 0);
+  assert.equal(parseAgentResult(result.stdout).ok, true);
+  const commands = await f.commands();
+  assert.equal(capWarnings(commands).length, 1);
+  assert.equal(commands[0]!.type, "prompt");
+  assert.equal(commands[1], capWarnings(commands)[0]);
+});
+
+test("a handled Cap warning does not end the session", async (t) => {
+  const f = await fake(t, [
+    {
+      result: done,
+      sleepMs: 300,
+      backgroundCounts: [1, 0],
+      steerDisposition: "handled",
+    },
+  ]);
+  const result = await runPiRpc({
+    ...f.options,
+    timeoutMs: 5000,
+    warnBeforeMs: 4900,
+  });
+  assert.equal(result.timedOut, false);
+  assert.equal(capWarnings(await f.commands()).length, 1);
+  assert.equal(result.stdout, "background turn 2\n");
 });

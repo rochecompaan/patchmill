@@ -190,7 +190,9 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
         id = await client.spawnWorker({
           task: launch.envelope,
           cwd: launch.worktree,
-          timeoutMs: launch.timeoutMs,
+          ...(launch.timeoutMs !== undefined
+            ? { timeoutMs: launch.timeoutMs }
+            : {}),
           output: outputPath,
         });
       }
@@ -199,10 +201,12 @@ export function createWorkerLauncher(client: SubagentsClient): WorkerLauncher {
         await stop!();
         return aborted();
       }
-      deadline = setTimeout(() => {
-        timedOut = true;
-        void stop?.().catch(() => {});
-      }, launch.timeoutMs);
+      // Without a Session cap, only pi-subagents' largest deadline applies.
+      if (launch.timeoutMs !== undefined)
+        deadline = setTimeout(() => {
+          timedOut = true;
+          void stop?.().catch(() => {});
+        }, launch.timeoutMs);
       onAbort = () => {
         if (currentId && active?.id === currentId) active.state = "stopping";
       };

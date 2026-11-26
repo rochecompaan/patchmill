@@ -140,7 +140,12 @@ async function openConsole(
 ): Promise<number> {
   const { repoRoot } = deps;
   const skillPaths = consoleSkillPaths(config, repoRoot);
-  await provisionAgentDir(repoRoot, config.pi.agentDir, skillPaths);
+  await provisionAgentDir(
+    repoRoot,
+    config.pi.agentDir,
+    config.pi.timeoutMinutes,
+    skillPaths,
+  );
   const agentDir = resolve(repoRoot, config.pi.agentDir);
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const additionalExtensionPaths = prepareConsoleExtensions(config);

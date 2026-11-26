@@ -669,3 +669,12 @@ test("descendantGroups lists the group of a detached grandchild", async (t) => {
   }
   assert.ok(!groups.includes(process.pid));
 });
+
+test("supervisePi without timeoutMs does not time out", async (t) => {
+  const options = await fake(t, [{ stdout: "ready", sleepMs: 300 }]);
+  const { timeoutMs: _, ...rest } = options;
+  const result = await supervisePi(rest);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.exitCode, 0);
+  assert.ok(result.stdout.includes("ready"));
+});

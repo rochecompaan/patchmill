@@ -420,7 +420,7 @@ Each key is optional. Patchmill rejects unknown keys by name.
   },
   "pi": {
     "agentDir": ".patchmill/pi-agent",
-    "timeoutMinutes": 90,
+    "timeoutMinutes": null,
     "commandTimeoutMinutes": 20,
     "maxCommandTimeoutMinutes": 25,
     "stallStopMinutes": 10,
@@ -446,16 +446,23 @@ These keys change the most:
   the planning gates.
 - `workflow.stateTracking` selects labels on the host or
   [local state](#local-state-mode).
-- `pi.timeoutMinutes` limits each Pi session.
+- `pi.timeoutMinutes` is the optional Session cap in minutes. The default `null`
+  sets no wall-clock limit on phase sessions. A number must be greater than 0
+  and at most 35791. About 5 minutes before the cap, Patchmill asks the agent to
+  stop new work and hand off. Without a cap, triage sessions stop after 90
+  minutes. Subagents follow the same cap (see [Safety](#safety)). A
+  configuration from an earlier `patchmill init` has `90`, which keeps a
+  90-minute cap; set `null` or remove the key to turn it off.
 - `pi.commandTimeoutMinutes` (default 20) is the timeout of an agent `bash` call
   that sets none. `pi.maxCommandTimeoutMinutes` (default 25) is the longest
   timeout that a call can get. `0` turns a limit off. The default must not be
   longer than an enabled cap.
 - `pi.stallStopMinutes` (default 10) is the quiet time after which Patchmill
-  stops the turn of an unattended implementation session and asks the agent to
-  continue another way. A running `bash` call inside its timeout is not quiet.
-  `pi.maxStalls` (default 3) is the Stall that stops the Run attempt at Needs
-  Info. A second Stall of the same command also stops it. `0` turns a limit off.
+  stops the turn of an unattended planning or implementation session and asks
+  the agent to continue another way. A running `bash` call inside its timeout is
+  not quiet. `pi.maxStalls` (default 3) is the number of Stalls that stops the
+  Run attempt at Needs Info. A second Stall of the same command also stops it.
+  `0` turns a limit off.
 - `git.baseBranch: null` uses the default branch of the remote.
 - `run` sets the triage interval and the wait limits of `patchmill run`.
 
@@ -491,8 +498,21 @@ Patchmill does not move the state.
 
 ## Safety
 
-- Each phase runs in a new Pi session. Patchmill stops a session after
-  `pi.timeoutMinutes` (90 minutes by default).
+- Each phase runs in a new Pi session. By default, no wall-clock limit applies.
+  The Stall policy stops and recovers a stuck unattended planning or
+  implementation session, and blocks the Run attempt after repeated Stalls. Set
+  `pi.timeoutMinutes` for an extra hard cap. Triage stops after 90 minutes when
+  no cap is set.
+- Patchmill sets `timeoutMs` and `checkpointBeforeDeadlineMs` in
+  `<agentDir>/extensions/subagent/config.json`, replaces an operator value for
+  these two keys, and keeps the other keys. Because `checkpointBeforeDeadlineMs`
+  is a fail-closed key, an invalid value of another key in that file stops
+  pi-subagents from loading. Subagents get the Session cap, or the largest
+  pi-subagents deadline (about 24.8 days) without a cap. A single async child
+  gets a "checkpoint and stop" message 5 minutes before it; a foreground child,
+  a resumed run, and an async chain or parallel step do not. Agents that
+  Patchmill does not manage keep the 30-minute pi-subagents default on a resume
+  and in an async chain or parallel step.
 - A lock file stops two runs in the same clone from working on one issue.
   Separate clones can still race. Do not delete the lock file or its folder,
   even after a crash. To clear a stale claim, run `patchmill release --issue N`.

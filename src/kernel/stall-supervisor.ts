@@ -1,6 +1,12 @@
 import fs from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { startPiRpc, type PiRpcOptions, type PiRpcSession } from "./pi-rpc.ts";
+import {
+  CAP_WARNING_MS,
+  startPiRpc,
+  type PiRpcOptions,
+  type PiRpcSession,
+} from "./pi-rpc.ts";
+import type { Phase } from "./phase.ts";
 import type { PiSession } from "./pi-supervisor.ts";
 import {
   createStallWatch,
@@ -37,15 +43,17 @@ export function defaultPollMs(stopAfterMs: number): number {
 }
 
 /**
- * Run one implementation Pi RPC session under the Stall rules. A Stall stop
+ * Run one unattended phase Pi RPC session under the Stall rules. A Stall stop
  * aborts the turn and continues the same session with a recovery prompt. When
  * Pi does not answer the abort, Pi is stopped and restarted on the same
- * session file with the remaining time. The Stall limit stops Pi and returns
- * the reason in `block`.
+ * session file with the remaining time of the Session cap, if one applies. A
+ * restart inside the Cap warning lead sends the warning at once. The
+ * Stall limit stops Pi and returns the reason in `block`.
  */
 export async function superviseStalls(options: {
   rpc: Omit<PiRpcOptions, "onRecord">;
   limits: StallLimits;
+  phase: Phase;
   pollMs?: number;
   recoveryGraceMs?: number;
   clock?: StallClock;
@@ -63,9 +71,12 @@ export async function superviseStalls(options: {
   const watch = createStallWatch({
     sessionDir: rpc.sessionDir,
     limits,
+    phase: options.phase,
     now: () => clock.now(),
   });
-  const deadline = clock.now() + rpc.timeoutMs;
+  const deadline =
+    rpc.timeoutMs !== undefined ? clock.now() + rpc.timeoutMs : undefined;
+  const lead = rpc.warnBeforeMs ?? CAP_WARNING_MS;
   const onRecord = (record: { type?: unknown }) => watch.record(record);
   let session = start({ ...rpc, onRecord });
   let block: { reason: string } | undefined;
@@ -89,8 +100,9 @@ export async function superviseStalls(options: {
     await session.stop();
     await session.done.catch(() => undefined);
     const file = watch.sessionFile();
-    const remaining = deadline - clock.now();
-    if (!file || remaining <= 0)
+    const remaining =
+      deadline !== undefined ? deadline - clock.now() : undefined;
+    if (!file || (remaining !== undefined && remaining <= 0))
       return stopWith(watch.fail(file ? "no time left" : "no session file"));
     restarts++;
     const promptPath = join(
@@ -98,13 +110,17 @@ export async function superviseStalls(options: {
       `recovery-${restarts}.md`,
     );
     await fs.writeFile(promptPath, prompt);
+    const { timeoutMs: _cap, warnNow: _now, ...rest } = rpc;
     session = start({
-      ...rpc,
+      ...rest,
       onRecord,
       promptPath,
       sessionFile: file,
       appendLogs: true,
-      timeoutMs: remaining,
+      ...(remaining !== undefined ? { timeoutMs: remaining } : {}),
+      ...(remaining !== undefined && rpc.timeoutMs! > lead && remaining <= lead
+        ? { warnNow: true }
+        : {}),
     });
   };
 

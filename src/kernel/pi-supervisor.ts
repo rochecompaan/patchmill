@@ -13,7 +13,8 @@ export type PiSessionOptions = {
   logPath: string;
   aggregateLogPath?: string;
   extensionPaths: string[];
-  timeoutMs: number;
+  /** The Session cap in milliseconds. Without it, no deadline applies. */
+  timeoutMs?: number;
   graceMs?: number;
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
@@ -252,7 +253,8 @@ export async function supervisePi(
       });
     });
     abort = () => stop("aborted");
-    timeout = setTimeout(() => stop("timedOut"), options.timeoutMs);
+    if (options.timeoutMs !== undefined)
+      timeout = setTimeout(() => stop("timedOut"), options.timeoutMs);
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
     await completion;

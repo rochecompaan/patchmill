@@ -82,7 +82,7 @@ test("the stall limit stops with needs-info and keeps the work", async (t) => {
   assert.equal(outcome.label, "needsInfo");
   assert.match(
     outcome.summary,
-    /^The implementation stopped: the same command stalled twice\./,
+    /^The implementation session stopped: the same command stalled twice\./,
   );
   assert.ok(c.host.state().issues[0]!.labels.includes("needs-info"));
   const record = JSON.parse(
@@ -135,4 +135,62 @@ test("a paused attempt keeps the record", async (t) => {
   controller.abort();
   assert.equal((await running).status, "paused");
   await fs.stat(join(issueDir, STALL_BLOCK_FILE));
+});
+
+async function setupPlanning(t: TestContext, steps: unknown[]) {
+  const c = await setupRun(t, steps);
+  c.config.pi.stallStopMinutes = 0.02;
+  c.config.pi.maxStalls = 3;
+  c.config.pi.commandTimeoutMinutes = 0;
+  c.config.pi.maxCommandTimeoutMinutes = 0;
+  const issueDir = join(c.repoRoot, c.config.paths.runsDir, "issue-9");
+  return { c, issueDir };
+}
+
+test("unattended planning Stall limit blocks the Run attempt", async (t) => {
+  const { c, issueDir } = await setupPlanning(t, [
+    {
+      sessionEntries: [waitCall("w1")],
+      hang: true,
+      recovery: { hang: true, sessionEntries: [waitCall("w2")] },
+    },
+  ]);
+  const outcome = await c.run();
+  assert.equal(outcome.status, "stopped");
+  if (outcome.status !== "stopped") return;
+  assert.equal(outcome.label, "needsInfo");
+  assert.match(
+    outcome.summary,
+    /^The planning session stopped: the same command stalled twice\./,
+  );
+  const record = JSON.parse(
+    await fs.readFile(join(issueDir, STALL_BLOCK_FILE), "utf8"),
+  );
+  assert.equal(record.stalls.length, 2);
+});
+
+test("the next planning attempt names the stalled command", async (t) => {
+  const { c, issueDir } = await setupPlanning(t, [
+    {
+      writeFiles: { [spec]: "design" },
+      commit: "Spec",
+      push: true,
+      pullRequest: { draft: true, body: "Refs #9" },
+      result: { status: "done", summary: "Spec ready" },
+    },
+  ]);
+  c.config.workflow.specApproval.required = true;
+  await fs.mkdir(issueDir, { recursive: true });
+  await fs.writeFile(
+    join(issueDir, STALL_BLOCK_FILE),
+    JSON.stringify({ runId: "old", stalls: stalled }),
+  );
+  await c.run();
+  const { prompt } = await c.records();
+  const text = await prompt();
+  assert.match(text, /You are the Patchmill planning agent/);
+  assert.match(text, /- Previous stalls: .*`npm test` \(subagent run 3f2a\)/);
+  await assert.rejects(fs.stat(join(issueDir, STALL_BLOCK_FILE)), {
+    code: "ENOENT",
+  });
 });

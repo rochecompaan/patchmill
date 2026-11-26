@@ -12,7 +12,7 @@ Facts:
 - Pull request: none
 - Planning stage: spec
 - Gate: required; publish the spec PR and stop until it is merged
-- Time limit: 37 minutes
+- Time limit: 37 minutes. About 5 minutes before the end, Patchmill asks you to stop new work and hand off.
 - Command timeout: bash calls get a 20-minute timeout by default. Full builds or test suites can ask for up to 25 minutes.
 
 Return only the fields `status` and `summary` in a final `json` block. Use

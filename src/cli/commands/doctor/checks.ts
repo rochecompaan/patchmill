@@ -165,6 +165,7 @@ export async function runDoctorChecks(deps: {
     const result = await checkReviewerRole({
       repoRoot,
       agentDir: config.pi.agentDir,
+      timeoutMinutes: config.pi.timeoutMinutes,
     });
     return result.ok ? { ok: true } : { ok: false, message: result.message };
   });

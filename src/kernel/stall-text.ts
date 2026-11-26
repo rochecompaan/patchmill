@@ -1,3 +1,4 @@
+import type { Phase } from "./phase.ts";
 import type { Stall, StallCall } from "./stall-watch.ts";
 
 const MAX_COMMAND = 200;
@@ -33,9 +34,19 @@ export function callTool(call: Pick<StallCall, "tool" | "command">): string {
     : call.tool;
 }
 
+/** The `session` label of a call in the top-level session of a phase. */
+export function topSession(phase: Phase): string {
+  return `${phase} session`;
+}
+
+/** Also true for the label of a record from before the planning phase got one. */
+export function isTopSession(session: string): boolean {
+  return session === "planning session" || session === "implementation session";
+}
+
 export function callWhere(call: Pick<StallCall, "session" | "run">): string {
   if (call.run) return `subagent run ${call.run}`;
-  return call.session === "implementation session"
+  return isTopSession(call.session)
     ? call.session
     : `subagent session ${call.session}`;
 }

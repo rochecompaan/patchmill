@@ -1,9 +1,14 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { loadSkills } from "@earendil-works/pi-coding-agent";
+import {
+  provisionSubagentLimits,
+  subagentLimits,
+  writeAtomically,
+} from "../../../pi/subagent-limits.ts";
 import { CommandFailedError, runCommand } from "../../../process/command.ts";
 
-export const REVIEWER_AGENT = `---
+const REVIEWER_TEMPLATE = `---
 name: reviewer
 description: Fresh-context adversarial review of a bounded change
 tools: read, grep, find, ls, bash
@@ -32,7 +37,7 @@ Separate blockers from optional suggestions, and state the limits of your eviden
 If the runtime also asks for an acceptance report, put it after the complete report that the brief requires.
 `;
 
-export const IMPLEMENTATION_AGENT = `---
+const IMPLEMENTATION_TEMPLATE = `---
 name: patchmill-implementation
 description: Patchmill implementation worker for one issue
 tools: read, grep, find, ls, bash, edit, write, subagent, bg_wait, subagent_supervisor
@@ -42,9 +47,31 @@ Follow the Patchmill envelope in your task. It defines the work, the rules, and
 the final JSON result. The conversation before it is context only.
 `;
 
+/** Adds the subagent deadline of the Session cap after the `tools:` line. */
+function withTimeout(template: string, timeoutMinutes: number | null) {
+  return template.replace(
+    /^(tools: .*)$/m,
+    `$1\ntimeoutMs: ${subagentLimits(timeoutMinutes).timeoutMs}`,
+  );
+}
+
+/**
+ * The managed reviewer. Its `timeoutMs` also applies on a resume and in a
+ * chain or parallel step, where the pi-subagents config default does not.
+ */
+export function reviewerAgent(timeoutMinutes: number | null): string {
+  return withTimeout(REVIEWER_TEMPLATE, timeoutMinutes);
+}
+
+/** The managed implementation worker, with the same `timeoutMs` as the reviewer. */
+export function implementationAgent(timeoutMinutes: number | null): string {
+  return withTimeout(IMPLEMENTATION_TEMPLATE, timeoutMinutes);
+}
+
 export async function provisionAgentDir(
   repoRoot: string,
   agentDir: string,
+  timeoutMinutes: number | null,
   skillPaths: string[] = [],
 ): Promise<void> {
   const skills = loadSkills({
@@ -53,13 +80,15 @@ export async function provisionAgentDir(
     skillPaths,
     includeDefaults: false,
   }).skills;
+  const base = implementationAgent(timeoutMinutes);
   const implementation = skillPaths.length
-    ? IMPLEMENTATION_AGENT.replace(
+    ? base.replace(
         "tools: read",
         `skills: ${skills.map((skill) => skill.name).join(", ")}\nskillPath: ${skillPaths.join(", ")}\ntools: read`,
       )
-    : IMPLEMENTATION_AGENT;
-  await provisionReviewerAgent(repoRoot, agentDir);
+    : base;
+  await provisionSubagentLimits(resolve(repoRoot, agentDir), timeoutMinutes);
+  await provisionReviewerAgent(repoRoot, agentDir, timeoutMinutes);
   await writeWhenDifferent(
     resolve(repoRoot, agentDir, "agents", "patchmill-implementation.md"),
     implementation,
@@ -73,12 +102,13 @@ export async function provisionAgentDir(
 export async function provisionReviewerAgent(
   repoRoot: string,
   agentDir: string,
+  timeoutMinutes: number | null,
 ): Promise<"written" | "unchanged"> {
   const directory = resolve(repoRoot, agentDir, "agents");
   await mkdir(directory, { recursive: true });
   return (await writeWhenDifferent(
     join(directory, "reviewer.md"),
-    REVIEWER_AGENT,
+    reviewerAgent(timeoutMinutes),
   ))
     ? "written"
     : "unchanged";
@@ -94,9 +124,8 @@ async function writeWhenDifferent(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  if (existing === content) return false;
-  await writeFile(file, content);
-  return true;
+  // A rename, so a concurrent Pi never reads a half-written agent file.
+  return writeAtomically(file, content, existing);
 }
 
 export async function ensureLocalExcludes(

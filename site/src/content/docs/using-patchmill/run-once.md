@@ -177,11 +177,26 @@ Keep earlier run directories if later reports must include their costs.
 
 ## Supervision and cleanup
 
-Each session uses `pi.timeoutMinutes`, which defaults to 90 minutes. On timeout,
-cancellation, or termination, the kernel sends `SIGTERM` to the process group.
-After five seconds, it sends `SIGKILL` if needed. The kernel attempts label
-cleanup and closes the local lock handle in `finally`. A hard crash can still
-leave host labels unchanged.
+By default, phase sessions have no wall-clock limit. The Stall policy watches
+each unattended planning and implementation session and its subagent sessions.
+After `pi.stallStopMinutes` without activity, Patchmill stops the turn and asks
+the agent to continue another way. After `pi.maxStalls` Stalls, or a second
+Stall of the same command, the Run attempt stops at Needs Info. A triage session
+stops after 90 minutes when no cap is set.
+
+`pi.timeoutMinutes` sets an optional Session cap. About 5 minutes before the
+cap, Patchmill asks the agent to start no new work and hand off. Subagents
+follow the same cap through `<agentDir>/extensions/subagent/config.json`, which
+Patchmill updates before each session; without a cap they get the largest
+deadline that pi-subagents accepts. Patchmill changes only `timeoutMs` and
+`checkpointBeforeDeadlineMs` there. A configuration from an earlier
+`patchmill init` has `"timeoutMinutes": 90`; set it to `null` or remove the key
+to turn the cap off.
+
+On a cap, cancellation, or termination, the kernel sends `SIGTERM` to the
+process group. After five seconds, it sends `SIGKILL` if needed. The kernel
+attempts label cleanup and closes the local lock handle in `finally`. A hard
+crash can still leave host labels unchanged.
 
 Ctrl-C or `SIGTERM` pauses an unattended run. Patchmill publishes no comment or
 label change, the issue stays `in-progress`, and the next start resumes it. A

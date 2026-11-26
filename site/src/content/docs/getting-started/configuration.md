@@ -114,8 +114,33 @@ triggers and retry behavior.
 names a directory with a `SKILL.md` file. Put repository procedures in skills
 and `AGENTS.md`, not extra configuration keys.
 
-`pi.agentDir` defaults to `.patchmill/pi-agent`. `pi.timeoutMinutes` defaults to
-90 for each session.
+`pi.agentDir` defaults to `.patchmill/pi-agent`.
+
+`pi.timeoutMinutes` is the optional Session cap. The default is `null`: phase
+sessions have no wall-clock limit, and the Stall policy stops a stuck unattended
+session. A number sets a cap in minutes. It must be greater than 0 and at most
+35791, or Patchmill rejects the configuration. About 5 minutes before a cap
+ends, Patchmill asks the agent to start no new work and hand off. Triage has no
+Stall policy, so without a cap a triage session stops after 90 minutes.
+
+Patchmill sets `timeoutMs` and `checkpointBeforeDeadlineMs` in
+`<agentDir>/extensions/subagent/config.json` before each session, and keeps the
+other keys of that file. Subagents get the Session cap, or the largest deadline
+that pi-subagents accepts (about 24.8 days) when no cap is set. A single async
+child gets a "checkpoint and stop" message 5 minutes before its deadline. A
+foreground child, a resumed run, and an async chain or parallel step get no such
+message. The managed `reviewer` and `patchmill-implementation` agents carry the
+same `timeoutMs`, so a resume or a chain step of these agents gets it too. Other
+agents keep the pi-subagents default of 30 minutes on a resume and in an async
+chain or parallel step. Patchmill owns these two keys and replaces an operator
+value for them. `checkpointBeforeDeadlineMs` is a fail-closed key of
+pi-subagents: while it is in the file, an invalid value of another key there
+stops pi-subagents from loading, instead of a logged fallback.
+
+Upgrade note: a configuration that `patchmill init` wrote earlier has
+`"timeoutMinutes": 90`. That value keeps a 90-minute cap, which now also limits
+subagents. To turn the cap off, set it to `null` or remove the key. A missing
+key gets the default, `null`.
 
 `pi.commandTimeoutMinutes` defaults to 20. It is the timeout that an agent
 `bash` call gets when it sets none. `pi.maxCommandTimeoutMinutes` defaults
@@ -124,13 +149,14 @@ request gets the cap. Set a value to `0` to turn that limit off. The default
 must not be longer than an enabled cap. The limits also apply in subagent
 sessions.
 
-`pi.stallStopMinutes` defaults to 10. When an unattended implementation session
-and its subagent sessions show no activity for this time, Patchmill stops the
-turn and asks the agent to continue another way. A running `bash` call inside
-its timeout is not quiet. `pi.maxStalls` defaults to 3. A Command timeout and a
-stall stop both count as a Stall. The `pi.maxStalls`-th Stall, or a second Stall
-of the same command, stops the Run attempt at Needs Info. Set a value to `0` to
-turn that limit off.
+`pi.stallStopMinutes` defaults to 10. When an unattended planning or
+implementation session and its subagent sessions show no activity for this time,
+Patchmill stops the turn and asks the agent to continue another way. A running
+`bash` call inside its timeout is not quiet. `pi.maxStalls` defaults to 3. A
+Command timeout and a stall stop both count as a Stall. When the number of
+Stalls reaches `pi.maxStalls`, Patchmill stops the Run attempt at Needs Info. A
+second Stall of the same command also stops it. Set a value to `0` to turn that
+limit off.
 
 Run `patchmill auth` to configure provider credentials and choose a default
 model in `pi.agentDir`. The command verifies the provider and returns to the
@@ -163,7 +189,7 @@ shell without opening Pi chat. See
   },
   "pi": {
     "agentDir": ".patchmill/pi-agent",
-    "timeoutMinutes": 90,
+    "timeoutMinutes": null,
     "commandTimeoutMinutes": 20,
     "maxCommandTimeoutMinutes": 25,
     "stallStopMinutes": 10,
