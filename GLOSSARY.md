@@ -100,10 +100,27 @@ one Event ledger. It defines local event order; timestamps do not. _Avoid_:
 Timestamp, Event identity
 
 **Issue run**: One logical issue-processing lifecycle, from initial selection
-through any resumptions to a terminal outcome. _Avoid_: Run attempt
+through any resumptions to a terminal outcome. A Needs Info stop is an Issue run
+end, but the Issue run can resume after it, so one Issue run can have more than
+one Issue run end. _Avoid_: Run attempt
 
 **Run attempt**: One process entry into the run-once workflow for an Issue run.
 A later Run attempt may resume the same Issue run. _Avoid_: Issue run
+
+**Retro**: An agent's review of the session files of one ended Issue run, over
+the Run attempts that no earlier Retro covers. It suggests changes to the agent
+environment and can file or comment on `retro` issues. It never changes the
+issue's outcome. Each Issue run end has at most one Retro. _Avoid_:
+Retrospective phase, post-mortem
+
+**Issue run end**: The merge of an issue's implementation pull request, or a Run
+attempt that stops with Needs Info after at least one phase session. A ready
+pull request, a gate wait, or a pause is not an Issue run end. _Avoid_: Issue
+end
+
+**Retro source map**: The list that Patchmill gives a Retro of each session file
+and run record of the Run attempts that it covers, with its role, model, and
+token use. _Avoid_: Log index
 
 **Conflict resolution**: An implementation session for a Done issue whose open
 implementation pull request conflicts with the base branch. The conflict search
