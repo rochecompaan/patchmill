@@ -35,6 +35,8 @@ export type CleanupServices = {
 export type CleanupResult = {
   status: "cleaned" | "kept" | "skipped";
   warnings: string[];
+  /** The confirmed merge. Absent for `skipped` and before confirmation. */
+  merged?: { pullRequest: number };
 };
 type Input = CleanupServices & CleanupCandidate & { lock: IssueLock };
 
@@ -78,9 +80,11 @@ async function mergedIdentity(
 export async function cleanupMergedIssue(input: Input): Promise<CleanupResult> {
   const { config, issue, runner, repoRoot, signal } = input;
   const warnings: string[] = [];
+  let merged: CleanupResult["merged"];
   const result = (status: CleanupResult["status"]): CleanupResult => ({
     status,
     warnings,
+    ...(merged && status !== "skipped" ? { merged } : {}),
   });
   if (signal?.aborted) return result("skipped");
   const issueDir = resolve(repoRoot, config.paths.runsDir, `issue-${issue}`);
@@ -117,6 +121,7 @@ export async function cleanupMergedIssue(input: Input): Promise<CleanupResult> {
   try {
     const identity = await mergedIdentity(input);
     if (!identity || signal?.aborted) return result("skipped");
+    merged = { pullRequest: identity.pullRequest };
     const workspaceInput = {
       git,
       config,

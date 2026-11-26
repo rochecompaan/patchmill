@@ -122,7 +122,7 @@ export async function setupRun(t: TestContext, steps: unknown[] = []) {
   const records = async () => {
     const root = join(f.repoRoot, config.paths.runsDir, "issue-9");
     const entries = (await fs.readdir(root, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && entry.name !== "retros")
       .map((entry) => entry.name);
     assert.equal(entries.length, 1);
     const dir = join(root, entries[0]!);

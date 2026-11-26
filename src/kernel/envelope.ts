@@ -1,9 +1,15 @@
 import { readFileSync } from "node:fs";
+import type { RetroEnd, RetroScope } from "./retro-record.ts";
 import { join } from "node:path";
 import { findPackageRoot } from "../package-root.ts";
 import type { LabelsConfig } from "../config/config.ts";
 import type { CommandLimits } from "../pi/command-timeout-extension.ts";
-import type { Issue, IssueDependency, Repository } from "../host/types.ts";
+import type {
+  HostProviderId,
+  Issue,
+  IssueDependency,
+  Repository,
+} from "../host/types.ts";
 import type { Facts } from "./facts.ts";
 import { parsePlanningBranch } from "./names.ts";
 import type { Phase } from "./phase.ts";
@@ -206,5 +212,50 @@ export function renderTriageEnvelope(input: TriageEnvelopeInput): string {
     needsInfo: input.labels.needsInfo,
     unsuitable: input.labels.unsuitable,
     issue: renderIssue(input.issue, input.trusted, input.dependencies),
+  });
+}
+
+export type RetroEnvelopeInput = {
+  repository: { owner: string; repo: string };
+  provider: HostProviderId;
+  skillPath: string;
+  issue: { number: number; url?: string };
+  scope: RetroScope;
+  sourceMap: string;
+  /** Interactive Retros ask the maintainer before filing. */
+  interactive: boolean;
+};
+
+function retroEndText(end: RetroEnd): string {
+  return end.kind === "merged"
+    ? `merged, implementation pull request #${end.pullRequest}`
+    : `stopped with Needs Info in Run attempt ${end.runId}`;
+}
+
+/** The Retro instructions: the unattended prompt, or the interactive tool result. */
+export function renderRetroEnvelope(input: RetroEnvelopeInput): string {
+  const { scope } = input;
+  const filing = scope.mode === "file-issues";
+  return renderTemplate("retro-envelope.md", {
+    repository: `${input.repository.owner}/${input.repository.repo}`,
+    skillPath: input.skillPath,
+    issue: String(input.issue.number),
+    issueUrl: input.issue.url ?? "no URL",
+    end: retroEndText(scope.end),
+    runIds: scope.runIds.join(", "),
+    retroId: scope.retroId,
+    provider: input.provider,
+    cli: input.provider === "forgejo-tea" ? "tea" : "gh",
+    mode: scope.mode,
+    findings: scope.findings,
+    modeRules: filing
+      ? input.interactive
+        ? "Filing is allowed. Show the findings to the maintainer and ask before you file or comment. Host writes are limited to new `retro` issues, comments on open `retro` issues, and the `retro` label."
+        : "Filing is allowed. File or comment only for findings worth a maintainer's time. Host writes are limited to new `retro` issues, comments on open `retro` issues, and the `retro` label."
+      : "Mode findings-only: do not write to the host. Do not create issues, comments, or labels. Only write the findings file.",
+    finish: input.interactive
+      ? "When the Retro is done, confirm any issue URLs to the maintainer, then call `patchmill_finish_retro` with a one-line summary. In a Web session, then call `patchmill_end_session`."
+      : 'Nobody answers questions in this session. End with a fenced `json` block with exactly the fields `status` (`done` or `failed`) and `summary`. Write no text after it.\n\n```json\n{ "status": "done", "summary": "Wrote the findings file." }\n```',
+    sourceMap: input.sourceMap.trimEnd(),
   });
 }

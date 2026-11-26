@@ -190,7 +190,11 @@ test("a confirmed merge with nothing left is cleaned without a hook or log entry
   const c = await setupCleanup(t);
   assert.equal((await c.cleanup()).status, "cleaned");
   const log = await fs.readFile(join(c.issueDir, "cleanup.log"), "utf8");
-  assert.deepEqual(await c.cleanup(), { status: "cleaned", warnings: [] });
+  assert.deepEqual(await c.cleanup(), {
+    status: "cleaned",
+    warnings: [],
+    merged: { pullRequest: 1 },
+  });
   assert.equal(await fs.readFile(join(c.issueDir, "cleanup.log"), "utf8"), log);
   assert.equal(await fs.readFile(c.counter, "utf8"), "hook ran\n");
 });

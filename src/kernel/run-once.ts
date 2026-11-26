@@ -48,6 +48,8 @@ import { selectRunIssue } from "./issue-selection.ts";
 import { newRunId } from "./names.ts";
 import { cleanupMergedIssue, type CleanupResult } from "./merged-cleanup.ts";
 import { sweepMergedIssues } from "./merged-cleanup-sweep.ts";
+import type { RetroEnd } from "./retro-record.ts";
+import { runUnattendedRetro } from "./retro-session.ts";
 import type { ParsedResult } from "./result.ts";
 import { explainMissingResult } from "./unfinished-runs.ts";
 import {
@@ -138,6 +140,17 @@ export async function runOneIssue(
       report: output.stderr,
       ...(options.signal ? { signal: options.signal } : {}),
       ...(heldLock ? { skipIssue: options.issue } : {}),
+      // An Interactive Issue run offers its Retro in the console instead.
+      ...(deps.human
+        ? {}
+        : {
+            retro: (issue: number, end: RetroEnd) =>
+              runUnattendedRetro(config, deps, {
+                issue,
+                end,
+                ...(options.signal ? { signal: options.signal } : {}),
+              }),
+          }),
     });
   }
   await workflow.sync(options.issue);
@@ -712,6 +725,23 @@ export async function runOneIssue(
       { status: outcome.status, label: stop.label },
       cleanup?.status,
     );
+    const retroEnd: RetroEnd | undefined =
+      deps.human || paused
+        ? undefined
+        : cleanup?.merged
+          ? { kind: "merged", pullRequest: cleanup.merged.pullRequest }
+          : outcome.status === "stopped" &&
+              stop.label === "needsInfo" &&
+              sessions.length > 0 &&
+              !options.planOnly
+            ? { kind: "needs-info", runId }
+            : undefined;
+    if (retroEnd)
+      await runUnattendedRetro(config, deps, {
+        issue: issueNumber,
+        end: retroEnd,
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
     return outcome;
   } finally {
     if (lock !== heldLock) await lock.release();

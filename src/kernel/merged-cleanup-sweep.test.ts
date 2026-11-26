@@ -253,3 +253,76 @@ test("the sweep passes over skipIssue and still cleans other merged issues", asy
     false,
   );
 });
+
+test("a confirmed merge reports its pull request, for cleaned and kept", async (t) => {
+  const c = await setupCleanup(t);
+  const pullRequest = c.host.state().pullRequests[0]!.number;
+  await fs.writeFile(join(c.worktree, "dirty"), "keep");
+  const kept = await c.cleanup();
+  assert.equal(kept.status, "kept");
+  assert.deepEqual(kept.merged, { pullRequest });
+  await fs.rm(join(c.worktree, "dirty"));
+  const cleaned = await c.cleanup();
+  assert.equal(cleaned.status, "cleaned");
+  assert.deepEqual(cleaned.merged, { pullRequest });
+});
+
+test("an unconfirmed merge or a host failure before confirmation has no merged", async (t) => {
+  const c = await setupCleanup(t);
+  await c.mutate((state) => {
+    state.pullRequests[0]!.state = "open";
+  });
+  const skipped = await c.cleanup();
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.merged, undefined);
+  const failed = await c.cleanup({
+    host: {
+      ...c.deps.host,
+      viewIssue: async () => {
+        throw new Error("host unavailable");
+      },
+    },
+  });
+  assert.equal(failed.status, "kept");
+  assert.equal(failed.merged, undefined);
+});
+
+test("the sweep calls retro inside the issue lock for a confirmed merge", async (t) => {
+  const c = await setupCleanup(t);
+  const pullRequest = c.host.state().pullRequests[0]!.number;
+  const calls: unknown[] = [];
+  await sweepMergedIssues({
+    ...c.services,
+    retro: async (issue, end) => {
+      calls.push([issue, end]);
+      await assert.rejects(acquireLock(c.lockPath), /lock/i);
+    },
+  });
+  assert.deepEqual(calls, [[9, { kind: "merged", pullRequest }]]);
+  // The kept or cleaned issue is found again; the callback decides on repeats.
+  await sweepMergedIssues({
+    ...c.services,
+    retro: async (issue, end) => {
+      calls.push([issue, end]);
+    },
+  });
+  assert.equal(calls.length, 1, "a cleaned issue is no longer a candidate");
+});
+
+test("a throwing retro callback is reported and the sweep continues", async (t) => {
+  const c = await setupCleanup(t);
+  const other = await anotherIssue(c);
+  const issues: number[] = [];
+  await sweepMergedIssues({
+    ...c.services,
+    retro: async (issue) => {
+      issues.push(issue);
+      throw new Error("retro broke");
+    },
+  });
+  assert.deepEqual(issues, [9, 10]);
+  await assert.rejects(fs.access(other));
+  assert.ok(
+    c.output.some((line) => /Issue #9 Retro failed: retro broke/.test(line)),
+  );
+});
