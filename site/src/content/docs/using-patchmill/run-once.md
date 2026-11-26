@@ -183,8 +183,8 @@ follow the same cap through `<agentDir>/extensions/subagent/config.json`, which
 Patchmill updates before each session; without a cap they get the largest
 deadline that pi-subagents accepts. Patchmill changes only `timeoutMs` and
 `checkpointBeforeDeadlineMs` there. A configuration from an earlier
-`patchmill init` has `"timeoutMinutes": 90`; set it to `null` to turn the cap
-off.
+`patchmill init` has `"timeoutMinutes": 90`; set it to `null` or remove the key
+to turn the cap off.
 
 On a cap, cancellation, or termination, the kernel sends `SIGTERM` to the
 process group. After five seconds, it sends `SIGKILL` if needed. The kernel

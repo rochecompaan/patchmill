@@ -139,7 +139,8 @@ stops pi-subagents from loading, instead of a logged fallback.
 
 Upgrade note: a configuration that `patchmill init` wrote earlier has
 `"timeoutMinutes": 90`. That value keeps a 90-minute cap, which now also limits
-subagents. Set it to `null` to turn the cap off.
+subagents. To turn the cap off, set it to `null` or remove the key. A missing
+key gets the default, `null`.
 
 `pi.commandTimeoutMinutes` defaults to 20. It is the timeout that an agent
 `bash` call gets when it sets none. `pi.maxCommandTimeoutMinutes` defaults

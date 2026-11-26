@@ -452,7 +452,7 @@ These keys change the most:
   stop new work and hand off. Without a cap, triage sessions stop after 90
   minutes. Subagents follow the same cap (see [Safety](#safety)). A
   configuration from an earlier `patchmill init` has `90`, which keeps a
-  90-minute cap; set `null` to turn it off.
+  90-minute cap; set `null` or remove the key to turn it off.
 - `pi.commandTimeoutMinutes` (default 20) is the timeout of an agent `bash` call
   that sets none. `pi.maxCommandTimeoutMinutes` (default 25) is the longest
   timeout that a call can get. `0` turns a limit off. The default must not be
