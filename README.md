@@ -460,9 +460,9 @@ These keys change the most:
 - `pi.stallStopMinutes` (default 10) is the quiet time after which Patchmill
   stops the turn of an unattended planning or implementation session and asks
   the agent to continue another way. A running `bash` call inside its timeout is
-  not quiet. `pi.maxStalls` (default 3) is the Stall that stops the Run attempt
-  at Needs Info. A second Stall of the same command also stops it. `0` turns a
-  limit off.
+  not quiet. `pi.maxStalls` (default 3) is the number of Stalls that stops the
+  Run attempt at Needs Info. A second Stall of the same command also stops it.
+  `0` turns a limit off.
 - `git.baseBranch: null` uses the default branch of the remote.
 - `run` sets the triage interval and the wait limits of `patchmill run`.
 

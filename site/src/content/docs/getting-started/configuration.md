@@ -152,9 +152,10 @@ sessions.
 implementation session and its subagent sessions show no activity for this time,
 Patchmill stops the turn and asks the agent to continue another way. A running
 `bash` call inside its timeout is not quiet. `pi.maxStalls` defaults to 3. A
-Command timeout and a stall stop both count as a Stall. The `pi.maxStalls`-th
-Stall, or a second Stall of the same command, stops the Run attempt at Needs
-Info. Set a value to `0` to turn that limit off.
+Command timeout and a stall stop both count as a Stall. When the number of
+Stalls reaches `pi.maxStalls`, Patchmill stops the Run attempt at Needs Info. A
+second Stall of the same command also stops it. Set a value to `0` to turn that
+limit off.
 
 Run `patchmill auth` to configure provider credentials and choose a default
 model in `pi.agentDir`. The command verifies the provider and returns to the
