@@ -35,7 +35,12 @@ test("discovers design and explicit show-me siblings from configured pack paths"
   });
   await loader.reload();
   const loaded = loader.getSkills().skills;
-  for (const name of ["domain-modeling", "codebase-design", "show-me"]) {
+  for (const name of [
+    "domain-modeling",
+    "codebase-design",
+    "show-me",
+    "patchmill-retro",
+  ]) {
     const skill = loaded.find((entry) => entry.name === name);
     assert.ok(skill, `Missing installed skill ${name}`);
     assert.equal(skill.filePath, join(root, "custom/pack", name, "SKILL.md"));
@@ -71,6 +76,21 @@ test("discovers design and explicit show-me siblings from configured pack paths"
     );
 });
 
+test("console loads the retro skill from its own configured pack", () => {
+  const root = "/repo";
+  assert.deepEqual(consoleSkillPaths(DEFAULT_CONFIG, root), [
+    join(root, ".patchmill/skills"),
+  ]);
+  const config = {
+    ...DEFAULT_CONFIG,
+    skills: { ...DEFAULT_CONFIG.skills, retro: "custom/retro/patchmill-retro" },
+  };
+  assert.deepEqual(consoleSkillPaths(config, root), [
+    join(root, ".patchmill/skills"),
+    join(root, "custom/retro"),
+  ]);
+});
+
 test("console discovers the whole configured pack and provisions worker skill injection", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "console-skills-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -87,6 +107,7 @@ test("console discovers the whole configured pack and provisions worker skill in
       ...DEFAULT_CONFIG.skills,
       planning: "pack/planning",
       implementation: "pack/implementation",
+      retro: "pack/review",
     },
   };
   const paths = consoleSkillPaths(config, root);

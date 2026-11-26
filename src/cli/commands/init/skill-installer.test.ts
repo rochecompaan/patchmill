@@ -123,6 +123,8 @@ test("installs complete real packs with hashes, repairs files and preserves unch
     "patchmill-frontend-review/SKILL.md",
     "patchmill-frontend-review/LICENSE",
     "patchmill-frontend-review/references/web-interface-guidelines.md",
+    "patchmill-retro/SKILL.md",
+    "patchmill-retro/LICENSE",
   ])
     await stat(join(destination, path));
   assert.deepEqual(
