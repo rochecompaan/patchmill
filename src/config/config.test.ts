@@ -28,6 +28,22 @@ test("stateTracking defaults to labels and accepts local", () => {
     "local",
   );
 });
+test("retro defaults to off with the managed retro skill", () => {
+  const config = parseConfig({});
+  assert.equal(config.retro.unattended, "off");
+  assert.equal(config.skills.retro, ".patchmill/skills/patchmill-retro");
+});
+test("retro.unattended accepts the three modes and rejects others", () => {
+  for (const mode of ["off", "findings-only", "file-issues"] as const)
+    assert.equal(
+      parseConfig({ retro: { unattended: mode } }).retro.unattended,
+      mode,
+    );
+  assert.throws(
+    () => parseConfig({ retro: { unattended: "on" } }),
+    /Invalid value for retro.unattended/,
+  );
+});
 test("stateTracking rejects other values", () => {
   assert.throws(
     () => parseConfig({ workflow: { stateTracking: "remote" } }),

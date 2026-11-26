@@ -66,6 +66,24 @@ makes the actual wait between half and all of that value. A pass that does work
 resets both waits. Each value must be a number greater than 0. Each `maxSeconds`
 must be at least its `initialSeconds` and at most `2147483` (about 24 days).
 
+## Retros
+
+`retro.unattended` selects the Retro of unattended runs. A Retro reviews the
+session files of an ended Issue run: a merged implementation pull request, or a
+Run attempt that stops with Needs Info.
+
+| Value             | Meaning                                                 |
+| ----------------- | ------------------------------------------------------- |
+| `"off"` (default) | No Retro in unattended runs.                            |
+| `"findings-only"` | Write `findings.md`. Make no host writes.               |
+| `"file-issues"`   | Also file `retro` issues, or comment on a matching one. |
+
+`skills.retro` (default `.patchmill/skills/patchmill-retro`) names the skill.
+Interactive Issue runs ignore `retro.unattended`: the console agent asks the
+maintainer, and asks again before it files. Findings go to
+`<runsDir>/issue-N/retros/<id>/findings.md`. A Retro failure only warns. It
+never changes the outcome of the issue.
+
 ## Paths and git
 
 `paths` contains `specsDir`, `plansDir`, `worktreeDir`, and `runsDir`. The
@@ -110,9 +128,9 @@ triggers and retry behavior.
 
 ## Skills and Pi
 
-`skills` contains only `triage`, `planning`, and `implementation`. Each value
-names a directory with a `SKILL.md` file. Put repository procedures in skills
-and `AGENTS.md`, not extra configuration keys.
+`skills` contains only `triage`, `planning`, `implementation`, and `retro`. Each
+value names a directory with a `SKILL.md` file. Put repository procedures in
+skills and `AGENTS.md`, not extra configuration keys.
 
 `pi.agentDir` defaults to `.patchmill/pi-agent`.
 
@@ -185,7 +203,8 @@ shell without opening Pi chat. See
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/patchmill-implementation"
+    "implementation": ".patchmill/skills/patchmill-implementation",
+    "retro": ".patchmill/skills/patchmill-retro"
   },
   "pi": {
     "agentDir": ".patchmill/pi-agent",
@@ -199,6 +218,7 @@ shell without opening Pi chat. See
     "specApproval": { "required": false },
     "planApproval": { "required": false }
   },
+  "retro": { "unattended": "off" },
   "run": {
     "triageIntervalMinutes": 5,
     "conflictRetryMinutes": 30,

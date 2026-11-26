@@ -14,14 +14,15 @@ It leaves valid configuration unchanged and does not migrate earlier versions.
 See [Skills workflow](/reference/skills-workflow/) for diagrams of the skills
 that each phase uses.
 
-Only three skill keys exist in `patchmill.config.json`:
+Only four skill keys exist in `patchmill.config.json`:
 
 ```json
 {
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/patchmill-implementation"
+    "implementation": ".patchmill/skills/patchmill-implementation",
+    "retro": ".patchmill/skills/patchmill-retro"
   }
 }
 ```
@@ -29,16 +30,20 @@ Only three skill keys exist in `patchmill.config.json`:
 Each path names a directory with `SKILL.md`. Custom entry points must preserve
 the result protocol and the kernel's ownership boundaries. Put environment
 setup, review, and evidence instructions in skills or `AGENTS.md`. They are not
-extra configuration hooks.
+extra configuration hooks. The retro skill is the one skill that may write to
+the host: it may create `retro` issues, comment on them, and create the `retro`
+label.
 
 ## Installed pack
 
-The eleven bundled Patchmill skills are `patchmill-issue-triage`,
-`patchmill-planning`, `patchmill-implementation`, `patchmill-visual-evidence`,
-`patchmill-frontend-review`, `frontend-design`, `show-me`, `module-size`,
-`patchmill-plan`, `patchmill-label`, and `patchmill-cleanup`. Patchmill vendors
-`frontend-design` from Anthropic and the frontend review rules from Vercel at
-pinned commits. See `THIRD_PARTY_NOTICES.md` for their sources and licenses.
+The twelve bundled Patchmill skills are `patchmill-issue-triage`,
+`patchmill-planning`, `patchmill-implementation`, `patchmill-retro`,
+`patchmill-visual-evidence`, `patchmill-frontend-review`, `frontend-design`,
+`show-me`, `module-size`, `patchmill-plan`, `patchmill-label`, and
+`patchmill-cleanup`. Patchmill adapts `patchmill-retro` from the Matt Pocock
+`retro` skill, and vendors `frontend-design` from Anthropic and the frontend
+review rules from Vercel at pinned commits. See `THIRD_PARTY_NOTICES.md` for
+their sources and licenses.
 
 The thirteen selected Superpowers skills are `brainstorming`, `writing-plans`,
 `executing-plans`, `subagent-driven-development`, `test-driven-development`,
