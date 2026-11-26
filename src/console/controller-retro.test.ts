@@ -135,10 +135,12 @@ test("Run retro claims once and returns the instructions", async (t) => {
   const [record] = await c.records();
   assert.equal(record!.status, "started");
   assert.ok(text.includes(String(record!.findings ?? "findings.md")));
+  const shown = c.pi.selections.length;
   assert.equal(
     await c.pi.callTool("patchmill_offer_retro", {}, { select: RUN_RETRO }),
-    "A Retro for this Issue run end already exists.",
+    "No Issue run end offers a Retro.",
   );
+  assert.equal(c.pi.selections.length, shown, "no second dialog");
   assert.match(
     await c.pi.callTool("patchmill_finish_retro", { summary: "Filed #5." }),
     /^The Retro is done/,
@@ -173,12 +175,17 @@ test("a held issue lock refuses the claim", async (t) => {
   try {
     assert.match(
       await c.controller.startRetro(),
-      /holds the issue lock\. No Retro was started\./,
+      /holds the issue lock\. No Retro was started\. Try again later\./,
     );
   } finally {
     await lock.release();
   }
   assert.deepEqual(await c.records(), []);
+  // The offer stays open after a held lock.
+  assert.deepEqual(c.controller.retroOffer(), {
+    kind: "needs-info",
+    runId: RUN,
+  });
 });
 
 test("a PR-ready run offers no Retro", async (t) => {

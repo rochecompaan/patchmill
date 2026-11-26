@@ -8,7 +8,6 @@ import {
   type RetroEnd,
   type RetroScope,
 } from "../kernel/retro-record.ts";
-import { retroInstructions } from "../kernel/retro-session.ts";
 
 /** What the console needs to run an interactive Retro. */
 export type ConsoleRetro = {
@@ -20,7 +19,8 @@ export type ConsoleRetro = {
 
 export type RetroClaim =
   | { ok: true; scope: RetroScope; issueDir: string }
-  | { ok: false; text: string };
+  /** `retry`: the lock failed, so a later call can still claim. */
+  | { ok: false; text: string; retry?: boolean };
 
 /**
  * Claims the Retro of an Issue run end under the issue lock. An interactive
@@ -38,9 +38,10 @@ export async function claimConsoleRetro(
   } catch (error) {
     return {
       ok: false,
+      retry: true,
       text:
         error instanceof LockHeldError
-          ? "Another Patchmill process holds the issue lock. No Retro was started."
+          ? "A Run attempt holds the issue lock. No Retro was started. Try again later."
           : `Could not take the issue lock: ${errorMessage(error)}`,
     };
   }
@@ -57,21 +58,4 @@ export async function claimConsoleRetro(
   } finally {
     await lock.release();
   }
-}
-
-/** The Retro instructions for the Console agent. */
-export function consoleRetroInstructions(
-  retro: ConsoleRetro,
-  claim: { scope: RetroScope; issueDir: string },
-  issue: number,
-): Promise<string> {
-  return retroInstructions({
-    config: retro.config,
-    host: retro.host,
-    repoRoot: retro.repoRoot,
-    issue,
-    issueDir: claim.issueDir,
-    scope: claim.scope,
-    interactive: true,
-  });
 }

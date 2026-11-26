@@ -10,11 +10,8 @@ import type { RunSnapshot } from "../kernel/run-snapshot.ts";
 import type { RunOnceOutcome } from "../kernel/run-once.ts";
 import { costLine } from "../kernel/pi-cost.ts";
 import { finishRetro, type RetroScope } from "../kernel/retro-record.ts";
-import {
-  claimConsoleRetro,
-  consoleRetroInstructions,
-  type ConsoleRetro,
-} from "./retro-offer.ts";
+import { retroInstructions } from "../kernel/retro-session.ts";
+import { claimConsoleRetro, type ConsoleRetro } from "./retro-offer.ts";
 import type { WorkerLauncher } from "./worker-launcher.ts";
 import type { ConsoleSession } from "./planning-usage.ts";
 import { collectPlanningDialogFacts } from "./planning-dialog-facts.ts";
@@ -64,6 +61,8 @@ export class ConsoleController implements HumanChannel {
   private snapshot: RunSnapshot | undefined;
   private ended: EndedRun | undefined;
   private retroScope: RetroScope | undefined;
+  /** The offer is answered: a claim ran or found an existing Retro. */
+  private retroHandled = false;
   private planning: PlanningConversation;
   private waiting: Wait | undefined;
   private continuation: ((answer: "continue" | "quit") => void) | undefined;
@@ -86,6 +85,7 @@ export class ConsoleController implements HumanChannel {
     this.snapshot = undefined;
     this.ended = undefined;
     this.retroScope = undefined;
+    this.retroHandled = false;
     if (issue !== undefined)
       this.deps.runStatus?.show({ issue, label: "preparing" });
     this.active = Promise.resolve()
@@ -168,15 +168,22 @@ export class ConsoleController implements HumanChannel {
 
   /** The Issue run end that a Retro can cover, when the ended run has one. */
   retroOffer() {
-    return this.deps.retro && !this.active ? this.ended?.retroEnd : undefined;
+    return this.deps.retro && !this.active && !this.retroHandled
+      ? this.ended?.retroEnd
+      : undefined;
   }
 
   private async claimRetro() {
+    const retro = this.deps.retro;
+    const ended = this.ended;
     const end = this.retroOffer();
     const runDir = this.snapshot?.runDir;
-    if (!end || !runDir || !this.deps.retro || !this.ended)
+    if (!retro || !ended || !end || !runDir)
       return { ok: false as const, text: "No Issue run end offers a Retro." };
-    return claimConsoleRetro(this.deps.retro, { runDir, end });
+    const claim = await claimConsoleRetro(retro, { runDir, end });
+    // A held lock leaves the offer open, so the maintainer can try again.
+    if (claim.ok || !claim.retry) this.retroHandled = true;
+    return claim.ok ? { ...claim, retro, issue: ended.issue } : claim;
   }
 
   /** Claims the Retro and returns its instructions for the Console agent. */
@@ -185,11 +192,15 @@ export class ConsoleController implements HumanChannel {
     if (!claim.ok) return claim.text;
     this.retroScope = claim.scope;
     try {
-      return await consoleRetroInstructions(
-        this.deps.retro!,
-        claim,
-        this.ended!.issue,
-      );
+      return await retroInstructions({
+        config: claim.retro.config,
+        host: claim.retro.host,
+        repoRoot: claim.retro.repoRoot,
+        issue: claim.issue,
+        issueDir: claim.issueDir,
+        scope: claim.scope,
+        interactive: true,
+      });
     } catch (error) {
       this.retroScope = undefined;
       const reason = error instanceof Error ? error.message : String(error);
