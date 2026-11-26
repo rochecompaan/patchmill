@@ -114,6 +114,22 @@ rather than vendored as modified copies in Patchmill's package.
 Both skills come from one immutable production dependency archive. Planning uses
 the installed files without runtime downloads.
 
+### Adapted retro skill
+
+- Package: `mattpocock-skills`, version `1.3.2`
+- Source file: `skills/engineering/retro/SKILL.md`
+- Patchmill file: `skills/patchmill-retro/SKILL.md`, installed as
+  `.patchmill/skills/patchmill-retro/`
+- License: MIT, copied to `skills/patchmill-retro/LICENSE` from
+  `node_modules/mattpocock-skills/LICENSE`
+- Purpose: The Retro at the end of an Issue run.
+- Modification status: adapted. Patchmill keeps the upstream categories and the
+  "Implementation vs Review" and "Files" reference. It replaces the user-invoked
+  steps with the Retro inputs, session-file reading recipes, a findings file,
+  filing rules for `retro` issues, and a result block. It does not copy
+  `agents/openai.yaml`, and it uses `simple-english` instead of the upstream
+  `writing-for-agents` skill.
+
 ## SimpleEnglish skill
 
 - Source: <https://github.com/AminBlg/SimpleEnglish/tree/v1.2.0/skills>

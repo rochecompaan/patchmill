@@ -160,6 +160,7 @@ async function openConsole(
     runsDir: config.paths.runsDir,
     issue,
     startRun: createStartRun(config, deps),
+    retro: { config, repoRoot, host: deps.host, now: deps.now },
     onFatalSwitch: (nextIssue, error) =>
       fatalSwitch.resolve(
         `${error instanceof Error ? error.message : String(error)}\nRun \`patchmill run-once --interactive --issue ${nextIssue}\` to continue.`,

@@ -22,7 +22,12 @@ export type PatchmillConfig = {
     runsDir: string;
   };
   git: { baseBranch: string | null };
-  skills: { triage: string; planning: string; implementation: string };
+  skills: {
+    triage: string;
+    planning: string;
+    implementation: string;
+    retro: string;
+  };
   pi: {
     agentDir: string;
     /** The Session cap in minutes, or null for no cap. */
@@ -41,8 +46,16 @@ export type PatchmillConfig = {
     specApproval: { required: boolean };
     planApproval: { required: boolean };
   };
+  retro: { unattended: RetroMode };
   run: RunConfig;
 };
+/** Whether an unattended Run attempt runs a Retro at an Issue run end. */
+export type RetroMode = "off" | "findings-only" | "file-issues";
+export const RETRO_MODES: readonly RetroMode[] = [
+  "off",
+  "findings-only",
+  "file-issues",
+];
 export type BackoffSettings = { initialSeconds: number; maxSeconds: number };
 export type RunConfig = {
   triageIntervalMinutes: number;
@@ -71,6 +84,7 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
     triage: ".patchmill/skills/patchmill-issue-triage",
     planning: ".patchmill/skills/patchmill-planning",
     implementation: ".patchmill/skills/patchmill-implementation",
+    retro: ".patchmill/skills/patchmill-retro",
   },
   pi: {
     agentDir: ".patchmill/pi-agent",
@@ -85,6 +99,7 @@ export const DEFAULT_CONFIG: PatchmillConfig = {
     specApproval: { required: false },
     planApproval: { required: false },
   },
+  retro: { unattended: "off" },
   run: {
     triageIntervalMinutes: 5,
     conflictRetryMinutes: 30,
@@ -119,6 +134,7 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "skills.triage", kind: "string" },
   { path: "skills.planning", kind: "string" },
   { path: "skills.implementation", kind: "string" },
+  { path: "skills.retro", kind: "string" },
   { path: "pi.agentDir", kind: "string" },
   { path: "pi.timeoutMinutes", kind: "number|null" },
   { path: "pi.commandTimeoutMinutes", kind: "number" },
@@ -128,6 +144,7 @@ const schema: { path: string; kind: Kind }[] = [
   { path: "workflow.stateTracking", kind: "string" },
   { path: "workflow.specApproval.required", kind: "boolean" },
   { path: "workflow.planApproval.required", kind: "boolean" },
+  { path: "retro.unattended", kind: "string" },
   { path: "run.triageIntervalMinutes", kind: "number" },
   { path: "run.conflictRetryMinutes", kind: "number" },
   { path: "run.idleBackoff.initialSeconds", kind: "number" },
@@ -265,6 +282,14 @@ export function parseConfig(raw: unknown): PatchmillConfig {
           value !== "local"
         ) {
           throw new ConfigError(`Invalid value for ${path}`);
+        }
+        if (
+          path === "retro.unattended" &&
+          !RETRO_MODES.includes(value as RetroMode)
+        ) {
+          throw new ConfigError(
+            `Invalid value for ${path}: use ${RETRO_MODES.join(", ")}`,
+          );
         }
         target[key] = structuredClone(value);
       } else if (schema.some((entry) => entry.path.startsWith(`${path}.`))) {

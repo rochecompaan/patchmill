@@ -1,7 +1,7 @@
 {
-  "installedAt": "2026-11-23T13:04:38.580Z",
+  "installedAt": "2026-11-26T13:11:10.735Z",
   "sources": {
-    "patchmill": "1.1.0",
+    "patchmill": "1.2.0",
     "superpowers": "7.0.2",
     "simpleEnglish": "1.2.0",
     "mattPocock": "1.3.2"
@@ -162,6 +162,14 @@
     {
       "path": "patchmill-planning/SKILL.md",
       "sha256": "1d22373fcdf184f56a975cfd54657ab6dc6750827fbe7432490f287fbc1f44a8"
+    },
+    {
+      "path": "patchmill-retro/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    {
+      "path": "patchmill-retro/SKILL.md",
+      "sha256": "7f337a3f3492490dc1a2e9f07c6695580932f980fa5fbaada9809d0681ea4ab4"
     },
     {
       "path": "patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",

@@ -12,12 +12,23 @@ import {
   webSessionTarget,
 } from "./web-session-extension.ts";
 import { WEB_SESSION_STOP_COMMAND } from "../kernel/pi-rpc-interactive.ts";
+import { DEFAULT_CONFIG } from "../config/config.ts";
+import type { Host } from "../host/types.ts";
+import type { RunSnapshot } from "../kernel/run-snapshot.ts";
+import { RETRO_OFFER } from "./run-end.ts";
+import { createPatchmillExtension } from "./extension.ts";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const texts = (api: ReturnType<typeof fakeExtensionApi>) =>
   api.messages.map((m) => m.message.content);
 
-function setup(startRun: StartRun, refusal?: string) {
+const retro = {
+  config: DEFAULT_CONFIG,
+  repoRoot: "/nonexistent",
+  host: {} as Host,
+};
+
+function setup(startRun: StartRun, refusal?: string, withRetro = false) {
   const events = fakeSubagents();
   const api = fakeExtensionApi(events);
   createWebSessionExtension({
@@ -25,6 +36,7 @@ function setup(startRun: StartRun, refusal?: string) {
     startRun,
     client: (bus) => new SubagentsClient(bus, { replyTimeoutMs: 100 }),
     ...(refusal ? { refusal } : {}),
+    ...(withRetro ? { retro } : {}),
   })(api);
   return { api, events };
 }
@@ -150,4 +162,89 @@ test("the stop command stops the Issue run before session_shutdown", async () =>
 
 test("WEB_SESSION_EXTENSION_PATH exists", () => {
   assert.ok(existsSync(WEB_SESSION_EXTENSION_PATH));
+});
+
+const needsInfoRun =
+  (gate?: Promise<void>): StartRun =>
+  async (_issue, _human, observe) => {
+    observe({
+      issue: 7,
+      runId: "20261126-084012-e932",
+      runDir: "/nonexistent/issue-7/20261126-084012-e932",
+      startedAt: "now",
+      session: 1,
+      state: "ended",
+      summary: "Which login?",
+    } satisfies RunSnapshot);
+    await gate;
+    return {
+      status: "stopped",
+      issue: 7,
+      label: "needsInfo",
+      summary: "Which login?",
+    };
+  };
+
+test("a needs-info run without a Retro option closes at once", async () => {
+  const { api } = setup(needsInfoRun());
+  await api.fire("session_start");
+  await tick();
+  await tick();
+  assert.equal(api.shutdowns, 1);
+  assert.equal(texts(api).at(-1), "Which login?");
+});
+
+test("a run with a Retro offer stays open until patchmill_end_session", async () => {
+  const { api } = setup(needsInfoRun(), undefined, true);
+  await api.fire("session_start");
+  await tick();
+  await tick();
+  assert.equal(api.shutdowns, 0);
+  const offer = api.messages.at(-1)!;
+  assert.equal(offer.message.content, `Which login?\n${RETRO_OFFER}`);
+  assert.deepEqual(offer.options, { triggerTurn: true });
+  assert.equal(
+    await api.callTool("patchmill_end_session", {}),
+    "The Web session ends now.",
+  );
+  assert.equal(api.shutdowns, 1);
+});
+
+test("patchmill_end_session refuses during an active run", async () => {
+  const finish = Promise.withResolvers<void>();
+  const { api } = setup(needsInfoRun(finish.promise), undefined, true);
+  await api.fire("session_start");
+  await tick();
+  assert.match(
+    await api.callTool("patchmill_end_session", {}),
+    /An Issue run is active/,
+  );
+  assert.equal(api.shutdowns, 0);
+  finish.resolve();
+  await tick();
+  await tick();
+  assert.equal(api.shutdowns, 0);
+});
+
+test("a thrown run with a Retro option closes at once", async () => {
+  const { api } = setup(
+    async () => {
+      throw new Error("sync failed");
+    },
+    undefined,
+    true,
+  );
+  await api.fire("session_start");
+  await tick();
+  await tick();
+  assert.equal(api.shutdowns, 1);
+});
+
+test("the terminal console has no patchmill_end_session", () => {
+  const api = fakeExtensionApi();
+  createPatchmillExtension({ startRun: async () => ({ status: "no-work" }) })(
+    api,
+  );
+  assert.equal(api.tools.has("patchmill_end_session"), false);
+  assert.equal(api.tools.has("patchmill_offer_retro"), true);
 });

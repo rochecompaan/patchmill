@@ -416,7 +416,8 @@ Each key is optional. Patchmill rejects unknown keys by name.
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/patchmill-implementation"
+    "implementation": ".patchmill/skills/patchmill-implementation",
+    "retro": ".patchmill/skills/patchmill-retro"
   },
   "pi": {
     "agentDir": ".patchmill/pi-agent",
@@ -431,6 +432,7 @@ Each key is optional. Patchmill rejects unknown keys by name.
     "specApproval": { "required": false },
     "planApproval": { "required": false }
   },
+  "retro": { "unattended": "off" },
   "run": {
     "triageIntervalMinutes": 5,
     "conflictRetryMinutes": 30,
@@ -463,6 +465,9 @@ These keys change the most:
   not quiet. `pi.maxStalls` (default 3) is the number of Stalls that stops the
   Run attempt at Needs Info. A second Stall of the same command also stops it.
   `0` turns a limit off.
+- `retro.unattended` (default `"off"`) runs a [Retro](#retros) at the end of
+  each unattended Issue run. `"findings-only"` writes findings only.
+  `"file-issues"` also lets the agent file or comment on `retro` issues.
 - `git.baseBranch: null` uses the default branch of the remote.
 - `run` sets the triage interval and the wait limits of `patchmill run`.
 
@@ -470,6 +475,25 @@ The label names must be different from each other. The comparison ignores case.
 `init` does not change a valid configuration, and rejects an invalid one. The
 [configuration guide](https://patchmill.dev/getting-started/configuration/)
 explains each key, including host logins and trusted comment authors.
+
+## Retros
+
+A Retro reviews the session files of one ended Issue run and suggests changes to
+the agent's environment. Examples are a missing check, an expensive tool call,
+or an instruction that changed nothing. An Issue run ends when its
+implementation pull request is merged, or when a Run attempt stops with Needs
+Info. A ready pull request, a gate wait, or a pause is not an end.
+
+- In an Interactive Issue run, the console agent asks whether to run a Retro.
+  The agent shows its findings and asks before it files or comments on an issue.
+- In unattended runs, set `retro.unattended` to `"findings-only"` or
+  `"file-issues"`. Patchmill then starts a short Pi session at each end.
+
+Each Retro covers the Run attempts that no earlier Retro covered. Its folder is
+`<runsDir>/issue-N/retros/<id>/` and holds `retro.json` and `findings.md`. Each
+end gets at most one Retro. A Retro never changes the outcome, labels, or
+comments of the source issue. Filed issues get the `retro` label and no workflow
+label, so normal triage picks them up.
 
 ## Local state mode
 
@@ -533,14 +557,16 @@ The [Run-once guide](https://patchmill.dev/using-patchmill/run-once/) and
 
 `patchmill init` installs the Patchmill skills in `.patchmill/skills`, together
 with pinned [Superpowers](https://github.com/obra/superpowers) and SimpleEnglish
-skills. Three keys in `patchmill.config.json` select the skill for each step:
-`skills.triage`, `skills.planning`, and `skills.implementation`. Each key names
-a directory that contains a `SKILL.md` file.
+skills. Four keys in `patchmill.config.json` select the skill for each step:
+`skills.triage`, `skills.planning`, `skills.implementation`, and `skills.retro`.
+Each key names a directory that contains a `SKILL.md` file.
 
 To change the workflow, copy a skill to a new directory, edit the copy, and set
 the matching key to that directory. Your skill must keep the result format that
-the kernel reads, and must leave labels and issue comments to the kernel. Put
-project rules, such as setup and test commands, in skills or `AGENTS.md`.
+the kernel reads, and must leave labels and issue comments to the kernel. The
+one exception is the retro skill, which may create `retro` issues, comment on
+them, and create the `retro` label. Put project rules, such as setup and test
+commands, in skills or `AGENTS.md`.
 
 Run `patchmill skills update` after you upgrade Patchmill. The command refuses
 to overwrite managed skill files that you edited.

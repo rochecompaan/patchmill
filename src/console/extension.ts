@@ -3,6 +3,8 @@ import type {
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { ConsoleController, type StartRun } from "./controller.ts";
+import type { EndedRun } from "./run-end.ts";
+import type { ConsoleRetro } from "./retro-offer.ts";
 import { SubagentsClient, type EventBus } from "./subagents-client.ts";
 import { createWorkerLauncher } from "./worker-launcher.ts";
 import { stopWorkers } from "./stray-workers.ts";
@@ -17,6 +19,10 @@ export function createPatchmillExtension(options: {
   registerShutdown?: (shutdown: () => Promise<void>) => void;
   /** Post the end-of-run message; the Web session posts its own. */
   announceRunEnd?: boolean;
+  /** Called with each described Issue run end. */
+  onRunEnd?: (ended: EndedRun) => void;
+  /** Without it, the console offers no Retro. */
+  retro?: ConsoleRetro;
 }): ExtensionFactory {
   return (pi) => {
     let controller: ConsoleController | undefined;
@@ -72,6 +78,8 @@ export function createPatchmillExtension(options: {
         ...(options.announceRunEnd === undefined
           ? {}
           : { announceRunEnd: options.announceRunEnd }),
+        ...(options.onRunEnd ? { onRunEnd: options.onRunEnd } : {}),
+        ...(options.retro ? { retro: options.retro } : {}),
       });
       try {
         const stopped = await stopWorkers(client);

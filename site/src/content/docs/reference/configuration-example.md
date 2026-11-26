@@ -26,7 +26,8 @@ Unknown keys fail by name. Copy only the values that your repository needs.
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/patchmill-implementation"
+    "implementation": ".patchmill/skills/patchmill-implementation",
+    "retro": ".patchmill/skills/patchmill-retro"
   },
   "pi": {
     "agentDir": ".patchmill/pi-agent",
@@ -40,6 +41,7 @@ Unknown keys fail by name. Copy only the values that your repository needs.
     "specApproval": { "required": false },
     "planApproval": { "required": false }
   },
+  "retro": { "unattended": "off" },
   "run": {
     "triageIntervalMinutes": 5,
     "conflictRetryMinutes": 30,
@@ -54,5 +56,6 @@ use Tea's default profile, or set an explicit Tea profile alias. GitHub init can
 seed the detected username for comment trust, not account selection.
 
 `git.baseBranch: null` uses the remote default branch. Both planning gates
-default off. The three skill paths each name a directory with `SKILL.md`. See
+default off. The four skill paths each name a directory with `SKILL.md`.
+`retro.unattended` is off, so only interactive runs offer a Retro. See
 [Configuration](/getting-started/configuration/) for these boundaries.

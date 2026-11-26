@@ -3,6 +3,9 @@ import { renderPlanningDialog } from "./planning-dialog.ts";
 import { Type } from "typebox";
 import type { ConsoleController } from "./controller.ts";
 
+export const RUN_RETRO = "Run retro";
+export const SKIP_RETRO = "Skip";
+
 export function registerConsoleTools(
   pi: ExtensionAPI,
   controller: () => ConsoleController,
@@ -89,6 +92,38 @@ export function registerConsoleTools(
     parameters: Type.Object({}),
     async execute() {
       return text(JSON.stringify(controller().status(), null, 2));
+    },
+  });
+  pi.registerTool({
+    name: "patchmill_offer_retro",
+    label: "Offer a Retro",
+    description:
+      "Ask the maintainer whether to run a Retro on the ended Issue run. Returns the Retro instructions when they accept.",
+    promptGuidelines: [
+      "When an end-of-run message offers a Retro, call `patchmill_offer_retro` after any explanation. Follow the returned instructions with the patchmill-retro skill.",
+    ],
+    parameters: Type.Object({}),
+    async execute(_id, _params, _signal, _update, ctx) {
+      const current = controller();
+      if (!current.retroOffer())
+        return text("No Issue run end offers a Retro.");
+      const choice = await ctx.ui.select("Run a retro on this Issue run?", [
+        RUN_RETRO,
+        SKIP_RETRO,
+      ]);
+      if (choice === RUN_RETRO) return text(await current.startRetro());
+      if (choice === SKIP_RETRO) return text(await current.skipRetro());
+      return text("No choice was made. No Retro was started.");
+    },
+  });
+  pi.registerTool({
+    name: "patchmill_finish_retro",
+    label: "Finish the Retro",
+    description:
+      "Mark the running Retro as done, after the findings file is written and any issue URLs are confirmed.",
+    parameters: Type.Object({ summary: Type.String() }),
+    async execute(_id, { summary }) {
+      return text(await controller().finishRetro(summary));
     },
   });
   pi.registerTool({

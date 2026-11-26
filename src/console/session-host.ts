@@ -2,6 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { createPatchmillExtension } from "./extension.ts";
 import { openIssueConsoleSession } from "./console-session.ts";
 import type { StartRun } from "./controller.ts";
+import type { ConsoleRetro } from "./retro-offer.ts";
 
 /** Carries the next issue across Pi's teardown/reload boundary. */
 export function createConsoleSessionHost(options: {
@@ -11,6 +12,7 @@ export function createConsoleSessionHost(options: {
   startRun: StartRun;
   onFatalSwitch?: (issue: number, error: unknown) => void;
   switchSession: (path: string) => Promise<{ cancelled: boolean }>;
+  retro?: ConsoleRetro;
 }) {
   let nextIssue: number | undefined = options.issue;
   let shutdown = async () => {};
@@ -29,6 +31,7 @@ export function createConsoleSessionHost(options: {
     return createPatchmillExtension({
       ...(firstIssue !== undefined ? { firstIssue } : {}),
       startRun: options.startRun,
+      ...(options.retro ? { retro: options.retro } : {}),
       registerShutdown: (handler) => {
         shutdown = async () => {
           closed = true;

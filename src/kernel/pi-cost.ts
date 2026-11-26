@@ -42,7 +42,7 @@ export function totalUsage(entries: PiUsage[]): PiUsage | undefined {
   };
 }
 
-type WalkedFile = {
+export type SessionFileUsage = {
   path: string;
   /** Path relative to the session directory, with `/` separators. */
   relative: string;
@@ -50,10 +50,51 @@ type WalkedFile = {
 };
 
 /**
+ * Reads every JSONL file below a directory. A file or folder that cannot be
+ * read or parsed goes to `unreadable` and does not hide the others.
+ */
+export async function readSessionFiles(
+  dir: string,
+): Promise<{ files: SessionFileUsage[]; unreadable: string[] }> {
+  const files: SessionFileUsage[] = [];
+  const unreadable: string[] = [];
+  async function walk(dir: string, relative: string): Promise<void> {
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      unreadable.push(dir);
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      const name = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(path, name);
+      } else if (entry.name.endsWith(".jsonl")) {
+        try {
+          const records: ParsedRecord[] = [];
+          for (const line of (await fs.readFile(path, "utf8")).split("\n"))
+            if (line.trim()) records.push(parseUsageRecord(JSON.parse(line)));
+          files.push({ path, relative: name, records });
+        } catch {
+          unreadable.push(path);
+        }
+      }
+    }
+  }
+  await walk(dir, "");
+  return { files, unreadable };
+}
+
+/**
  * Recorded child paths are absolute. A suffix match keeps moved or archived
  * run directories working.
  */
-function matches(file: WalkedFile, recorded: Set<string>): boolean {
+export function matchesFile(
+  file: Pick<SessionFileUsage, "path" | "relative">,
+  recorded: Iterable<string>,
+): boolean {
   for (const path of recorded)
     if (path === file.path || path.endsWith(`/${file.relative}`)) return true;
   return false;
@@ -72,26 +113,8 @@ export async function readSessionUsage(
   sessionDir: string,
   seen: Set<string> = new Set(),
 ): Promise<PiUsageRecord[] | undefined> {
-  const files: WalkedFile[] = [];
-  async function walk(dir: string, relative: string): Promise<void> {
-    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      const name = relative ? `${relative}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        await walk(path, name);
-      } else if (entry.name.endsWith(".jsonl")) {
-        const records: ParsedRecord[] = [];
-        for (const line of (await fs.readFile(path, "utf8")).split("\n"))
-          if (line.trim()) records.push(parseUsageRecord(JSON.parse(line)));
-        files.push({ path, relative: name, records });
-      }
-    }
-  }
-  try {
-    await walk(sessionDir, "");
-  } catch {
-    return undefined;
-  }
+  const { files, unreadable } = await readSessionFiles(sessionDir);
+  if (unreadable.length) return undefined;
   const transcripts = new Set<string>();
   for (const file of files)
     for (const record of file.records)
@@ -100,12 +123,12 @@ export async function readSessionUsage(
   // A child record whose session file is walked counts through that file.
   const covered = (sessionFile: string | undefined) =>
     sessionFile !== undefined &&
-    files.some((file) => matches(file, new Set([sessionFile])));
+    files.some((file) => matchesFile(file, [sessionFile]));
   const records: PiUsageRecord[] = [];
   let found = false;
   for (const file of files) {
     // A transcript copies its child session.
-    const skipFile = matches(file, transcripts);
+    const skipFile = matchesFile(file, transcripts);
     for (const parsed of file.records) {
       const candidates = [
         ...parsed.own.map((record) => ({ record, skip: skipFile })),

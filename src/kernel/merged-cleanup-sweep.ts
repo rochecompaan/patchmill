@@ -9,6 +9,7 @@ import {
   type CleanupServices,
 } from "./merged-cleanup.ts";
 import { parsePlanningBranch } from "./names.ts";
+import type { RetroEnd } from "./retro-record.ts";
 
 type DiscoveryInput = Pick<
   CleanupServices,
@@ -79,9 +80,15 @@ export async function discoverCleanupCandidates(
   return result;
 }
 
-/** `skipIssue` names an issue whose lock the caller holds; it is passed over. */
+/**
+ * `skipIssue` names an issue whose lock the caller holds; it is passed over.
+ * `retro` runs for each confirmed merge, while the sweep holds the issue lock.
+ */
 export async function sweepMergedIssues(
-  input: CleanupServices & { skipIssue?: number },
+  input: CleanupServices & {
+    skipIssue?: number;
+    retro?: (issue: number, end: RetroEnd) => Promise<void>;
+  },
 ): Promise<void> {
   if (input.signal?.aborted) return;
   let candidates: CleanupCandidate[];
@@ -106,7 +113,23 @@ export async function sweepMergedIssues(
         ),
         { now: input.now },
       );
-      await cleanupMergedIssue({ ...input, ...candidate, lock });
+      const cleanup = await cleanupMergedIssue({
+        ...input,
+        ...candidate,
+        lock,
+      });
+      if (cleanup.merged && input.retro && !input.signal?.aborted) {
+        try {
+          await input.retro(candidate.issue, {
+            kind: "merged",
+            pullRequest: cleanup.merged.pullRequest,
+          });
+        } catch (error) {
+          input.report(
+            `Issue #${candidate.issue} Retro failed: ${errorMessage(error)}`,
+          );
+        }
+      }
     } catch (error) {
       input.report(
         `Issue #${candidate.issue} cleanup ${error instanceof LockHeldError ? "skipped (active issue lock)" : "failed"}: ${errorMessage(error)}`,

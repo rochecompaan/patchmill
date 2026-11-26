@@ -14,6 +14,7 @@ export const PATCHMILL_SKILLS = [
   "patchmill-issue-triage",
   "patchmill-planning",
   "patchmill-implementation",
+  "patchmill-retro",
   "patchmill-visual-evidence",
   "patchmill-frontend-review",
   "frontend-design",
