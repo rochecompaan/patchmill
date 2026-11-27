@@ -1,6 +1,6 @@
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const require = createRequire(import.meta.url);
 export const PI_SUBAGENTS_PACKAGE_NAME = "pi-subagents";
@@ -41,12 +41,35 @@ export function readRootPiSubagentsPin(
 }
 
 /**
+ * Walks up from a resolved entry file to the directory whose package.json
+ * names pi-subagents. The entry may live below the root (0.90.0 moved it to
+ * bundle/index.js), and nested package.json files may exist on the way.
+ */
+export function packageRootFromEntry(entryPath: string): string {
+  let directory = dirname(entryPath);
+  for (;;) {
+    const manifestPath = join(directory, "package.json");
+    if (existsSync(manifestPath)) {
+      const manifest = readJson<{ name?: string }>(manifestPath);
+      if (manifest.name === PI_SUBAGENTS_PACKAGE_NAME) return directory;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) {
+      throw new Error(
+        `Unable to find the ${PI_SUBAGENTS_PACKAGE_NAME} package root above ${entryPath}`,
+      );
+    }
+    directory = parent;
+  }
+}
+
+/**
  * Finds the package directory through the public package entry. pi-subagents
  * intentionally does not export package.json, so resolving that subpath would
  * violate its export map.
  */
 export function resolvePiSubagentsPackageRoot(): string {
-  return dirname(require.resolve(PI_SUBAGENTS_PACKAGE_NAME));
+  return packageRootFromEntry(require.resolve(PI_SUBAGENTS_PACKAGE_NAME));
 }
 
 export function resolvePiSubagentsPackageJson(): string {

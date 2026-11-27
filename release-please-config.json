@@ -8,6 +8,11 @@
         {
           "type": "generic",
           "path": "nix/package.nix"
+        },
+        {
+          "type": "json",
+          "path": ".patchmill/skills/patchmill-skill-pack.json",
+          "jsonpath": "$.sources.patchmill"
         }
       ]
     }

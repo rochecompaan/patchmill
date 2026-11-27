@@ -1,11 +1,10 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { resolvePiSubagentsPackageRoot } from "../src/pi/pi-subagents-package.ts";
 
-const require = createRequire(import.meta.url);
 const workflowEngineVersion = "0.41.0";
 
 function parseVersion(version) {
@@ -28,7 +27,7 @@ if (!process.versions.bun) {
   throw new Error("The pi-subagents Bun workflow contract must run under Bun");
 }
 
-const packageRoot = dirname(require.resolve("pi-subagents"));
+const packageRoot = resolvePiSubagentsPackageRoot();
 const manifest = JSON.parse(
   readFileSync(join(packageRoot, "package.json"), "utf8"),
 );

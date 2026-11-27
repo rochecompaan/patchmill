@@ -28,7 +28,11 @@ test("release-please config manages the root node package and Nix version", () =
         "release-type"?: string;
         "package-name"?: string;
         "include-component-in-tag"?: boolean;
-        "extra-files"?: Array<{ type?: string; path?: string }>;
+        "extra-files"?: Array<{
+          type?: string;
+          path?: string;
+          jsonpath?: string;
+        }>;
       }
     >;
   }>("release-please-config.json");
@@ -37,9 +41,36 @@ test("release-please config manages the root node package and Nix version", () =
     "release-type": "node",
     "package-name": "patchmill",
     "include-component-in-tag": false,
-    "extra-files": [{ type: "generic", path: "nix/package.nix" }],
+    "extra-files": [
+      { type: "generic", path: "nix/package.nix" },
+      {
+        type: "json",
+        path: ".patchmill/skills/patchmill-skill-pack.json",
+        jsonpath: "$.sources.patchmill",
+      },
+    ],
   });
 });
+
+const skillPackMetadataPath = ".patchmill/skills/patchmill-skill-pack.json";
+
+test(
+  "skill-pack metadata records the released Patchmill version",
+  {
+    // The Nix package source excludes .patchmill/; the checkout CI job runs it.
+    skip: existsSync(join(repoRoot, skillPackMetadataPath))
+      ? false
+      : "skill-pack metadata is not part of this source tree",
+  },
+  () => {
+    const packageJson = readJson<{ version: string }>("package.json");
+    const metadata = readJson<{ sources?: { patchmill?: string } }>(
+      skillPackMetadataPath,
+    );
+
+    assert.equal(metadata.sources?.patchmill, packageJson.version);
+  },
+);
 
 test("Nix package version is marked for release-please updates", () => {
   const packageJson = readJson<{ version: string }>("package.json");
