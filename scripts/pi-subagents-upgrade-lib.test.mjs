@@ -172,22 +172,48 @@ test("PR body renders versions, release notes, changed files, and validation", (
   assert.match(body, /`npm test`/);
 });
 
-test("PR body rejects release notes larger than GitHub accepts", () => {
-  assert.throws(
-    () =>
-      renderPiSubagentsPullRequestBody({
-        currentVersion: "0.39.0",
-        targetVersion: "0.40.0",
-        releaseNotes: [
-          {
-            version: "0.40.0",
-            url: "https://example.test/v0.40.0",
-            body: "x".repeat(65_536),
-          },
-        ],
-        changedFiles: ["package.json"],
-        validationCommands: ["npm test"],
-      }),
-    /exceeds GitHub's 65,536-character limit/,
-  );
+test("PR body keeps the newest full release notes and links older ones when notes exceed GitHub's limit", () => {
+  const versions = ["0.81.0", "0.82.0", "0.83.0", "0.84.0"];
+  const body = renderPiSubagentsPullRequestBody({
+    currentVersion: "0.80.0",
+    targetVersion: "0.84.0",
+    releaseNotes: versions.map((version) => ({
+      version,
+      url: `https://example.test/v${version}`,
+      body: `notes-${version} ${"x".repeat(25_000)}`,
+    })),
+    changedFiles: ["package.json"],
+    validationCommands: ["npm test"],
+  });
+
+  assert.ok(body.length <= 65_536);
+  assert.match(body, /notes-0\.84\.0/);
+  assert.match(body, /notes-0\.83\.0/);
+  assert.doesNotMatch(body, /notes-0\.82\.0/);
+  assert.doesNotMatch(body, /notes-0\.81\.0/);
+  assert.match(body, /\[v0\.81\.0\]\(https:\/\/example\.test\/v0\.81\.0\)/);
+  assert.match(body, /\[v0\.82\.0\]\(https:\/\/example\.test\/v0\.82\.0\)/);
+  assert.match(body, /Full notes for the 2 oldest releases were left out/);
+  assert.ok(body.indexOf("v0.81.0") < body.indexOf("v0.84.0"));
+  assert.match(body, /`npm test`/);
+});
+
+test("PR body links the target release when its notes alone exceed GitHub's limit", () => {
+  const body = renderPiSubagentsPullRequestBody({
+    currentVersion: "0.39.0",
+    targetVersion: "0.40.0",
+    releaseNotes: [
+      {
+        version: "0.40.0",
+        url: "https://example.test/v0.40.0",
+        body: "x".repeat(65_536),
+      },
+    ],
+    changedFiles: ["package.json"],
+    validationCommands: ["npm test"],
+  });
+
+  assert.ok(body.length <= 65_536);
+  assert.match(body, /\[v0\.40\.0\]\(https:\/\/example\.test\/v0\.40\.0\)/);
+  assert.match(body, /Full notes for the 1 oldest release were left out/);
 });

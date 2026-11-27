@@ -185,21 +185,32 @@ test("reads release package versions and renders ordered release notes", async (
     releases: [normalizeGitHubRelease(release("v6.2.0"))],
   });
   assert.match(changedFiles, /- ````skills\/```\n## injected heading````/);
-  assert.throws(
-    () =>
-      renderSuperpowersPullRequestBody({
-        currentVersion: "1.0.0",
-        targetVersion: "2.0.0",
-        changedFiles: [],
-        validationCommands: [],
-        releases: [
-          normalizeGitHubRelease(
-            release("v2.0.0", { body: "x".repeat(70_000) }),
-          ),
-        ],
-      }),
-    /65,536/,
+});
+
+test("PR body keeps the newest full release notes and links older ones when notes exceed GitHub's limit", () => {
+  const tags = ["v6.1.0", "v6.1.1", "v6.2.0"];
+  const body = renderSuperpowersPullRequestBody({
+    currentVersion: "6.0.3",
+    targetVersion: "6.2.0",
+    changedFiles: ["package.json"],
+    validationCommands: ["npm test"],
+    releases: tags.map((tag) =>
+      normalizeGitHubRelease(
+        release(tag, { body: `notes-${tag} ${"x".repeat(30_000)}` }),
+      ),
+    ),
+  });
+
+  assert.ok(body.length <= 65_536);
+  assert.match(body, /notes-v6\.2\.0/);
+  assert.match(body, /notes-v6\.1\.1/);
+  assert.doesNotMatch(body, /notes-v6\.1\.0/);
+  assert.match(
+    body,
+    /- \[v6\.1\.0\]\(https:\/\/github\.com\/obra\/superpowers\/releases\/tag\/v6\.1\.0\)/,
   );
+  assert.match(body, /Full notes for the 1 oldest release were left out/);
+  assert.ok(body.indexOf("v6.1.0") < body.indexOf("### v6.2.0"));
 });
 
 test("checks root and installed lockfile records", () => {

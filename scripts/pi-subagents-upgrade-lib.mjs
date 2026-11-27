@@ -1,3 +1,5 @@
+import { renderReleaseNotesWithinLimit } from "./pull-request-release-notes.mjs";
+
 export const PI_SUBAGENTS_PACKAGE = "pi-subagents";
 export const PI_SUBAGENTS_REPOSITORY = "nicobailon/pi-subagents";
 
@@ -193,17 +195,17 @@ export function renderPiSubagentsPullRequestBody(summary) {
   const validation = (summary.validationCommands ?? [])
     .map((command) => `- \`${command}\``)
     .join("\n");
-  const releaseNotes = (summary.releaseNotes ?? [])
-    .map(
-      (release) =>
-        `<details>\n<summary><a href="${release.url}">v${release.version}</a></summary>\n\n${release.body}\n\n</details>`,
-    )
-    .join("\n\n");
-  const body = `## pi-subagents dependency upgrade\n\nUpdates \`${PI_SUBAGENTS_PACKAGE}\` from \`${summary.currentVersion}\` to \`${summary.targetVersion}\`.\n\n## Release notes\n\n${releaseNotes}\n\n## Changed files\n\n${changedFiles}\n\n## Validation\n\n${validation}\n\nThis pull request is review-gated and does not auto-merge or publish.\n`;
-  if (body.length > 65_536) {
-    throw new Error(
-      "pi-subagents pull-request body exceeds GitHub's 65,536-character limit",
-    );
-  }
-  return body;
+  return renderReleaseNotesWithinLimit({
+    label: "pi-subagents",
+    releases: summary.releaseNotes ?? [],
+    renderFull: (release) =>
+      `<details>\n<summary><a href="${release.url}">v${release.version}</a></summary>\n\n${release.body}\n\n</details>`,
+    renderLink: (release) => `- [v${release.version}](${release.url})`,
+    renderBody: ({ sections, notice }) => {
+      const releaseNotes = [notice, ...sections]
+        .filter((section) => section !== undefined)
+        .join("\n\n");
+      return `## pi-subagents dependency upgrade\n\nUpdates \`${PI_SUBAGENTS_PACKAGE}\` from \`${summary.currentVersion}\` to \`${summary.targetVersion}\`.\n\n## Release notes\n\n${releaseNotes}\n\n## Changed files\n\n${changedFiles}\n\n## Validation\n\n${validation}\n\nThis pull request is review-gated and does not auto-merge or publish.\n`;
+    },
+  });
 }

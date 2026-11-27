@@ -1,3 +1,5 @@
+import { renderReleaseNotesWithinLimit } from "./pull-request-release-notes.mjs";
+
 export const SUPERPOWERS_PACKAGE = "superpowers";
 export const SUPERPOWERS_REPOSITORY = "obra/superpowers";
 
@@ -305,23 +307,28 @@ export function renderSuperpowersPullRequestBody(summary) {
   for (const release of summary.releases) {
     if (!release.body?.trim())
       throw new Error(`${release.tag} has no release-note body`);
-    lines.push(
-      "",
-      `### ${release.tag}`,
-      "",
-      `Published: ${release.publishedAt}`,
-      "",
-      `Release: ${release.htmlUrl}`,
-      "",
-      markdownCodeFence(release.body),
-      release.body,
-      markdownCodeFence(release.body),
-    );
   }
-  const body = `${lines.join("\n")}\n`;
-  if (body.length > 65_536)
-    throw new Error(
-      "Superpowers pull-request body exceeds GitHub's 65,536-character limit",
-    );
-  return body;
+  return renderReleaseNotesWithinLimit({
+    label: "Superpowers",
+    releases: summary.releases,
+    renderFull: (release) =>
+      [
+        `### ${release.tag}`,
+        "",
+        `Published: ${release.publishedAt}`,
+        "",
+        `Release: ${release.htmlUrl}`,
+        "",
+        markdownCodeFence(release.body),
+        release.body,
+        markdownCodeFence(release.body),
+      ].join("\n"),
+    renderLink: (release) => `- [${release.tag}](${release.htmlUrl})`,
+    renderBody: ({ sections, notice }) => {
+      const notes = [notice, ...sections].filter(
+        (section) => section !== undefined,
+      );
+      return `${[...lines, ...notes.flatMap((section) => ["", section])].join("\n")}\n`;
+    },
+  });
 }
