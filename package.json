@@ -90,8 +90,8 @@
     "typescript-eslint": "^8.59.4"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.6.0",
-    "@earendil-works/pi-tui": "1.6.0",
+    "@earendil-works/pi-coding-agent": "1.7.0",
+    "@earendil-works/pi-tui": "1.7.0",
     "fs-ext": "2.1.1",
     "mattpocock-skills": "https://github.com/mattpocock/skills/archive/5863806dd4e15c63174bee4e7515a4256792ecfa.tar.gz",
     "pi-subagents": "0.90.0",
