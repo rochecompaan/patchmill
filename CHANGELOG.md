@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.3.0](https://github.com/rochecompaan/patchmill/compare/v1.2.0...v1.3.0) (2026-11-28)
+
+
+### Features
+
+* **kernel:** recover stalled implementation sessions and block after repeated stalls ([#319](https://github.com/rochecompaan/patchmill/issues/319)) ([#427](https://github.com/rochecompaan/patchmill/issues/427)) ([357220c](https://github.com/rochecompaan/patchmill/commit/357220c982d27c8558678675e2297c01adecd39a))
+* **kernel:** replace wall-clock session and subagent timeouts with progress-based limits ([#371](https://github.com/rochecompaan/patchmill/issues/371)) ([#429](https://github.com/rochecompaan/patchmill/issues/429)) ([e7f87a2](https://github.com/rochecompaan/patchmill/commit/e7f87a2a2fa4a76edb5f2c26065b69a6034ddad7))
+* **kernel:** run a Retro at the end of each Issue run ([#437](https://github.com/rochecompaan/patchmill/issues/437)) ([98bcf4e](https://github.com/rochecompaan/patchmill/commit/98bcf4eac0be8cbf6dbd029bdc9a6d284481c2b0))
+
+
+### Bug Fixes
+
+* **ci:** link older release notes when an upgrade PR body is too long ([879a7a0](https://github.com/rochecompaan/patchmill/commit/879a7a0feb95d8128007c4cbf1de450f11f30020))
+* **ci:** repair the pi-subagents and Superpowers dependency upgrades ([a32eb71](https://github.com/rochecompaan/patchmill/commit/a32eb71b22e14d40e3b63a63427589ce57799415))
+* **kernel:** attribute subagent usage to models and flag unpriced usage ([#376](https://github.com/rochecompaan/patchmill/issues/376)) ([#423](https://github.com/rochecompaan/patchmill/issues/423)) ([f5c73d0](https://github.com/rochecompaan/patchmill/commit/f5c73d0dafca351c5ed8c4037d3965da58720f44))
+* **kernel:** skip issues that wait on an open planning pull request ([#428](https://github.com/rochecompaan/patchmill/issues/428)) ([040c760](https://github.com/rochecompaan/patchmill/commit/040c7604cbe2dbfffee45ec9cd9192d239a57420))
+
 ## [1.2.0](https://github.com/rochecompaan/patchmill/compare/v1.1.0...v1.2.0) (2026-11-24)
 
 
